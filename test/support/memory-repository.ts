@@ -383,7 +383,8 @@ export class MemoryRepository implements Repository {
       const prefix = await this.displayPrefix(clientId);
       const used = this.fileRows
         .filter((row) => row.displayName.startsWith(prefix) && row.displayName.includes(`_${compact}_`))
-        .map((row) => Number(row.displayName.slice(row.displayName.lastIndexOf("_") + 1)));
+        .map((row) => Number(row.displayName.slice(row.displayName.lastIndexOf("_") + 1)))
+        .filter((value) => Number.isFinite(value));
       return Math.max(0, ...used) + 1;
     },
     insert: async (file: FileRecord): Promise<FileWriteResult> => {
