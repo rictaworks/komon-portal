@@ -1,5 +1,5 @@
 import { Inflate } from "fflate";
-import { MAX_ZIP_ENTRIES, MAX_ZIP_TOTAL_BYTES, MAX_ZIP_XML_BYTES } from "./limits";
+import { INFLATE_SLICE_BYTES, MAX_ZIP_ENTRIES, MAX_ZIP_TOTAL_BYTES, MAX_ZIP_XML_BYTES, MAX_ZIP_XML_TOTAL_BYTES } from "./limits";
 
 export type ZipUnreadableReason = "TooManyEntries" | "TooLarge" | "Encrypted" | "Corrupt";
 
@@ -11,6 +11,7 @@ export interface ZipLimits {
   maxEntries: number;
   maxTotalBytes: number;
   maxXmlBytes: number;
+  maxXmlTotalBytes: number;
 }
 
 interface CentralEntry {
@@ -104,19 +105,26 @@ function entryData(bytes: Uint8Array, entry: CentralEntry): Uint8Array {
   return bytes.subarray(start, stop);
 }
 
-/** Inflates one entry, stopping as soon as the real output exceeds `cap` regardless of the declared size. */
+/**
+ * Inflates one entry, stopping as soon as the real output exceeds `cap` regardless of the
+ * declared size. Input is fed in small slices: deflate expands at most about 1032 times, so
+ * the output of one slice stays small and the cap is checked before memory can grow.
+ */
 function inflateCapped(data: Uint8Array, cap: number): Uint8Array {
   const chunks: Uint8Array[] = [];
   let total = 0;
   const inflater = new Inflate((chunk) => {
     total += chunk.length;
-    if (total > cap) {
-      throw new ZipFailure("TooLarge");
-    }
     chunks.push(chunk);
   });
   try {
-    inflater.push(data, true);
+    for (let offset = 0; offset < data.length || offset === 0; offset += INFLATE_SLICE_BYTES) {
+      const stop = Math.min(offset + INFLATE_SLICE_BYTES, data.length);
+      inflater.push(data.subarray(offset, stop), stop >= data.length);
+      if (total > cap) {
+        throw new ZipFailure("TooLarge");
+      }
+    }
   } catch (error) {
     throw error instanceof ZipFailure ? error : new ZipFailure("Corrupt");
   }
@@ -129,18 +137,34 @@ function inflateCapped(data: Uint8Array, cap: number): Uint8Array {
   return output;
 }
 
-function readXml(bytes: Uint8Array, entry: CentralEntry, cap: number): string {
+function readXmlBytes(bytes: Uint8Array, entry: CentralEntry, cap: number): Uint8Array {
   const data = entryData(bytes, entry);
   if (entry.method === METHOD_STORED) {
     if (data.length > cap) {
       throw new ZipFailure("TooLarge");
     }
-    return new TextDecoder().decode(data);
+    return data;
   }
   if (entry.method === METHOD_DEFLATE) {
-    return new TextDecoder().decode(inflateCapped(data, cap));
+    return inflateCapped(data, cap);
   }
   throw new ZipFailure("Corrupt");
+}
+
+/** Reads every XML entry within a shared budget of real inflated bytes. */
+function readXmlEntries(bytes: Uint8Array, entries: readonly CentralEntry[], limits: ZipLimits): string[] {
+  const decoder = new TextDecoder();
+  let remaining = limits.maxXmlTotalBytes;
+  return entries.filter(isXmlEntry).map((entry) => {
+    const content = readXmlBytes(bytes, entry, Math.min(limits.maxXmlBytes, remaining));
+    remaining -= content.length;
+    return decoder.decode(content);
+  });
+}
+
+/** Entries that share a local header would let a tiny archive be read many times over. */
+function hasSharedOffsets(entries: readonly CentralEntry[]): boolean {
+  return new Set(entries.map((entry) => entry.localOffset)).size !== entries.length;
 }
 
 function isXmlEntry(entry: CentralEntry): boolean {
@@ -157,6 +181,7 @@ export function inspectZip(bytes: Uint8Array, overrides: Partial<ZipLimits> = {}
     maxEntries: MAX_ZIP_ENTRIES,
     maxTotalBytes: MAX_ZIP_TOTAL_BYTES,
     maxXmlBytes: MAX_ZIP_XML_BYTES,
+    maxXmlTotalBytes: MAX_ZIP_XML_TOTAL_BYTES,
     ...overrides,
   };
   try {
@@ -168,7 +193,10 @@ export function inspectZip(bytes: Uint8Array, overrides: Partial<ZipLimits> = {}
     if (declaredTotal > limits.maxTotalBytes) {
       throw new ZipFailure("TooLarge");
     }
-    const xmlTexts = entries.filter(isXmlEntry).map((entry) => readXml(bytes, entry, limits.maxXmlBytes));
+    if (hasSharedOffsets(entries)) {
+      throw new ZipFailure("Corrupt");
+    }
+    const xmlTexts = readXmlEntries(bytes, entries, limits);
     return { readable: true, entryNames: entries.map((entry) => entry.name), xmlTexts };
   } catch (error) {
     if (error instanceof ZipFailure) {

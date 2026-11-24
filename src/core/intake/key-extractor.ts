@@ -2,6 +2,7 @@ import { invalidInput } from "../model/errors";
 import type { FileFormat } from "../model/types";
 import { isValidCorporateNumber } from "./corporate-number";
 import { stemOf } from "./file-name";
+import { MAX_ARRIVAL_PATTERN_LENGTH } from "./limits";
 import { inspectZip } from "./zip-reader";
 
 export interface ExtractedKeys {
@@ -30,15 +31,28 @@ const CORPORATE_NUMBER = new RegExp(`${NOT_AFTER_DIGIT}[0-9]{13}${NOT_BEFORE_DIG
 const CODE_DELIMITERS = "_\\-\\s.()[\\]\\u3000\\uff08\\uff09\\u3010\\u3011";
 const LEADING_WORD = new RegExp(`^([A-Za-z0-9]+)(?:$|[${CODE_DELIMITERS}])`);
 
+/**
+ * Accepted pattern syntax: a sequence of literals, `\d` or simple character classes, each with an
+ * optional bounded quantifier `{n}` or `{n,m}`. No groups, alternation or unbounded quantifiers,
+ * so matching always runs in linear time on attacker-supplied text.
+ */
+const SAFE_PATTERN = /^(?:(?:[A-Za-z0-9-]|\\d|\[[A-Za-z0-9-]+\])(?:\{\d{1,2}(?:,\d{1,2})?\})?)+$/;
+
 /** Compiles the configured pattern so that it never matches inside a longer digit run. */
 export function compileArrivalNumberPattern(pattern: string): RegExp {
+  if (pattern.length > MAX_ARRIVAL_PATTERN_LENGTH || !SAFE_PATTERN.test(pattern)) {
+    throw invalidInput("arrival_number_pattern");
+  }
+  let bare: RegExp;
   try {
-    // Compile the bare pattern first: wrapping could turn an unbalanced pattern into a valid one.
-    new RegExp(pattern);
-    return new RegExp(`${NOT_AFTER_DIGIT}(?:${pattern})${NOT_BEFORE_DIGIT}`, "g");
+    bare = new RegExp(`^(?:${pattern})$`);
   } catch {
     throw invalidInput("arrival_number_pattern");
   }
+  if (bare.test("")) {
+    throw invalidInput("arrival_number_pattern");
+  }
+  return new RegExp(`${NOT_AFTER_DIGIT}(?:${pattern})${NOT_BEFORE_DIGIT}`, "g");
 }
 
 function unique(values: string[]): string[] {
