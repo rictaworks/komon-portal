@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Client send files</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1565c0}a:hover{color:#0a1628}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #f0f4f8; color: #0a1628; font-family: 'Noto Sans JP', sans-serif; font-size: 14px; line-height: 1.6; overflow: hidden">
+<header style="padding: 12px 16px; background: #0a1628; color: #ffffff; display: flex; flex-direction: column; gap: 8px">
+<span style="font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #a8c8ff">KOMON PORTAL</span>
+<label for="client" style="font-size: 12px; color: rgba(255,255,255,0.65)">Company</label>
+<select id="client" style="min-height: 44px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; background: #102040; color: #ffffff; font: inherit; font-weight: 700"><option>Hinode Logistics</option><option>Hinode Warehouse</option></select>
+</header>
+<main style="flex-grow: 1; overflow: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-size: 18px; font-weight: 700">Send Files</h1>
+<div role="note" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: #fde7e7; border: 1px solid #e8a3a3; border-radius: 8px; color: #7a1010; font-size: 13px; font-weight: 500">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><path d="M12 3a9 9 0 100 18 9 9 0 000-18zM5.6 5.6l12.8 12.8"></path></svg>
+<span>Do not send documents that contain an Individual Number (My Number).</span>
+</div>
+<section style="padding: 16px; background: #ffffff; border: 1px solid rgba(10,22,40,0.1); border-radius: 8px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<label for="type" style="font-weight: 700; font-size: 13px">Type</label>
+<select id="type" style="min-height: 44px; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; background: #ffffff; color: #0a1628; font: inherit"><option>Payroll material</option><option>Attendance record</option></select>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<label for="month" style="font-weight: 700; font-size: 13px">Target month</label>
+<input id="month" type="month" value="2026-11" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; background: #ffffff; font: inherit">
+</div>
+<button type="button" style="min-height: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 2px dashed #6b82a0; border-radius: 8px; background: #f0f4f8; color: #1a3560; font: inherit; font-weight: 700"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>Choose files</button>
+<span style="font-size: 12px; color: #4a5a78">Sent to your office only. PDF, ZIP, XML, CSV, XLSX, DOCX, TXT, PNG, JPEG, up to 50 MB each.</span>
+<button type="button" style="min-height: 48px; border: 0; border-radius: 4px; background: #1565c0; color: #ffffff; font: inherit; font-weight: 700">Send to office</button>
+</section>
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 700">Sent files</h2>
+<sc-for list="{{sent}}" as="s" hint-placeholder-count="3">
+<div style="padding: 14px 16px; background: #ffffff; border: 1px solid rgba(10,22,40,0.1); border-radius: 8px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: flex-start; gap: 12px">
+<span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0">
+<strong style="font-size: 14px">{{s.type}}</strong>
+<span style="font-size: 12px; color: #4a5a78">{{s.meta}}</span>
+</span>
+<span style="{{s.badge}}">{{s.state}}</span>
+</div>
+<sc-if value="{{s.canCancel}}" hint-placeholder-val="{{ false }}">
+<button type="button" style="min-height: 44px; border: 1px solid #a31515; border-radius: 4px; background: #ffffff; color: #a31515; font: inherit; font-weight: 700">Cancel this submission</button>
+</sc-if>
+</div>
+</sc-for>
+</section>
+</main>
+<nav aria-label="Main" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #ffffff; border-top: 1px solid rgba(10,22,40,0.15)">
+<a href="ClientHome.dc.html" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11l9-8 9 8v10H3z"></path></svg>Home</a>
+<a href="ClientDocuments.dc.html" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h6l2 2h10v11H3z"></path></svg>Documents</a>
+<a href="ClientSendFiles.dc.html" aria-current="page" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 700; color: #0a1628; text-decoration: none; box-shadow: inset 0 3px 0 #1565c0"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>Send Files</a>
+<a href="#notifications" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4l2-2zM10 20h4"></path></svg>Notifications</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+const b = 'padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; white-space: nowrap; ';
+return { sent: [
+{ type: 'Payroll material', meta: 'November 2026, sent 24 Nov 2026 08:40', state: 'Sent', badge: b + 'background: #e3eefc; color: #0d47a1', canCancel: true },
+{ type: 'Attendance record', meta: 'November 2026, sent 21 Nov 2026 17:15', state: 'Confirmed by the office', badge: b + 'background: #d9f2df; color: #14532d', canCancel: false },
+{ type: 'Payroll material', meta: 'October 2026, sent 22 Oct 2026 10:02', state: 'Confirmed by the office', badge: b + 'background: #d9f2df; color: #14532d', canCancel: false }
+] };
+}
+}
+</script>
+</body>
+</html>

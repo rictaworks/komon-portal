@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Client home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1565c0}a:hover{color:#0a1628}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #f0f4f8; color: #0a1628; font-family: 'Noto Sans JP', sans-serif; font-size: 14px; line-height: 1.6; overflow: hidden">
+<header style="padding: 12px 16px; background: #0a1628; color: #ffffff; display: flex; flex-direction: column; gap: 8px">
+<span style="font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #a8c8ff">KOMON PORTAL</span>
+<label for="client" style="font-size: 12px; color: rgba(255,255,255,0.65)">Company</label>
+<select id="client" style="min-height: 44px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; background: #102040; color: #ffffff; font: inherit; font-weight: 700"><option>Hinode Logistics</option><option>Hinode Warehouse</option></select>
+</header>
+<main style="flex-grow: 1; overflow: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 20px">
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h1 style="margin: 0; font-size: 18px; font-weight: 700">New documents <span style="font-family: 'Montserrat', sans-serif; color: #1565c0">2</span></h1>
+<sc-for list="{{unread}}" as="d" hint-placeholder-count="2">
+<a href="ClientDocuments.dc.html" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #ffffff; border: 1px solid rgba(10,22,40,0.1); border-radius: 8px; text-decoration: none; color: #0a1628">
+<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1a3560" stroke-width="2" stroke-linejoin="round" style="flex-shrink: 0"><path d="M6 3h8l4 4v14H6zM14 3v4h4"></path></svg>
+<span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0">
+<strong style="font-size: 14px">{{d.type}}</strong>
+<span style="font-size: 12px; color: #4a5a78">{{d.meta}}</span>
+</span>
+<span style="padding: 3px 10px; border-radius: 4px; background: #e3eefc; color: #0d47a1; font-size: 12px; font-weight: 700">New</span>
+</a>
+</sc-for>
+</section>
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 700">Your cases</h2>
+<div style="background: #ffffff; border: 1px solid rgba(10,22,40,0.1); border-radius: 8px; overflow: hidden">
+<sc-for list="{{cases}}" as="c" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid rgba(10,22,40,0.08)">
+<span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0">
+<strong style="font-size: 14px">{{c.name}}</strong>
+<span style="font-size: 12px; color: #4a5a78">{{c.kind}}, {{c.month}}</span>
+</span>
+<span style="{{c.badge}}">{{c.state}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+</main>
+<nav aria-label="Main" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #ffffff; border-top: 1px solid rgba(10,22,40,0.15)">
+<a href="ClientHome.dc.html" aria-current="page" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 700; color: #0a1628; text-decoration: none; box-shadow: inset 0 3px 0 #1565c0"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11l9-8 9 8v10H3z"></path></svg>Home</a>
+<a href="ClientDocuments.dc.html" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h6l2 2h10v11H3z"></path></svg>Documents</a>
+<a href="ClientSendFiles.dc.html" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>Send Files</a>
+<a href="#notifications" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4l2-2zM10 20h4"></path></svg>Notifications</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+const b = 'padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; white-space: nowrap; ';
+const green = b + 'background: #d9f2df; color: #14532d';
+const blue = b + 'background: #e3eefc; color: #0d47a1';
+const neutral = b + 'background: #e9eef5; color: #2a3a56';
+return {
+unread: [
+{ type: 'Payroll statement', meta: 'November 2026, published 20 Nov' },
+{ type: 'Social insurance notice', meta: 'October 2026, published 17 Nov' }
+],
+cases: [
+{ name: 'Social insurance', kind: 'Procedure', month: 'November 2026', state: 'Submitted', badge: neutral },
+{ name: 'Payroll', kind: 'Payroll', month: 'November 2026', state: 'Delivered', badge: green },
+{ name: 'Employment insurance', kind: 'Procedure', month: 'October 2026', state: 'Confirmed', badge: green },
+{ name: 'Labour insurance', kind: 'Procedure', month: 'November 2026', state: 'Document received', badge: blue }
+]
+};
+}
+}
+</script>
+</body>
+</html>

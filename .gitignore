@@ -1,0 +1,42 @@
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.pem
+*.key
+!*.pub.key
+
+# --- Claude settings (public repository: keep internal know-how out) ---
+.claude/*
+
+# --- Non-public working directories ---
+CLIENT/
+DEBUG/
+TASKS/
+WORK/
+DELETE/
+ENV/
+
+# --- Node / build ---
+node_modules/
+dist/
+.wrangler/
+*.tsbuildinfo
+
+# --- Playwright ---
+test-results/
+playwright-report/
+/.playwright-mcp/
+
+# --- Editor / OS ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*Zone.Identifier
+
+# --- Coverage ---
+coverage/
