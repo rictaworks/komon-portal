@@ -18,6 +18,7 @@ import type {
   InvitationStatus,
   LocalDate,
   Membership,
+  MembershipStatus,
   MetricEvent,
   OfficeSetting,
   ReviewReason,
@@ -41,7 +42,17 @@ export interface UserRepository {
   findById(id: Id): Promise<User | null>;
   findByGoogleSub(googleSub: string): Promise<User | null>;
   insert(user: User): Promise<void>;
-  update(user: User): Promise<void>;
+  updateDisplayName(id: Id, displayName: string): Promise<void>;
+  /**
+   * Writes the office role and status of `user` only while the stored office status equals
+   * `expectedStatus`. Returns false otherwise.
+   */
+  transitionOffice(user: User, expectedStatus: MembershipStatus | null): Promise<boolean>;
+  /**
+   * Revokes an Active office member in one atomic step. Refuses when the user is the last
+   * active Owner or is not an Active office member.
+   */
+  revokeOfficeUnlessLastOwner(id: Id): Promise<"ok" | "last_owner" | "not_active">;
   listOffice(): Promise<User[]>;
   countActiveOwners(): Promise<number>;
 }
@@ -71,11 +82,17 @@ export interface MembershipRepository {
   listByClient(clientId: Id): Promise<Membership[]>;
   /** Returns false when an ongoing membership already exists for the pair. */
   insert(membership: Membership): Promise<boolean>;
-  update(membership: Membership): Promise<void>;
+  /** Applies the change only while the stored status equals `expectedStatus`. Returns false otherwise. */
+  transition(membership: Membership, expectedStatus: MembershipStatus): Promise<boolean>;
 }
 
 export interface InvitationRepository {
+  findById(id: Id): Promise<Invitation | null>;
   findByCodeHash(codeHash: string): Promise<Invitation | null>;
+  /** Issued invitations for one client, or for the office when `clientId` is null. */
+  listIssued(clientId: Id | null): Promise<Invitation[]>;
+  /** The most recent invitation this user redeemed for the given target, if any. */
+  findLatestRedeemedBy(userId: Id, clientId: Id | null): Promise<Invitation | null>;
   insert(invitation: Invitation): Promise<void>;
   /** Applies the change only while the stored status equals `expectedStatus`. Returns false otherwise. */
   transition(invitation: Invitation, expectedStatus: InvitationStatus): Promise<boolean>;
@@ -145,6 +162,13 @@ export interface CaseFileSummary {
   inbound: number;
 }
 
+/**
+ * Outcome of writing a file record. `name_taken`: the display name exists (retry with the next
+ * sequence). `duplicate_content`: the client already holds this content. `stale`: the stored
+ * version differs from the expected one (insert never returns it).
+ */
+export type FileWriteResult = "ok" | "name_taken" | "duplicate_content" | "stale";
+
 export interface FileRepository {
   findById(id: Id): Promise<FileRecord | null>;
   /** Files with this content that are not trashed. */
@@ -153,9 +177,8 @@ export interface FileRepository {
   count(filter: FileFilter): Promise<number>;
   /** Next number for display names of this client (or of unassigned files) on the given day. */
   nextDisplaySequence(clientId: Id | null, receivedOn: LocalDate): Promise<number>;
-  /** Returns false when the display name or the client and content pair is already taken. */
-  insert(file: FileRecord): Promise<boolean>;
-  update(file: FileRecord, expectedVersion: number): Promise<boolean>;
+  insert(file: FileRecord): Promise<FileWriteResult>;
+  update(file: FileRecord, expectedVersion: number): Promise<FileWriteResult>;
   summarizeForCase(caseId: Id): Promise<CaseFileSummary>;
   listTrashedBefore(threshold: Date, page: Page): Promise<FileRecord[]>;
   /** Permanently removes the record and its receipts. */
