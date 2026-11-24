@@ -1,4 +1,4 @@
-import type { Guard } from "../access/guard";
+import { auditableId, type Guard } from "../access/guard";
 import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
 import type { CaseService } from "../cases/case-service";
 import type { FileWriter } from "../intake/file-writer";
@@ -42,7 +42,7 @@ export class ViewService {
   async open(actor: UserActor, fileId: Id, mode: OpenMode): Promise<OpenedFile> {
     const found = await this.deps.repository.files.findById(fileId);
     if (found === null || !this.deps.guard.allows(actor, "file.read", { file: found })) {
-      await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, fileId, "denied");
+      await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, auditableId(fileId), "denied");
       throw notFound("file");
     }
     const body = await this.deps.store.get(found.r2Key);
@@ -51,6 +51,13 @@ export class ViewService {
       throw invalidState("body_missing");
     }
     const file = this.deps.guard.allows(actor, "staff.operate") ? await this.acknowledge(actor, found) : await this.receive(actor, found);
+    // The file may have been withdrawn while the receipt was being written: check again before handing out the body.
+    const current = await this.deps.repository.files.findById(fileId);
+    if (current === null || !this.deps.guard.allows(actor, "file.read", { file: current })) {
+      await body.body.cancel();
+      await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, auditableId(fileId), "denied");
+      throw notFound("file");
+    }
     await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, fileId);
     return { file, body, downloadName: `${file.displayName}.${EXTENSIONS[file.format]}` };
   }
@@ -73,9 +80,10 @@ export class ViewService {
         fileId: file.id,
         secondsSincePublished: file.publishedAt === null ? null : Math.round((now.getTime() - file.publishedAt.getTime()) / 1000),
       });
-      if (file.caseId !== null) {
-        await this.deps.cases.onFileEvent(file.caseId);
-      }
+    }
+    // Settled on every open, so a case is confirmed even if an earlier attempt failed after the receipt was written.
+    if (file.caseId !== null) {
+      await this.deps.cases.onFileEvent(file.caseId);
     }
     return file;
   }

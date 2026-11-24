@@ -101,6 +101,15 @@ describe("ReviewService", () => {
     });
   });
 
+  describe("published files", () => {
+    it("cannot have their client, case or type changed", async () => {
+      kit.repo.fileRows.push(fileRecord({ id: "f1", state: "Published", publishedAt: new Date() }));
+      await expect(kit.review.assign(staff, "f1", { clientId: "c2", caseId: null, confirmed: true }, 1)).rejects.toThrow("invalid_state: not_in_review");
+      await expect(kit.review.sendBack(staff, "f1", 1)).rejects.toThrow("invalid_state: not_staged");
+      expect(kit.repo.fileRows[0]).toMatchObject({ clientId: "c1", state: "Published", version: 1 });
+    });
+  });
+
   describe("setDocType", () => {
     it("changes the type of a staged file and renames it", async () => {
       kit.repo.fileRows.push(fileRecord({ id: "f1", state: "Staged", docTypeId: "d1", typeSource: "Rule" }));
