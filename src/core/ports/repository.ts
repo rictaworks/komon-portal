@@ -127,6 +127,11 @@ export interface CaseRepository {
   /** Returns false when the client, type, month and sequence are already taken. */
   insert(record: CaseRecord): Promise<boolean>;
   update(record: CaseRecord, expectedVersion: number): Promise<boolean>;
+  /**
+   * Writes the case and adds the arrival numbers as one atomic step. Nothing is written when the
+   * version is stale or any arrival number already belongs to a case.
+   */
+  updateWithArrivals(record: CaseRecord, expectedVersion: number, arrivals: readonly CaseArrival[]): Promise<"ok" | "stale" | "arrival_taken">;
   listArrivals(caseId: Id): Promise<CaseArrival[]>;
   /** Returns false when the arrival number already belongs to a case. */
   addArrival(arrival: CaseArrival): Promise<boolean>;
