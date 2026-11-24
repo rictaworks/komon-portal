@@ -14,7 +14,10 @@ export interface Resolution {
 
 interface Lookups {
   matchedCase: CaseRecord | null;
+  /** Clues that each point to exactly one client, in priority order. */
   evidence: KeyEvidence[];
+  /** Client sets of corporate numbers registered to several clients. They decide nothing but can contradict. */
+  sharedNumberClients: Id[][];
 }
 
 type ResolverRepository = Pick<Repository, "cases" | "clients">;
@@ -32,8 +35,13 @@ export class ClientResolver {
 
   async resolve(keys: ExtractedKeys, hintClientId: Id | null): Promise<Resolution> {
     const hint = hintClientId === null ? null : await this.requireClient(hintClientId);
-    const { matchedCase, evidence } = await this.lookUp(keys);
-    const allEvidence: KeyEvidence[] = hint === null ? evidence : [...evidence, { kind: "StaffSelected", clientId: hint.id }];
+    const { matchedCase, evidence, sharedNumberClients } = await this.lookUp(keys);
+    const allEvidence: KeyEvidence[] = [
+      ...evidence,
+      ...sharedNumberClients.flat().map((clientId) => ({ kind: "CorporateNumber" as const, clientId })),
+      ...(hint === null ? [] : [{ kind: "StaffSelected" as const, clientId: hint.id }]),
+    ];
+    const contradictsShared = (clientId: Id): boolean => sharedNumberClients.some((clients) => !clients.includes(clientId));
 
     // a: identifiers that point to different clients
     if (new Set(evidence.map((item) => item.clientId)).size > 1) {
@@ -46,6 +54,9 @@ export class ClientResolver {
     // c to e: the first identifier in priority order
     const decisive = evidence[0];
     if (decisive !== undefined) {
+      if (contradictsShared(decisive.clientId)) {
+        return this.review("ConflictingKeys", allEvidence);
+      }
       if (hint !== null && hint.id !== decisive.clientId) {
         return this.review("HintMismatch", allEvidence);
       }
@@ -53,6 +64,9 @@ export class ClientResolver {
     }
     // f: the client chosen at intake
     if (hint !== null) {
+      if (contradictsShared(hint.id)) {
+        return this.review("HintMismatch", allEvidence);
+      }
       return this.accept(hint.id, "StaffSelected", null, keys, allEvidence);
     }
     // g: nothing to go on
@@ -61,6 +75,7 @@ export class ClientResolver {
 
   private async lookUp(keys: ExtractedKeys): Promise<Lookups> {
     const evidence: KeyEvidence[] = [];
+    const sharedNumberClients: Id[][] = [];
     let matchedCase: CaseRecord | null = null;
     for (const arrivalNumber of keys.arrivalNumbers) {
       const found = await this.repository.cases.findByArrivalNumber(arrivalNumber);
@@ -80,9 +95,11 @@ export class ClientResolver {
       const only = found[0];
       if (found.length === 1 && only !== undefined) {
         evidence.push({ kind: "CorporateNumber", clientId: only.id });
+      } else if (found.length > 1) {
+        sharedNumberClients.push(found.map((client) => client.id));
       }
     }
-    return { matchedCase, evidence };
+    return { matchedCase, evidence, sharedNumberClients };
   }
 
   private async accept(
@@ -106,7 +123,8 @@ export class ClientResolver {
       caseId: linkedCase?.id ?? null,
       method,
       reviewReason: null,
-      unmatchedArrivalNumber: linkedCase === null && onlyArrival !== undefined ? onlyArrival : null,
+      // Only a staff-chosen destination prompts registering a case for an unknown arrival number (1.6.2 step 5).
+      unmatchedArrivalNumber: method === "StaffSelected" && onlyArrival !== undefined ? onlyArrival : null,
       evidence,
     };
   }

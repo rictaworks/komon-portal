@@ -78,7 +78,36 @@ describe("ClientResolver", () => {
   it("e: ignores a corporate number shared by two clients", async () => {
     repo.clientRows.push(client({ id: "c4", code: "C0300", corporateNumber: CORPORATE_NUMBER }));
     const result = await resolver.resolve(keys({ corporateNumbers: [CORPORATE_NUMBER] }), null);
-    expect(result).toMatchObject({ clientId: null, reviewReason: "NoKey", evidence: [] });
+    expect(result).toMatchObject({ clientId: null, reviewReason: "NoKey" });
+    expect(result.evidence).toEqual([{ kind: "CorporateNumber", clientId: "c2" }, { kind: "CorporateNumber", clientId: "c4" }]);
+  });
+
+  it("stops when a shared corporate number excludes the client another clue decided", async () => {
+    repo.clientRows.push(client({ id: "c4", code: "C0300", corporateNumber: CORPORATE_NUMBER }));
+    const byCode = await resolver.resolve(keys({ clientCodes: ["C0031"], corporateNumbers: [CORPORATE_NUMBER] }), null);
+    expect(byCode).toMatchObject({ clientId: null, reviewReason: "ConflictingKeys" });
+    const byArrival = await resolver.resolve(keys({ arrivalNumbers: [A1], corporateNumbers: [CORPORATE_NUMBER] }), null);
+    expect(byArrival).toMatchObject({ clientId: null, reviewReason: "ConflictingKeys" });
+    const byHint = await resolver.resolve(keys({ corporateNumbers: [CORPORATE_NUMBER] }), "c1");
+    expect(byHint).toMatchObject({ clientId: null, reviewReason: "HintMismatch" });
+  });
+
+  it("accepts a shared corporate number that includes the decided client", async () => {
+    repo.clientRows.push(client({ id: "c4", code: "C0300", corporateNumber: CORPORATE_NUMBER }));
+    expect(await resolver.resolve(keys({ clientCodes: ["C0142"], corporateNumbers: [CORPORATE_NUMBER] }), null)).toMatchObject({ clientId: "c2", method: "ClientCode" });
+    expect(await resolver.resolve(keys({ corporateNumbers: [CORPORATE_NUMBER] }), "c4")).toMatchObject({ clientId: "c4", method: "StaffSelected" });
+  });
+
+  it("does not flag an unregistered arrival number when a client code decided", async () => {
+    const result = await resolver.resolve(keys({ arrivalNumbers: [UNKNOWN], clientCodes: ["C0031"] }), null);
+    expect(result).toMatchObject({ clientId: "c1", method: "ClientCode", caseId: null, unmatchedArrivalNumber: null });
+  });
+
+  it("post: stops for an archived client reached by arrival number or corporate number", async () => {
+    repo.clientRows[0] = client({ id: "c1", code: "C0031", status: "Archived" });
+    repo.clientRows[1] = client({ id: "c2", code: "C0142", corporateNumber: CORPORATE_NUMBER, status: "Closed" });
+    expect(await resolver.resolve(keys({ arrivalNumbers: [A1] }), null)).toMatchObject({ clientId: null, reviewReason: "ClientNotActive" });
+    expect(await resolver.resolve(keys({ corporateNumbers: [CORPORATE_NUMBER] }), null)).toMatchObject({ clientId: null, reviewReason: "ClientNotActive" });
   });
 
   it("f: resolves by the client chosen at intake", async () => {
