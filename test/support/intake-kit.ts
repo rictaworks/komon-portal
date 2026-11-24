@@ -2,6 +2,9 @@ import { CaseService } from "../../src/core/cases/case-service";
 import { FileWriter } from "../../src/core/intake/file-writer";
 import { IntakeService, type AutoPublisher } from "../../src/core/intake/intake-service";
 import { ReviewService } from "../../src/core/intake/review-service";
+import type { Notifier } from "../../src/core/ports/notifier";
+import { PublishService } from "../../src/core/publish/publish-service";
+import { ViewService } from "../../src/core/publish/view-service";
 import { caseType, client, coreKit, docRule, docType, user, type CoreKit } from "./builders";
 import { MemoryFileStore } from "./memory-file-store";
 import { MemoryRepository } from "./memory-repository";
@@ -16,7 +19,22 @@ export class RecordingAutoPublisher implements AutoPublisher {
   }
 }
 
+export class RecordingNotifier implements Notifier {
+  notified: string[] = [];
+  failFor: string | null = null;
+
+  async notifyNewDocument(clientId: string): Promise<void> {
+    if (clientId === this.failFor) {
+      throw new TypeError("push service unreachable");
+    }
+    this.notified.push(clientId);
+  }
+}
+
 export interface IntakeKit extends CoreKit {
+  notifier: RecordingNotifier;
+  publish: PublishService;
+  view: ViewService;
   repo: MemoryRepository;
   store: MemoryFileStore;
   writer: FileWriter;
@@ -49,5 +67,8 @@ export function intakeKit(): IntakeKit {
   const autoPublisher = new RecordingAutoPublisher();
   const intake = new IntakeService({ repository: repo, store, writer, cases, autoPublisher, ...kit });
   const review = new ReviewService({ repository: repo, writer, cases, ...kit });
-  return { ...kit, repo, store, writer, cases, autoPublisher, intake, review };
+  const notifier = new RecordingNotifier();
+  const publish = new PublishService({ repository: repo, writer, cases, notifier, ...kit });
+  const view = new ViewService({ repository: repo, store, writer, cases, ...kit });
+  return { ...kit, repo, store, writer, cases, autoPublisher, intake, review, notifier, publish, view };
 }
