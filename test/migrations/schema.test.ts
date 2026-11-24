@@ -130,6 +130,9 @@ describe("D1 schema", () => {
     await run(db, "INSERT INTO audit_log (id, actor_user_id, action, target_type, target_id, result, occurred_at) VALUES ('l2', NULL, 'file.purge', 'file', 'f9', 'ok', ?)", NOW);
     expect(await rejects(db, "UPDATE audit_log SET result = 'denied' WHERE id = 'l1'")).toBe(true);
     expect(await rejects(db, "DELETE FROM audit_log WHERE id = 'l1'")).toBe(true);
+    expect(await rejects(db, "INSERT OR REPLACE INTO audit_log (id, actor_user_id, action, target_type, target_id, result, occurred_at) VALUES ('l1', 'u1', 'x', 'file', 'f1', 'denied', ?)", NOW)).toBe(true);
+    const kept = await db.prepare("SELECT result FROM audit_log WHERE id = 'l1'").first<{ result: string }>();
+    expect(kept?.result).toBe("ok");
     const count = await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first<{ n: number }>();
     expect(count?.n).toBe(2);
   });
@@ -153,6 +156,39 @@ describe("D1 schema", () => {
     expect(await rejects(db, sql, "i3", "h3", "Client", null, null, NOW, NOW)).toBe(true);
     expect(await rejects(db, sql, "i4", "h4", "Office", "c1", "Staff", NOW, NOW)).toBe(true);
     expect(await rejects(db, sql, "i5", "h1", "Client", "c1", null, NOW, NOW)).toBe(true);
+  });
+
+  it("rejects invalid months, statuses and trash origins", async () => {
+    const caseSql = "INSERT INTO case_records (id, client_id, case_type_id, target_month, sequence, reference_code, state, version, created_at) VALUES (?, 'c1', 't1', ?, 9, 'OK-9', 'Open', 1, ?)";
+    expect(await rejects(db, caseSql, "km1", "2026-00", NOW)).toBe(true);
+    expect(await rejects(db, caseSql, "km2", "2026-13", NOW)).toBe(true);
+    expect(await rejects(db, caseSql, "km3", "2026-12", NOW)).toBe(false);
+    expect(await rejects(db, "INSERT INTO memberships (id, user_id, client_id, status, created_at) VALUES ('mx', 'u2', 'c2', 'Banned', ?)", NOW)).toBe(true);
+    expect(await rejects(db, "UPDATE invitations SET status = 'Lost'")).toBe(true);
+    expect(await rejects(db, fileSql(), ...fileParams({ id: "t1", state: "Trashed", trashedFrom: "Published", trashedAt: NOW, sha: "d".repeat(64) }))).toBe(true);
+    expect(await rejects(db, fileSql(), ...fileParams({ id: "t2", state: "Trashed", trashedFrom: "Submitted", trashedAt: NOW, sha: "d".repeat(64) }))).toBe(true);
+    expect(await rejects(db, fileSql(), ...fileParams({ id: "t3", direction: "Inbound", state: "Trashed", trashedFrom: "Submitted", trashedAt: NOW, sha: "d".repeat(64) }))).toBe(false);
+  });
+
+  it("requires a reason for withdrawn files and a time for acknowledged ones", async () => {
+    await run(db, fileSql(), ...fileParams({ id: "w1", state: "Published", publishedAt: NOW, sha: "e".repeat(64) }));
+    expect(await rejects(db, "UPDATE file_records SET state = 'Withdrawn' WHERE id = 'w1'")).toBe(true);
+    expect(await rejects(db, "UPDATE file_records SET state = 'Withdrawn', withdraw_reason = 'WrongFile' WHERE id = 'w1'")).toBe(false);
+    await run(db, fileSql(), ...fileParams({ id: "w2", direction: "Inbound", state: "Submitted", sha: "f".repeat(64) }));
+    expect(await rejects(db, "UPDATE file_records SET state = 'Acknowledged' WHERE id = 'w2'")).toBe(true);
+    expect(await rejects(db, "UPDATE file_records SET state = 'Acknowledged', acknowledged_at = ? WHERE id = 'w2'", NOW)).toBe(false);
+  });
+
+  it("links a file only to a case of its own client", async () => {
+    expect(await rejects(db, "UPDATE file_records SET case_id = 'k2' WHERE id = 'f1'")).toBe(true);
+    expect(await rejects(db, "UPDATE file_records SET case_id = 'k1' WHERE id = 'f1'")).toBe(false);
+    expect(await rejects(db, "UPDATE file_records SET case_id = 'missing' WHERE id = 'f1'")).toBe(true);
+  });
+
+  it("removes receipts together with a purged file", async () => {
+    await run(db, "DELETE FROM file_records WHERE id = 'f1'");
+    const left = await db.prepare("SELECT COUNT(*) AS n FROM file_receipts WHERE file_id = 'f1'").first<{ n: number }>();
+    expect(left?.n).toBe(0);
   });
 
   it("enforces foreign keys", async () => {
