@@ -58,6 +58,9 @@ export class MemoryRepository implements Repository {
     findByGoogleSub: async (googleSub: string): Promise<User | null> =>
       copy(this.userRows.find((row) => row.googleSub === googleSub) ?? null),
     insert: async (user: User): Promise<void> => {
+      if (this.userRows.some((row) => row.id === user.id || row.googleSub === user.googleSub)) {
+        throw new Error("UNIQUE constraint failed: users");
+      }
       this.userRows.push(copy(user));
     },
     updateDisplayName: async (id: Id, displayName: string): Promise<void> => {
@@ -118,6 +121,9 @@ export class MemoryRepository implements Repository {
       if (index < 0 || this.clientRows[index]?.version !== expectedVersion) {
         return false;
       }
+      if (this.clientRows.some((row) => row.id !== client.id && row.code === client.code)) {
+        throw new Error("UNIQUE constraint failed: clients.code");
+      }
       this.clientRows[index] = copy(client);
       return true;
     },
@@ -144,6 +150,12 @@ export class MemoryRepository implements Repository {
       if (index < 0 || this.membershipRows[index]?.status !== expectedStatus) {
         return false;
       }
+      const clash = this.membershipRows.some(
+        (row) => row.id !== membership.id && row.userId === membership.userId && row.clientId === membership.clientId && ONGOING.includes(row.status),
+      );
+      if (ONGOING.includes(membership.status) && clash) {
+        throw new Error("UNIQUE constraint failed: memberships_ongoing");
+      }
       this.membershipRows[index] = copy(membership);
       return true;
     },
@@ -162,6 +174,9 @@ export class MemoryRepository implements Repository {
       return copy(rows[0] ?? null);
     },
     insert: async (invitation: Invitation): Promise<void> => {
+      if (this.invitationRows.some((row) => row.codeHash === invitation.codeHash)) {
+        throw new Error("UNIQUE constraint failed: invitations.code_hash");
+      }
       this.invitationRows.push(copy(invitation));
     },
     transition: async (invitation: Invitation, expectedStatus: InvitationStatus): Promise<boolean> => {
@@ -300,7 +315,35 @@ export class MemoryRepository implements Repository {
     );
   }
 
+  /** Mirrors the CHECK and foreign key constraints of file_records. A violation throws, as D1 would. */
+  private assertFileConstraints(file: FileRecord): void {
+    const fail = (rule: string): never => {
+      throw new Error(`CHECK constraint failed: file_records ${rule}`);
+    };
+    const outbound: readonly string[] = ["Staged", "NeedsReview", "Published", "Withdrawn", "Trashed"];
+    const inbound: readonly string[] = ["Submitted", "Acknowledged", "Trashed"];
+    if (!(file.direction === "Outbound" ? outbound : inbound).includes(file.state)) fail("direction/state");
+    if (["Staged", "Published", "Withdrawn", "Submitted", "Acknowledged"].includes(file.state) && file.clientId === null) fail("client required");
+    if ((file.state === "Trashed") !== (file.trashedAt !== null)) fail("trashed_at");
+    if ((file.state === "Trashed") !== (file.trashedFrom !== null)) fail("trashed_from");
+    if (file.state === "NeedsReview" && file.reviewReason === null) fail("review_reason");
+    if (file.state === "Published" && file.publishedAt === null) fail("published_at");
+    if (file.state === "Withdrawn" && file.withdrawReason === null) fail("withdraw_reason");
+    if (file.state === "Acknowledged" && file.acknowledgedAt === null) fail("acknowledged_at");
+    if (file.caseId !== null) {
+      const linked = this.caseRows.find((row) => row.id === file.caseId);
+      if (linked === undefined || linked.clientId !== file.clientId) fail("case of another client");
+    }
+    if (this.fileRows.some((row) => row.id !== file.id && row.r2Key === file.r2Key)) fail("r2_key");
+  }
+
+  private async displayPrefix(clientId: Id | null): Promise<string> {
+    const code = clientId === null ? "UNASSIGNED" : this.clientRows.find((row) => row.id === clientId)?.code;
+    return `${code}_`;
+  }
+
   private fileConflict(file: FileRecord): FileWriteResult {
+    this.assertFileConstraints(file);
     const others = this.fileRows.filter((row) => row.id !== file.id);
     if (others.some((row) => row.displayName === file.displayName)) {
       return "name_taken";
@@ -324,8 +367,10 @@ export class MemoryRepository implements Repository {
     count: async (filter: FileFilter): Promise<number> => this.fileRows.filter((row) => this.matchesFile(row, filter)).length,
     nextDisplaySequence: async (clientId: Id | null, receivedOn: LocalDate): Promise<number> => {
       const compact = receivedOn.replaceAll("-", "");
+      // Display names are unique across all files, so the sequence follows the name prefix, not the current client.
+      const prefix = await this.displayPrefix(clientId);
       const used = this.fileRows
-        .filter((row) => row.clientId === clientId && row.displayName.includes(`_${compact}_`))
+        .filter((row) => row.displayName.startsWith(prefix) && row.displayName.includes(`_${compact}_`))
         .map((row) => Number(row.displayName.slice(row.displayName.lastIndexOf("_") + 1)))
         .filter((value) => Number.isFinite(value));
       return Math.max(0, ...used) + 1;
