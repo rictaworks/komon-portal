@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractKeys } from "../../../src/core/intake/key-extractor";
+import { compileArrivalNumberPattern, extractKeys } from "../../../src/core/intake/key-extractor";
 import { CORPORATE_NUMBER, markEncrypted, PDF, zip } from "./fixtures";
 
 const options = { arrivalNumberPattern: "[0-9]{17,18}", clientCodes: ["C0031", "C0142", "AB"] };
@@ -80,11 +80,41 @@ describe("extractKeys from a ZIP", () => {
   });
 });
 
-describe("extractKeys pattern handling", () => {
-  it("rejects an invalid pattern explicitly", () => {
+describe("arrival number pattern", () => {
+  it.each(["[0-9]{17,18}", "\\d{18}", "A[0-9]{10}", "[0-9]{4}-[0-9]{6}", "[A-Z]{2}[0-9]{8}"])("accepts the safe pattern %s", (pattern) => {
+    expect(() => compileArrivalNumberPattern(pattern)).not.toThrow();
+  });
+
+  it.each([
+    "[0-9",
+    "([0-9]+)+x",
+    "[0-9]*",
+    "[0-9]+",
+    "[0-9]{0}",
+    "[0-9]{0,3}",
+    "(a|b)",
+    "a|b",
+    ".{18}",
+    "[^0-9]{5}",
+    "\\1",
+    "[0-9]{100,200}",
+    "",
+    "9".repeat(101),
+  ])("rejects the unsafe pattern %s", (pattern) => {
+    expect(() => compileArrivalNumberPattern(pattern)).toThrow("invalid_input: arrival_number_pattern");
+  });
+
+  it("is rejected explicitly by extractKeys", () => {
     expect(() => extractKeys({ fileName: "a.pdf", format: "pdf", bytes: PDF }, { arrivalNumberPattern: "[0-9", clientCodes: [] })).toThrow(
       "invalid_input: arrival_number_pattern",
     );
+  });
+
+  it("scans a long digit run quickly", () => {
+    const started = Date.now();
+    const result = extractKeys({ fileName: `${"1".repeat(200000)}.pdf`, format: "pdf", bytes: PDF }, options);
+    expect(result.arrivalNumbers).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 });
 
