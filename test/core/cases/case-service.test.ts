@@ -78,6 +78,27 @@ describe("CaseService", () => {
       expect(repo.arrivalRows).toHaveLength(1);
     });
 
+    it("applies to procedure cases only", async () => {
+      repo.caseRows.push(caseRecord({ id: "k5", caseTypeId: "t2", sequence: 5 }));
+      await expect(service.markSubmitted(staff, "k5", { submittedOn: "2026-11-20", arrivalNumbers: [] }, 1)).rejects.toThrow("invalid_state: not_a_procedure");
+    });
+
+    it("writes nothing when another case takes the arrival number at the same moment", async () => {
+      const original = repo.cases.findByArrivalNumber;
+      repo.cases.findByArrivalNumber = async () => null;
+      repo.arrivalRows.push({ id: "a1", caseId: "k2", arrivalNumber: A1 });
+      await expect(service.markSubmitted(staff, "k1", { submittedOn: "2026-11-20", arrivalNumbers: [A2, A1] }, 1)).rejects.toThrow("conflict: arrival_number_taken");
+      repo.cases.findByArrivalNumber = original;
+      expect(repo.caseRows[0]).toMatchObject({ state: "Open", submittedOn: null, version: 1 });
+      expect(repo.arrivalRows).toHaveLength(1);
+      expect(repo.auditRows.filter((row) => row.action === "case.submit")).toEqual([]);
+    });
+
+    it("limits the number of arrival numbers in one request", async () => {
+      const many = Array.from({ length: 21 }, (_unused, index) => `2026112409123456${String(index).padStart(2, "0")}`);
+      await expect(service.markSubmitted(staff, "k1", { submittedOn: "2026-11-20", arrivalNumbers: many }, 1)).rejects.toThrow("invalid_input: arrival_number_count");
+    });
+
     it.each(["12345", `${A1}9`, `x${A1}`, `${A1} ${A2}`])("rejects the malformed arrival number %s", async (arrivalNumber) => {
       await expect(service.markSubmitted(staff, "k1", { submittedOn: "2026-11-20", arrivalNumbers: [arrivalNumber] }, 1)).rejects.toThrow("invalid_input: arrival_number");
     });
@@ -104,10 +125,33 @@ describe("CaseService", () => {
         repo.caseRows = [caseRecord({ id: "k1", state })];
         expect((await service.cancel(staff, "k1", 1)).state).toBe("Cancelled");
       }
-      for (const state of ["DocumentReceived", "Delivered", "Confirmed", "Closed", "Cancelled"] as const) {
+      for (const state of ["Closed", "Cancelled"] as const) {
         repo.caseRows = [caseRecord({ id: "k1", state })];
         await expect(service.cancel(staff, "k1", 1)).rejects.toThrow("invalid_state: case_not_cancellable");
       }
+      const linked = {
+        DocumentReceived: fileRecord({ id: "f1", caseId: "k1", state: "Staged" }),
+        Delivered: fileRecord({ id: "f1", caseId: "k1", state: "Published", publishedAt: new Date() }),
+        Confirmed: fileRecord({ id: "f1", caseId: "k1", state: "Published", publishedAt: new Date() }),
+      };
+      for (const state of ["DocumentReceived", "Delivered", "Confirmed"] as const) {
+        repo.caseRows = [caseRecord({ id: "k1", state })];
+        repo.fileRows = [linked[state]];
+        repo.receiptRows = state === "Confirmed" ? [{ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: new Date() }] : [];
+        await expect(service.cancel(staff, "k1", 1)).rejects.toThrow("invalid_state: case_not_cancellable");
+      }
+    });
+
+    it("refuses to cancel a case that has a document even when the stored state lags behind", async () => {
+      repo.caseRows = [caseRecord({ id: "k1", state: "Open" })];
+      repo.fileRows.push(fileRecord({ id: "f1", caseId: "k1", state: "Staged" }));
+      await expect(service.cancel(staff, "k1", 1)).rejects.toThrow("invalid_state: case_not_cancellable");
+    });
+
+    it("audits a denial with a well-formed target only", async () => {
+      await expect(service.close(memberActor(), "x".repeat(500), 1)).rejects.toThrow("forbidden");
+      await expect(service.register(memberActor(), input)).rejects.toThrow("forbidden");
+      expect(repo.auditRows.map((row) => [row.targetType, row.targetId, row.result])).toEqual([["case", "invalid", "denied"], ["client", "c1", "denied"]]);
     });
 
     it("rejects a stale version, a finished case and client members", async () => {
@@ -135,6 +179,23 @@ describe("CaseService", () => {
       repo.fileRows[0] = fileRecord({ id: "f1", caseId: "k1", state: "Trashed", trashedFrom: "Withdrawn", trashedAt: new Date() });
       expect((await service.onFileEvent("k1")).state).toBe("Submitted");
       expect(repo.metricRows.map((row) => row.attributes.to)).toEqual(["DocumentReceived", "Delivered", "Confirmed", "DocumentReceived", "Submitted"]);
+    });
+
+    it("settles on the facts when the files change while a write is in flight", async () => {
+      repo.caseRows.push(caseRecord({ id: "k1", submittedOn: "2026-11-20", state: "DocumentReceived" }));
+      repo.fileRows.push(fileRecord({ id: "f1", caseId: "k1", state: "Published", publishedAt: new Date() }));
+      const original = repo.cases.update;
+      let first = true;
+      repo.cases.update = async (record, expectedVersion) => {
+        if (first) {
+          first = false;
+          // The file is withdrawn right after the summary was read and before the state is written.
+          repo.fileRows[0] = fileRecord({ id: "f1", caseId: "k1", state: "Withdrawn", withdrawReason: "WrongFile" });
+        }
+        return original(record, expectedVersion);
+      };
+      expect((await service.onFileEvent("k1")).state).toBe("DocumentReceived");
+      expect(repo.caseRows[0]?.state).toBe("DocumentReceived");
     });
 
     it("moves a payroll case to MaterialsReceived on a client submission", async () => {
