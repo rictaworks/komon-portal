@@ -57,6 +57,7 @@ export class IntakeService {
     }
     const batch: UploadBatch = { id: this.deps.ids.newId(), uploadedBy: actor.userId, hintClientId, createdAt: this.deps.writer.now() };
     await this.deps.repository.files.insertBatch(batch);
+    await this.deps.audit.record(actor, "batch.open", BATCH_TARGET, batch.id);
     return batch;
   }
 
@@ -73,6 +74,7 @@ export class IntakeService {
     const validation = validateFile(incoming);
     if (!validation.ok) {
       await this.deps.metrics.record("intake.rejected", null, { reason: validation.reason });
+      await this.deps.audit.record(actor, "file.reject", BATCH_TARGET, batch.id, "failed");
       return { outcome: "rejected", reason: validation.reason };
     }
     const sha256 = await sha256Hex(incoming.bytes);
@@ -80,20 +82,34 @@ export class IntakeService {
     const copies = await this.deps.repository.files.findActiveBySha256(sha256);
     const sameClient = copies.find((copy) => resolution.clientId !== null && copy.clientId === resolution.clientId);
     if (sameClient !== undefined && sameClient.clientId !== null) {
-      return this.duplicate(sameClient);
+      return this.duplicate(actor, sameClient);
     }
     const draft = await this.draft(batch, incoming, validation.format, sha256, this.withCopies(resolution, copies));
     await this.deps.store.put(draft.r2Key, incoming.bytes);
-    const written = await this.deps.writer.insert(draft);
+    const written = await this.insertOrRemoveBody(draft);
     if (written.result === "duplicate_content") {
-      await this.deps.store.delete(draft.r2Key);
       const winner = (await this.deps.repository.files.findActiveBySha256(sha256)).find((copy) => copy.clientId === draft.clientId);
       if (winner === undefined || winner.clientId === null) {
         throw notFound("file");
       }
-      return this.duplicate(winner);
+      return this.duplicate(actor, winner);
     }
     return this.afterStored(actor, written.file);
+  }
+
+  /** A body must never stay in the store without a record: it is removed whenever the record is not written. */
+  private async insertOrRemoveBody(draft: FileRecord): Promise<Awaited<ReturnType<FileWriter["insert"]>>> {
+    let written: Awaited<ReturnType<FileWriter["insert"]>>;
+    try {
+      written = await this.deps.writer.insert(draft);
+    } catch (error) {
+      await this.deps.store.delete(draft.r2Key);
+      throw error;
+    }
+    if (written.result === "duplicate_content") {
+      await this.deps.store.delete(draft.r2Key);
+    }
+    return written;
   }
 
   private async resolve(incoming: IncomingFile, format: FileRecord["format"], hintClientId: Id | null): Promise<Resolution> {
@@ -184,10 +200,11 @@ export class IntakeService {
     return { outcome: "stored", file: current ?? file, published };
   }
 
-  private async duplicate(existing: FileRecord & { clientId: Id | null }): Promise<IntakeResult> {
+  private async duplicate(actor: Actor, existing: FileRecord & { clientId: Id | null }): Promise<IntakeResult> {
     if (existing.clientId === null) {
       throw notFound("file");
     }
+    await this.deps.audit.record(actor, "file.duplicate", FILE_TARGET, existing.id);
     await this.deps.metrics.record("intake.duplicate", existing.clientId, { fileId: existing.id });
     return { outcome: "duplicate", existingFileId: existing.id, existingDisplayName: existing.displayName, clientId: existing.clientId };
   }

@@ -2,7 +2,7 @@ import type { Guard } from "../access/guard";
 import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
 import type { CaseService } from "../cases/case-service";
 import type { Actor } from "../model/actor";
-import { invalidInput, invalidState, notFound } from "../model/errors";
+import { conflict, invalidInput, invalidState, notFound } from "../model/errors";
 import { CONFIRMATION_REQUIRED_REASONS, type FileRecord, type FileState, type Id } from "../model/types";
 import type { Repository } from "../ports/repository";
 import type { FileWriter } from "./file-writer";
@@ -37,11 +37,12 @@ export class ReviewService {
   /** Assigns client, case and type to a file that needs review and stages it. */
   async assign(actor: Actor, fileId: Id, input: AssignInput, expectedVersion: number): Promise<FileRecord> {
     await this.deps.guard.require(actor, "staff.operate", { type: FILE_TARGET, id: fileId });
-    const file = await this.requireFile(fileId);
+    const file = await this.requireFile(fileId, expectedVersion);
     if (file.direction !== "Outbound" || file.state !== "NeedsReview") {
       throw invalidState("not_in_review");
     }
-    if (file.reviewReason !== null && CONFIRMATION_REQUIRED_REASONS.includes(file.reviewReason) && !input.confirmed) {
+    const flagged = file.reviewReason !== null && CONFIRMATION_REQUIRED_REASONS.includes(file.reviewReason);
+    if ((flagged || (await this.heldByAnotherClient(file, input.clientId))) && !input.confirmed) {
       throw invalidInput("confirmation_required");
     }
     await this.validateTarget(input, file);
@@ -76,7 +77,7 @@ export class ReviewService {
   /** Changes only the document type of a file that is waiting to be published. */
   async setDocType(actor: Actor, fileId: Id, docTypeId: Id | null, expectedVersion: number): Promise<FileRecord> {
     await this.deps.guard.require(actor, "staff.operate", { type: FILE_TARGET, id: fileId });
-    const file = await this.requireFile(fileId);
+    const file = await this.requireFile(fileId, expectedVersion);
     if (file.direction !== "Outbound" || (file.state !== "Staged" && file.state !== "NeedsReview")) {
       throw invalidState("not_editable");
     }
@@ -94,22 +95,25 @@ export class ReviewService {
   /** Sends a staged file back to review. */
   async sendBack(actor: Actor, fileId: Id, expectedVersion: number): Promise<FileRecord> {
     await this.deps.guard.require(actor, "staff.operate", { type: FILE_TARGET, id: fileId });
-    const file = await this.requireFile(fileId);
+    const file = await this.requireFile(fileId, expectedVersion);
     if (file.direction !== "Outbound" || file.state !== "Staged") {
       throw invalidState("not_staged");
     }
     const updated = await this.deps.writer.update(
-      { ...file, state: "NeedsReview", reviewReason: "SentBack", reviewDetail: null },
+      // The earlier routing decision no longer stands: a fresh assignment is needed before publishing.
+      { ...file, state: "NeedsReview", reviewReason: "SentBack", reviewDetail: null, resolutionMethod: null },
       expectedVersion,
     );
     await this.deps.audit.record(actor, "file.send_back", FILE_TARGET, fileId);
+    await this.deps.metrics.record("review.sent_back", updated.clientId, { fileId });
+    await this.notifyCases(file.caseId, updated.caseId);
     return updated;
   }
 
   /** Moves a file to the trash. Published files cannot be trashed directly. */
   async trash(actor: Actor, fileId: Id, expectedVersion: number): Promise<FileRecord> {
     await this.deps.guard.require(actor, "staff.operate", { type: FILE_TARGET, id: fileId });
-    const file = await this.requireFile(fileId);
+    const file = await this.requireFile(fileId, expectedVersion);
     if (file.state === "Published") {
       throw invalidState("published_must_be_withdrawn");
     }
@@ -125,6 +129,15 @@ export class ReviewService {
     await this.deps.metrics.record("file.trashed", updated.clientId, { fileId, from: file.state });
     await this.notifyCases(file.caseId, null);
     return updated;
+  }
+
+  /**
+   * Whatever the recorded reason says, assigning content that another client already holds needs
+   * an explicit confirmation. The copies are looked up now, so a copy that appeared after intake counts too.
+   */
+  private async heldByAnotherClient(file: FileRecord, clientId: Id): Promise<boolean> {
+    const copies = await this.deps.repository.files.findActiveBySha256(file.sha256);
+    return copies.some((copy) => copy.id !== file.id && copy.clientId !== null && copy.clientId !== clientId);
   }
 
   private async validateTarget(input: AssignInput, file: FileRecord): Promise<void> {
@@ -167,10 +180,14 @@ export class ReviewService {
     }
   }
 
-  private async requireFile(id: Id): Promise<FileRecord> {
+  /** Loads the file and refuses to act on a version other than the one the staff member saw. */
+  private async requireFile(id: Id, expectedVersion: number): Promise<FileRecord> {
     const file = await this.deps.repository.files.findById(id);
     if (file === null) {
       throw notFound("file");
+    }
+    if (file.version !== expectedVersion) {
+      throw conflict("stale");
     }
     return file;
   }

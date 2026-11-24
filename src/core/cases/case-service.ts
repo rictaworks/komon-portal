@@ -36,7 +36,10 @@ export interface ClientCaseView {
 const TARGET_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const REFERENCE_CODE = /^[A-Za-z0-9-]{1,64}$/;
 const WRITE_ATTEMPTS = 3;
+const SETTLE_ATTEMPTS = 6;
 const CASE_TARGET = "case";
+const CLIENT_TARGET = "client";
+export const MAX_ARRIVAL_NUMBERS = 20;
 
 type CaseRepositoryPorts = Pick<Repository, "cases" | "caseTypes" | "clients" | "files" | "settings" | "users">;
 
@@ -54,7 +57,7 @@ export class CaseService {
   constructor(private readonly deps: CaseServiceDeps) {}
 
   async register(actor: Actor, input: RegisterCaseInput): Promise<CaseRecord> {
-    await this.deps.guard.require(actor, "staff.operate", { type: CASE_TARGET, id: input.clientId });
+    await this.deps.guard.require(actor, "staff.operate", { type: CLIENT_TARGET, id: input.clientId });
     await this.validateRegistration(input);
     for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt += 1) {
       const record: CaseRecord = {
@@ -86,16 +89,23 @@ export class CaseService {
     if (TERMINAL_CASE_STATES.includes(record.state)) {
       throw invalidState("case_terminal");
     }
+    if ((await this.requireCaseType(record.caseTypeId)).kind !== "Procedure") {
+      throw invalidState("not_a_procedure");
+    }
     if (!isLocalDate(input.submittedOn)) {
       throw invalidInput("submitted_on");
     }
     const arrivalNumbers = await this.validateArrivalNumbers(caseId, input.arrivalNumbers);
-    const updated = await this.write(actor, { ...record, submittedOn: input.submittedOn }, expectedVersion, "case.submit");
-    for (const arrivalNumber of arrivalNumbers) {
-      const added = await this.deps.repository.cases.addArrival({ id: this.deps.ids.newId(), caseId, arrivalNumber });
-      if (!added) {
-        throw conflict("arrival_number_taken");
-      }
+    const changed: CaseRecord = { ...record, submittedOn: input.submittedOn };
+    const updated: CaseRecord = { ...changed, state: await this.derive(changed), version: expectedVersion + 1 };
+    const arrivals = arrivalNumbers.map((arrivalNumber) => ({ id: this.deps.ids.newId(), caseId, arrivalNumber }));
+    const outcome = await this.deps.repository.cases.updateWithArrivals(updated, expectedVersion, arrivals);
+    if (outcome !== "ok") {
+      throw conflict(outcome === "stale" ? "stale" : "arrival_number_taken");
+    }
+    await this.deps.audit.record(actor, "case.submit", CASE_TARGET, caseId);
+    if (record.state !== updated.state) {
+      await this.recordStateChange(record, updated.state);
     }
     return updated;
   }
@@ -112,7 +122,8 @@ export class CaseService {
   async cancel(actor: Actor, caseId: Id, expectedVersion: number): Promise<CaseRecord> {
     await this.deps.guard.require(actor, "staff.operate", { type: CASE_TARGET, id: caseId });
     const record = await this.requireCase(caseId);
-    if (!CANCELLABLE_CASE_STATES.includes(record.state)) {
+    // Judge by the facts, not by a stored state that a pending file event may not have updated yet.
+    if (!CANCELLABLE_CASE_STATES.includes(await this.derive(record))) {
       throw invalidState("case_not_cancellable");
     }
     return this.write(actor, { ...record, state: "Cancelled" }, expectedVersion, "case.cancel");
@@ -123,7 +134,7 @@ export class CaseService {
    * repeatedly; a concurrent change is retried because the result depends only on facts.
    */
   async onFileEvent(caseId: Id): Promise<CaseRecord> {
-    for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt += 1) {
+    for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt += 1) {
       const record = await this.requireCase(caseId);
       const next = await this.derive(record);
       if (next === record.state) {
@@ -132,8 +143,9 @@ export class CaseService {
       const updated: CaseRecord = { ...record, state: next, version: record.version + 1 };
       if (await this.deps.repository.cases.update(updated, record.version)) {
         await this.recordStateChange(record, next);
-        return updated;
       }
+      // Loop again: the files may have changed while this write was in flight, so the stored
+      // state is only final once a fresh derivation agrees with it.
     }
     throw conflict("stale");
   }
@@ -198,6 +210,9 @@ export class CaseService {
     const setting = await this.deps.repository.settings.get();
     const pattern = compileArrivalNumberPattern(setting.arrivalNumberPattern);
     const toAdd: string[] = [];
+    if (new Set(arrivalNumbers).size > MAX_ARRIVAL_NUMBERS) {
+      throw invalidInput("arrival_number_count");
+    }
     for (const arrivalNumber of new Set(arrivalNumbers)) {
       const matches = [...arrivalNumber.matchAll(pattern)].map((match) => match[0]);
       if (matches.length !== 1 || matches[0] !== arrivalNumber) {
