@@ -73,6 +73,38 @@ describe("ViewService.open", () => {
     await expect(kit.view.open(member, "f1", "download")).rejects.toThrow("not_found: file");
   });
 
+  it("refuses the body when the file is withdrawn while it is being opened", async () => {
+    const original = kit.repo.receipts.insertIfAbsent;
+    kit.repo.receipts.insertIfAbsent = async (receipt) => {
+      const inserted = await original(receipt);
+      await kit.publish.withdraw(staff, "f1", { reason: "WrongClient", next: "NeedsReview" }, 1);
+      return inserted;
+    };
+    await expect(kit.view.open(member, "f1", "download")).rejects.toThrow("not_found: file");
+    expect(kit.repo.fileRows[0]).toMatchObject({ state: "NeedsReview", incidentFlag: true });
+  });
+
+  it("confirms the case on a later open when the first attempt failed after the receipt", async () => {
+    const original = kit.repo.audit.append;
+    let failed = false;
+    kit.repo.audit.append = async (entry) => {
+      if (entry.action === "file.receive" && !failed) {
+        failed = true;
+        throw new Error("audit unavailable");
+      }
+      await original(entry);
+    };
+    await expect(kit.view.open(member, "f1", "view")).rejects.toThrow("audit unavailable");
+    expect(kit.repo.caseRows[0]?.state).toBe("Delivered");
+    await kit.view.open(member, "f1", "view");
+    expect(kit.repo.caseRows[0]?.state).toBe("Confirmed");
+  });
+
+  it("audits a denial with a well-formed target only", async () => {
+    await expect(kit.view.open(member, "x".repeat(300), "view")).rejects.toThrow("not_found: file");
+    expect(kit.repo.auditRows.at(-1)).toMatchObject({ targetId: "invalid", result: "denied" });
+  });
+
   it("refuses members whose membership is not active", async () => {
     const pending = { ...member, memberships: [{ clientId: "c1", status: "Pending" as const, clientStatus: "Active" as const }] };
     await expect(kit.view.open(pending, "f1", "view")).rejects.toThrow("not_found: file");

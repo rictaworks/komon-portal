@@ -66,6 +66,29 @@ describe("PublishService.publish", () => {
     expect(kit.repo.metricRows.find((row) => row.name === "notify.failed")).toMatchObject({ clientId: "c1" });
   });
 
+  it("still reports a file as published, with a warning, when recording it fails, and goes on", async () => {
+    const original = kit.repo.audit.append;
+    let failures = 1;
+    kit.repo.audit.append = async (entry) => {
+      if (entry.action === "file.publish" && failures > 0) {
+        failures -= 1;
+        throw new Error("audit unavailable");
+      }
+      await original(entry);
+    };
+    const results = await kit.publish.publish(staff, [{ fileId: "f1", version: 1 }, { fileId: "f3", version: 1 }]);
+    expect(results).toEqual([
+      { fileId: "f1", outcome: "published", clientId: "c1", warning: "followup_failed" },
+      { fileId: "f3", outcome: "published", clientId: "c2" },
+    ]);
+    expect(kit.notifier.notified).toEqual(["c1", "c2"]);
+  });
+
+  it("does not hide a write error other than a stale version", async () => {
+    kit.repo.files.update = async () => "duplicate_content";
+    await expect(kit.publish.publish(staff, [{ fileId: "f1", version: 1 }])).rejects.toThrow("conflict: duplicate_content");
+  });
+
   it("is denied to client members", async () => {
     await expect(kit.publish.publish(memberActor(), [{ fileId: "f1", version: 1 }])).rejects.toThrow("forbidden");
     expect(kit.repo.fileRows[0]?.state).toBe("Staged");
@@ -139,6 +162,47 @@ describe("PublishService.withdraw", () => {
     kit.repo.receiptRows.push({ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: new Date() });
     const updated = await kit.publish.withdraw(staff, "f1", { reason, next: "NeedsReview" }, 1);
     expect(updated.incidentFlag).toBe(incident);
+  });
+
+  it("counts a receipt written while the withdrawal is in progress", async () => {
+    const original = kit.repo.files.update;
+    kit.repo.files.update = async (file, expectedVersion) => {
+      const result = await original(file, expectedVersion);
+      if (file.state === "Withdrawn") {
+        // A member's receipt lands right after the file was hidden.
+        kit.repo.receiptRows.push({ id: "x-late", fileId: "f1", userId: "u-member", firstViewedAt: new Date() });
+      }
+      return result;
+    };
+    const updated = await kit.publish.withdraw(staff, "f1", { reason: "WrongClient", next: "NeedsReview" }, 1);
+    expect(updated.incidentFlag).toBe(true);
+  });
+
+  it("can finish a withdrawal that stopped halfway", async () => {
+    const original = kit.repo.files.update;
+    let calls = 0;
+    kit.repo.files.update = async (file, expectedVersion) => {
+      calls += 1;
+      if (calls === 2) {
+        throw new Error("database unavailable");
+      }
+      return original(file, expectedVersion);
+    };
+    await expect(kit.publish.withdraw(staff, "f1", { reason: "WrongFile", next: "NeedsReview" }, 1)).rejects.toThrow("database unavailable");
+    expect(kit.repo.fileRows[0]).toMatchObject({ state: "Withdrawn", withdrawReason: "WrongFile", version: 2 });
+    kit.repo.files.update = original;
+    const settled = await kit.publish.withdraw(staff, "f1", { reason: "Other", next: "NeedsReview" }, 2);
+    expect(settled).toMatchObject({ state: "NeedsReview", withdrawReason: "WrongFile", version: 3 });
+    expect(kit.repo.caseRows[0]?.state).toBe("DocumentReceived");
+  });
+
+  it("keeps the withdrawal when recording it fails", async () => {
+    kit.repo.audit.append = async () => {
+      throw new Error("audit unavailable");
+    };
+    const updated = await kit.publish.withdraw(staff, "f1", { reason: "Other", next: "Trashed" }, 1);
+    expect(updated.state).toBe("Trashed");
+    expect(kit.repo.caseRows[0]?.state).toBe("Open");
   });
 
   it("does not flag an unopened file", async () => {
