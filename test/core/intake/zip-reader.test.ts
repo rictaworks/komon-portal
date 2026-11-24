@@ -50,6 +50,49 @@ describe("inspectZip", () => {
     expect(inspectZip(archive, { maxXmlBytes: 100 })).toEqual({ readable: false, reason: "TooLarge" });
   });
 
+  it("stops a highly compressed entry before it is fully inflated", () => {
+    const bomb = zip({ "a.xml": new Uint8Array(64 * 1024 * 1024) });
+    expect(bomb.length).toBeLessThan(200 * 1024);
+    const view = new DataView(bomb.buffer);
+    for (let offset = 0; offset + 4 <= bomb.length; offset += 1) {
+      if (view.getUint32(offset, true) === 0x02014b50) {
+        view.setUint32(offset + 24, 10, true);
+      }
+    }
+    const before = process.memoryUsage().arrayBuffers;
+    expect(inspectZip(bomb)).toEqual({ readable: false, reason: "TooLarge" });
+    expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(32 * 1024 * 1024);
+  });
+
+  it("limits the real total of all XML entries even when their headers lie", () => {
+    const entries: Record<string, string> = {};
+    for (let index = 0; index < 10; index += 1) {
+      entries[`e${index}.xml`] = `<a>${String(index).repeat(900)}</a>`;
+    }
+    const archive = zip(entries);
+    const view = new DataView(archive.buffer);
+    for (let offset = 0; offset + 4 <= archive.length; offset += 1) {
+      if (view.getUint32(offset, true) === 0x02014b50) {
+        view.setUint32(offset + 24, 1, true);
+      }
+    }
+    expect(inspectZip(archive, { maxXmlBytes: 1000, maxXmlTotalBytes: 5000 })).toEqual({ readable: false, reason: "TooLarge" });
+    expect(inspectZip(archive, { maxXmlBytes: 1000, maxXmlTotalBytes: 10000 }).readable).toBe(true);
+  });
+
+  it("refuses entries that share one local header", () => {
+    const archive = zip({ "a.xml": "<a/>", "b.xml": "<b/>" });
+    const view = new DataView(archive.buffer);
+    const offsets: number[] = [];
+    for (let offset = 0; offset + 4 <= archive.length; offset += 1) {
+      if (view.getUint32(offset, true) === 0x02014b50) {
+        offsets.push(offset);
+      }
+    }
+    view.setUint32((offsets[1] ?? 0) + 42, view.getUint32((offsets[0] ?? 0) + 42, true), true);
+    expect(inspectZip(archive)).toEqual({ readable: false, reason: "Corrupt" });
+  });
+
   it("refuses encrypted archives", () => {
     expect(inspectZip(markEncrypted(zip({ "a.xml": "<a/>" })))).toEqual({ readable: false, reason: "Encrypted" });
   });
