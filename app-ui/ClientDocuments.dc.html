@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Client documents</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1565c0}a:hover{color:#0a1628}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #f0f4f8; color: #0a1628; font-family: 'Noto Sans JP', sans-serif; font-size: 14px; line-height: 1.6; overflow: hidden">
+<header style="padding: 12px 16px; background: #0a1628; color: #ffffff; display: flex; flex-direction: column; gap: 8px">
+<span style="font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #a8c8ff">KOMON PORTAL</span>
+<label for="client" style="font-size: 12px; color: rgba(255,255,255,0.65)">Company</label>
+<select id="client" style="min-height: 44px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; background: #102040; color: #ffffff; font: inherit; font-weight: 700"><option>Hinode Logistics</option><option>Hinode Warehouse</option></select>
+</header>
+<main style="flex-grow: 1; overflow: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-size: 18px; font-weight: 700">Documents</h1>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<label for="type" style="font-size: 12px; color: #4a5a78">Type</label>
+<select id="type" style="min-height: 44px; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; background: #ffffff; color: #0a1628; font: inherit"><option>All types</option><option>Payroll statement</option><option>Social insurance notice</option></select>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<label for="month" style="font-size: 12px; color: #4a5a78">Target month</label>
+<input id="month" type="month" value="2026-11" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; background: #ffffff; font: inherit">
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<sc-for list="{{docs}}" as="d" hint-placeholder-count="5">
+<article style="padding: 14px 16px; background: #ffffff; border: 1px solid rgba(10,22,40,0.1); border-radius: 8px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: flex-start; gap: 12px">
+<span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0">
+<strong style="font-size: 14px">{{d.type}}</strong>
+<span style="font-size: 12px; color: #4a5a78">{{d.meta}}</span>
+<span style="font-size: 12px; color: #4a5a78">{{d.file}}</span>
+</span>
+<span style="{{d.badge}}">{{d.read}}</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" style="min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #1a3560; border-radius: 4px; background: #ffffff; color: #1a3560; font: inherit; font-weight: 700"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 100 6 3 3 0 000-6z"></path></svg>View</button>
+<button type="button" style="min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 4px; background: #1565c0; color: #ffffff; font: inherit; font-weight: 700"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg>Download</button>
+</div>
+</article>
+</sc-for>
+</div>
+</main>
+<nav aria-label="Main" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #ffffff; border-top: 1px solid rgba(10,22,40,0.15)">
+<a href="ClientHome.dc.html" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11l9-8 9 8v10H3z"></path></svg>Home</a>
+<a href="ClientDocuments.dc.html" aria-current="page" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 700; color: #0a1628; text-decoration: none; box-shadow: inset 0 3px 0 #1565c0"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h6l2 2h10v11H3z"></path></svg>Documents</a>
+<a href="ClientSendFiles.dc.html" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>Send Files</a>
+<a href="#notifications" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: #4a5a78; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4l2-2zM10 20h4"></path></svg>Notifications</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+const b = 'padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; white-space: nowrap; ';
+const fresh = b + 'background: #e3eefc; color: #0d47a1';
+const seen = b + 'background: #e9eef5; color: #2a3a56';
+return { docs: [
+{ type: 'Payroll statement', meta: 'November 2026, published 20 Nov 2026', file: 'C0031_KYUYO_20261120_01', read: 'New', badge: fresh },
+{ type: 'Social insurance notice', meta: 'October 2026, published 17 Nov 2026', file: 'C0031_SHAHO_20261117_03', read: 'New', badge: fresh },
+{ type: 'Employment insurance notice', meta: 'October 2026, published 12 Nov 2026', file: 'C0031_KOYOU_20261112_01', read: 'Opened', badge: seen },
+{ type: 'Payroll statement', meta: 'October 2026, published 20 Oct 2026', file: 'C0031_KYUYO_20261020_01', read: 'Opened', badge: seen },
+{ type: 'Labour insurance notice', meta: 'October 2026, published 08 Oct 2026', file: 'C0031_ROUDOU_20261008_01', read: 'Opened', badge: seen }
+] };
+}
+}
+</script>
+</body>
+</html>

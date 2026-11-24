@@ -1,0 +1,9 @@
+{
+  "app": {
+    "name": "Komon Portal",
+    "tagline": "Every document on the right shelf."
+  },
+  "shell": {
+    "loading": "Loading"
+  }
+}

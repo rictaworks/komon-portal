@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Office cases</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1565c0}a:hover{color:#0a1628}
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 960px; background: #f0f4f8; color: #0a1628; font-family: 'Noto Sans JP', sans-serif; font-size: 14px; line-height: 1.6">
+<div style="flex: 1 1 220px; max-width: 240px; background: #0a1628">
+<dc-import name="Sidebar" active="Cases" hint-size="100%,900px"></dc-import>
+</div>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 32px 40px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<h1 style="margin: 0; flex-grow: 1; font-family: 'Montserrat', sans-serif; font-size: 24px; font-weight: 800; letter-spacing: 0.04em">Cases</h1>
+<label for="q" style="font-size: 13px; color: #4a5a78">Client code</label>
+<input id="q" type="search" placeholder="C0031" style="min-height: 44px; width: 140px; box-sizing: border-box; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; font: inherit">
+<label for="kind" style="font-size: 13px; color: #4a5a78">Kind</label>
+<select id="kind" style="min-height: 44px; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; background: #ffffff; color: #0a1628; font: inherit"><option>All kinds</option><option>Procedure</option><option>Payroll</option><option>Other</option></select>
+<label for="state" style="font-size: 13px; color: #4a5a78">State</label>
+<select id="state" style="min-height: 44px; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; background: #ffffff; color: #0a1628; font: inherit"><option>Open cases</option><option>All states</option><option>Closed</option><option>Cancelled</option></select>
+<button type="button" style="min-height: 44px; padding: 0 20px; border: 0; border-radius: 4px; background: #1565c0; color: #ffffff; font: inherit; font-weight: 700">Register case</button>
+</div>
+
+<section style="background: #ffffff; border: 1px solid rgba(10,22,40,0.1); border-radius: 8px; overflow: hidden">
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 920px">
+<thead><tr style="text-align: left; color: #4a5a78">
+<th style="padding: 10px 20px; font-weight: 500">Client</th><th style="padding: 10px 12px; font-weight: 500">Case</th><th style="padding: 10px 12px; font-weight: 500">Reference</th><th style="padding: 10px 12px; font-weight: 500">State</th><th style="padding: 10px 12px; font-weight: 500">Due</th><th style="padding: 10px 20px; font-weight: 500">Retrieval deadline</th>
+</tr></thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+<tr style="{{r.rowStyle}}">
+<td style="padding: 12px 20px"><strong>{{r.code}}</strong> {{r.name}}</td>
+<td style="padding: 12px">{{r.caseName}}</td>
+<td style="padding: 12px; color: #4a5a78">{{r.ref}}</td>
+<td style="padding: 12px"><span style="{{r.badge}}">{{r.state}}</span></td>
+<td style="padding: 12px"><span style="{{r.dueStyle}}">{{r.due}}</span></td>
+<td style="padding: 12px 20px"><span style="{{r.retStyle}}">{{r.ret}}</span></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</section>
+
+<section aria-label="Case detail" style="background: #ffffff; border: 1px solid rgba(10,22,40,0.1); border-radius: 8px; overflow: hidden">
+<div style="padding: 12px 20px; background: #0a1628; color: #ffffff; display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px">
+<strong style="font-family: 'Montserrat', sans-serif; font-size: 16px; letter-spacing: 0.04em">C0142</strong>
+<span style="font-weight: 500">Kita Seimitsu</span>
+<span style="color: rgba(255,255,255,0.65); font-size: 13px">Employment insurance 2026-09 #2, reference KOYOU-2609-02</span>
+</div>
+<div style="padding: 20px; display: flex; flex-direction: column; gap: 20px">
+<ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+<li style="{{s.style}}"><span style="font-size: 11px; font-weight: 700">{{s.n}}</span><span style="font-size: 13px; font-weight: 700">{{s.label}}</span><span style="font-size: 12px">{{s.note}}</span></li>
+</sc-for>
+</ol>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="sub" style="font-weight: 700; font-size: 13px">Submitted on</label>
+<input id="sub" type="date" value="2026-09-03" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; font: inherit">
+</div>
+<div style="flex: 1 1 280px; display: flex; flex-direction: column; gap: 6px">
+<label for="arr" style="font-weight: 700; font-size: 13px">Arrival numbers</label>
+<input id="arr" type="text" value="202609030915123456" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; font: inherit">
+</div>
+<button type="button" style="min-height: 44px; padding: 0 20px; border: 0; border-radius: 4px; background: #1565c0; color: #ffffff; font: inherit; font-weight: 700">Save submission</button>
+<button type="button" style="min-height: 44px; padding: 0 20px; border: 1px solid #1a3560; border-radius: 4px; background: #ffffff; color: #1a3560; font: inherit; font-weight: 700">Mark as closed</button>
+<button type="button" style="min-height: 44px; padding: 0 20px; border: 1px solid #a31515; border-radius: 4px; background: #ffffff; color: #a31515; font: inherit; font-weight: 700">Cancel case</button>
+</div>
+</div>
+</section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const b = 'display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; white-space: nowrap; ';
+const neutral = b + 'background: #e9eef5; color: #2a3a56';
+const blue = b + 'background: #e3eefc; color: #0d47a1';
+const green = b + 'background: #d9f2df; color: #14532d';
+const red = b + 'background: #fde7e7; color: #a31515';
+const orange = b + 'background: #fff0e0; color: #8a4300';
+const plain = 'color: #4a5a78';
+const row = (code, name, caseName, ref, state, badge, due, dueStyle, ret, retStyle, on) => ({ code, name, caseName, ref, state, badge, due, dueStyle, ret, retStyle,
+rowStyle: 'border-top: 1px solid rgba(10,22,40,0.08); ' + (on ? 'background: #e3eefc; box-shadow: inset 4px 0 0 #1565c0' : '') });
+const step = 'display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 4px; ';
+const done = step + 'background: #1a3560; color: #ffffff';
+const now = step + 'background: #e3eefc; color: #0d47a1; box-shadow: inset 0 0 0 2px #1565c0';
+const todo = step + 'background: #f0f4f8; color: #4a5a78';
+return {
+rows: [
+row('C0031', 'Hinode Logistics', 'Social insurance 2026-08 #1', 'SHAHO-2608-01', 'Submitted', neutral, '31 Aug 2026', plain, 'Expired 6 days ago', red, false),
+row('C0142', 'Kita Seimitsu', 'Employment insurance 2026-09 #2', 'KOYOU-2609-02', 'Submitted', neutral, '10 Sep 2026', plain, 'Warning: 8 days', red, true),
+row('C0207', 'Mizuho Foods', 'Social insurance 2026-09 #1', 'SHAHO-2609-01', 'Submitted', neutral, '30 Sep 2026', plain, 'Caution: 26 days', orange, false),
+row('C0088', 'Sakura Dental Clinic', 'Payroll 2026-11 #1', 'KYUYO-2611-01', 'Materials received', blue, 'Overdue 2 days', red, 'Not applicable', plain, false),
+row('C0031', 'Hinode Logistics', 'Social insurance 2026-11 #1', 'SHAHO-2611-01', 'Document received', blue, '30 Nov 2026', plain, 'Retrieved', plain, false),
+row('C0031', 'Hinode Logistics', 'Payroll 2026-11 #1', 'KYUYO-2611-01', 'Delivered', green, 'Caution: 3 days', orange, 'Not applicable', plain, false),
+row('C0155', 'Tsubame Design', 'Labour insurance 2026-11 #1', 'ROUDOU-2611-01', 'Open', neutral, 'Caution: 6 days', orange, 'Not submitted', plain, false),
+row('C0031', 'Hinode Logistics', 'Employment insurance 2026-10 #1', 'KOYOU-2610-01', 'Confirmed', green, '31 Oct 2026', plain, 'Retrieved', plain, false)
+],
+steps: [
+{ n: '1', label: 'Open', note: 'Registered 01 Sep', style: done },
+{ n: '2', label: 'Submitted', note: 'Filed 03 Sep', style: now },
+{ n: '3', label: 'Document received', note: 'Waiting for official document', style: todo },
+{ n: '4', label: 'Delivered', note: 'Published to client', style: todo },
+{ n: '5', label: 'Confirmed', note: 'Opened by client', style: todo }
+]
+};
+}
+}
+</script>
+</body>
+</html>

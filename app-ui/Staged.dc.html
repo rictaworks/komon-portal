@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Office staged documents</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1565c0}a:hover{color:#0a1628}
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 960px; background: #f0f4f8; color: #0a1628; font-family: 'Noto Sans JP', sans-serif; font-size: 14px; line-height: 1.6">
+<div style="flex: 1 1 220px; max-width: 240px; background: #0a1628">
+<dc-import name="Sidebar" active="Staged" hint-size="100%,900px"></dc-import>
+</div>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 32px 40px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px">
+<h1 style="margin: 0; flex-grow: 1; font-family: 'Montserrat', sans-serif; font-size: 24px; font-weight: 800; letter-spacing: 0.04em">Staged</h1>
+<label for="q" style="font-size: 13px; color: #4a5a78">Client code</label>
+<input id="q" type="search" placeholder="C0031" style="min-height: 44px; width: 160px; box-sizing: border-box; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; font: inherit">
+<label for="type" style="font-size: 13px; color: #4a5a78">Type</label>
+<select id="type" style="min-height: 44px; padding: 0 12px; border: 1px solid #6b82a0; border-radius: 4px; background: #ffffff; color: #0a1628; font: inherit"><option>All types</option><option>SHAHO</option><option>KOYOU</option><option>Unclassified</option></select>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<section aria-label="Staged documents" style="flex: 2 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+<div style="background: #ffffff; border: 1px solid rgba(10,22,40,0.1); border-radius: 8px; overflow: hidden">
+<div style="padding: 12px 20px; background: #0a1628; color: #ffffff; display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px">
+<strong style="font-family: 'Montserrat', sans-serif; font-size: 16px; letter-spacing: 0.04em">{{g.code}}</strong>
+<span style="font-size: 14px; font-weight: 500; flex-grow: 1">{{g.name}}</span>
+<span style="font-size: 12px; color: rgba(255,255,255,0.65)">{{g.summary}}</span>
+</div>
+<sc-for list="{{g.files}}" as="f" hint-placeholder-count="2">
+<label style="display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 8px 20px; border-top: 1px solid rgba(10,22,40,0.08); font-size: 13px">
+<input type="checkbox" checked="{{f.checked}}" style="width: 20px; height: 20px; margin: 0">
+<span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0">
+<strong>{{f.file}}</strong>
+<span style="font-size: 12px; color: #4a5a78">{{f.detail}}</span>
+</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 4px; background: #e3eefc; color: #0d47a1; font-size: 12px; font-weight: 700; white-space: nowrap"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2"></path></svg>Staged</span>
+</label>
+</sc-for>
+</div>
+</sc-for>
+</section>
+
+<section aria-label="Publish confirmation" style="flex: 1 1 320px; min-width: 0; background: #ffffff; border: 2px solid #1565c0; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 700">Publish 5 documents</h2>
+<span style="font-size: 13px; color: #4a5a78">Check the destination of every document before publishing. Members of each client are notified that a new document exists.</span>
+<table style="width: 100%; border-collapse: collapse; font-size: 13px">
+<thead><tr style="text-align: left; color: #4a5a78"><th style="padding: 8px 0; font-weight: 500">Client</th><th style="padding: 8px 0; font-weight: 500; text-align: right">Documents</th></tr></thead>
+<tbody>
+<tr style="border-top: 1px solid rgba(10,22,40,0.08)"><td style="padding: 10px 0"><strong>C0031</strong> Hinode Logistics</td><td style="padding: 10px 0; text-align: right; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 16px">3</td></tr>
+<tr style="border-top: 1px solid rgba(10,22,40,0.08)"><td style="padding: 10px 0"><strong>C0142</strong> Kita Seimitsu</td><td style="padding: 10px 0; text-align: right; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 16px">1</td></tr>
+<tr style="border-top: 1px solid rgba(10,22,40,0.08)"><td style="padding: 10px 0"><strong>C0207</strong> Mizuho Foods</td><td style="padding: 10px 0; text-align: right; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 16px">1</td></tr>
+</tbody>
+</table>
+<button type="button" style="min-height: 48px; border: 0; border-radius: 4px; background: #1565c0; color: #ffffff; font: inherit; font-weight: 700">Publish to 3 clients</button>
+<button type="button" style="min-height: 44px; border: 1px solid #1a3560; border-radius: 4px; background: #ffffff; color: #1a3560; font: inherit; font-weight: 700">Send back to Review</button>
+<div style="padding-top: 14px; border-top: 1px solid rgba(10,22,40,0.1); display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+<strong>Last publish, 21 Nov 2026 17:02</strong>
+<span style="display: flex; gap: 8px; align-items: flex-start; color: #1b6e2d"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 3px"><path d="M5 12l5 5 9-10"></path></svg>C0088_KYUYO_20261121_01 published</span>
+<span style="display: flex; gap: 8px; align-items: flex-start; color: #a31515"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 3px"><path d="M6 6l12 12M18 6L6 18"></path></svg>C0155_SHAHO_20261121_02 not published: changed by another staff member. Reload and try again.</span>
+</div>
+</section>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const f = (file, detail, checked) => ({ file, detail, checked });
+return { groups: [
+{ code: 'C0031', name: 'Hinode Logistics', summary: '3 selected of 3', files: [
+f('C0031_SHAHO_20261124_01', 'Social insurance notice. Decided by arrival number. Case Social insurance 2026-11 #1', true),
+f('C0031_SHAHO_20261124_02', 'Social insurance notice. Decided by arrival number. Case Social insurance 2026-11 #1', true),
+f('C0031_KYUYO_20261124_03', 'Payroll statement. Decided by client code. No case', true) ] },
+{ code: 'C0142', name: 'Kita Seimitsu', summary: '1 selected of 2', files: [
+f('C0142_KOYOU_20261124_01', 'Employment insurance notice. Decided by client code. Case Employment insurance 2026-11 #1', true),
+f('C0142_UNCLASSIFIED_20261124_02', 'Unclassified. Chosen by staff. No case', false) ] },
+{ code: 'C0207', name: 'Mizuho Foods', summary: '1 selected of 1', files: [
+f('C0207_UNCLASSIFIED_20261124_01', 'Unclassified. Decided by corporate number. Register a case for arrival number 202611240955512345', true) ] }
+] };
+}
+}
+</script>
+</body>
+</html>
