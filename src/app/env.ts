@@ -2,4 +2,5 @@
 export interface AppEnv {
   ENVIRONMENT: string;
   ASSETS: Fetcher;
+  DB: D1Database;
 }

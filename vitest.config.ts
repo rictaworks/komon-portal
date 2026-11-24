@@ -1,4 +1,4 @@
-import { cloudflareTest } from "@cloudflare/vitest-plugin";
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -14,12 +14,16 @@ export default defineConfig({
       },
       {
         plugins: [
-          cloudflareTest({
+          cloudflareTest(async () => ({
             miniflare: {
               compatibilityDate: "2026-08-01",
-              bindings: { ENVIRONMENT: "development" },
+              d1Databases: ["DB"],
+              bindings: {
+                ENVIRONMENT: "development",
+                TEST_MIGRATIONS: await readD1Migrations("src/app/migrations"),
+              },
             },
-          }),
+          })),
         ],
         test: {
           name: "workers",
