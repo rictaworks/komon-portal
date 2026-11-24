@@ -210,6 +210,8 @@ export interface FileRecord {
   trashedFrom: FileState | null;
   resolutionMethod: ResolutionMethod | null;
   reviewReason: ReviewReason | null;
+  /** What pointed where when the file was sent to review. */
+  reviewDetail: KeyEvidence[] | null;
   /** Arrival number that matched the pattern but no registered case. */
   unmatchedArrivalNumber: string | null;
   typeSource: TypeSource | null;
@@ -223,6 +225,15 @@ export interface FileRecord {
   acknowledgedAt: Date | null;
   trashedAt: Date | null;
   version: number;
+}
+
+export const EVIDENCE_KINDS = ["ArrivalNumber", "ClientCode", "CorporateNumber", "StaffSelected", "ExistingCopy"] as const;
+export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
+
+/** One clue that pointed to a client. Internal IDs only, so it is safe to store and show to staff. */
+export interface KeyEvidence {
+  kind: EvidenceKind;
+  clientId: Id;
 }
 
 export interface FileReceipt {
