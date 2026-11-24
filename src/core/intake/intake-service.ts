@@ -1,0 +1,194 @@
+import type { Guard } from "../access/guard";
+import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
+import type { CaseService } from "../cases/case-service";
+import type { Actor, UserActor } from "../model/actor";
+import { invalidInput, notFound } from "../model/errors";
+import type { FileRecord, Id, KeyEvidence, RejectionReason, UploadBatch } from "../model/types";
+import type { FileStore } from "../ports/file-store";
+import type { IdGenerator } from "../ports/id-generator";
+import type { Repository } from "../ports/repository";
+import { ClientResolver, type Resolution } from "./client-resolver";
+import { decideByRules } from "./doc-type-decider";
+import { stemOf } from "./file-name";
+import { validateFile, type IncomingFile } from "./file-validator";
+import type { FileWriter } from "./file-writer";
+import { extractKeys } from "./key-extractor";
+import { sha256Hex } from "./sha256";
+
+export type IntakeResult =
+  | { outcome: "rejected"; reason: RejectionReason }
+  | { outcome: "duplicate"; existingFileId: Id; existingDisplayName: string; clientId: Id }
+  | { outcome: "stored"; file: FileRecord; published: boolean };
+
+/** Publishes a freshly accepted file when the office enabled automatic publishing and the file qualifies. */
+export interface AutoPublisher {
+  autoPublishIfEligible(fileId: Id): Promise<boolean>;
+}
+
+export const FILE_KEY_PREFIX = "files/";
+const FILE_TARGET = "file";
+const BATCH_TARGET = "batch";
+
+export interface IntakeServiceDeps {
+  repository: Repository;
+  store: FileStore;
+  guard: Guard;
+  audit: AuditRecorder;
+  metrics: MetricRecorder;
+  ids: IdGenerator;
+  writer: FileWriter;
+  cases: CaseService;
+  autoPublisher: AutoPublisher;
+}
+
+/** Accepts files one by one: validate, detect duplicates, read identifiers, resolve the client, decide the type. */
+export class IntakeService {
+  private readonly resolver: ClientResolver;
+
+  constructor(private readonly deps: IntakeServiceDeps) {
+    this.resolver = new ClientResolver(deps.repository);
+  }
+
+  /** Starts one intake. `hintClientId` is the destination the staff chose, if any. */
+  async openBatch(actor: UserActor, hintClientId: Id | null): Promise<UploadBatch> {
+    await this.deps.guard.require(actor, "staff.operate", { type: BATCH_TARGET, id: hintClientId ?? "none" });
+    if (hintClientId !== null && (await this.deps.repository.clients.findById(hintClientId)) === null) {
+      throw notFound("client");
+    }
+    const batch: UploadBatch = { id: this.deps.ids.newId(), uploadedBy: actor.userId, hintClientId, createdAt: this.deps.writer.now() };
+    await this.deps.repository.files.insertBatch(batch);
+    return batch;
+  }
+
+  /** Accepts one file of a batch. A rejected file is not stored; the caller continues with the next one. */
+  async accept(actor: UserActor, batchId: Id, incoming: IncomingFile): Promise<IntakeResult> {
+    await this.deps.guard.require(actor, "staff.operate", { type: BATCH_TARGET, id: batchId });
+    const batch = await this.deps.repository.files.findBatch(batchId);
+    if (batch === null) {
+      throw notFound("batch");
+    }
+    if (batch.uploadedBy !== actor.userId) {
+      throw invalidInput("batch_owner");
+    }
+    const validation = validateFile(incoming);
+    if (!validation.ok) {
+      await this.deps.metrics.record("intake.rejected", null, { reason: validation.reason });
+      return { outcome: "rejected", reason: validation.reason };
+    }
+    const sha256 = await sha256Hex(incoming.bytes);
+    const resolution = await this.resolve(incoming, validation.format, batch.hintClientId);
+    const copies = await this.deps.repository.files.findActiveBySha256(sha256);
+    const sameClient = copies.find((copy) => resolution.clientId !== null && copy.clientId === resolution.clientId);
+    if (sameClient !== undefined && sameClient.clientId !== null) {
+      return this.duplicate(sameClient);
+    }
+    const draft = await this.draft(batch, incoming, validation.format, sha256, this.withCopies(resolution, copies));
+    await this.deps.store.put(draft.r2Key, incoming.bytes);
+    const written = await this.deps.writer.insert(draft);
+    if (written.result === "duplicate_content") {
+      await this.deps.store.delete(draft.r2Key);
+      const winner = (await this.deps.repository.files.findActiveBySha256(sha256)).find((copy) => copy.clientId === draft.clientId);
+      if (winner === undefined || winner.clientId === null) {
+        throw notFound("file");
+      }
+      return this.duplicate(winner);
+    }
+    return this.afterStored(actor, written.file);
+  }
+
+  private async resolve(incoming: IncomingFile, format: FileRecord["format"], hintClientId: Id | null): Promise<Resolution> {
+    const setting = await this.deps.repository.settings.get();
+    const clients = await this.deps.repository.clients.listAll();
+    const keys = extractKeys(
+      { fileName: incoming.fileName, format, bytes: incoming.bytes },
+      { arrivalNumberPattern: setting.arrivalNumberPattern, clientCodes: clients.map((client) => client.code) },
+    );
+    return this.resolver.resolve(keys, hintClientId);
+  }
+
+  /** Same content held for another client turns the file into a review item. */
+  private withCopies(resolution: Resolution, copies: readonly FileRecord[]): Resolution {
+    const elsewhere = [...new Set(copies.map((copy) => copy.clientId).filter((id): id is Id => id !== null && id !== resolution.clientId))];
+    if (elsewhere.length === 0) {
+      return resolution;
+    }
+    const evidence: KeyEvidence[] = [...resolution.evidence, ...elsewhere.map((clientId) => ({ kind: "ExistingCopy" as const, clientId }))];
+    if (resolution.reviewReason !== null) {
+      return { ...resolution, evidence };
+    }
+    return { clientId: null, caseId: null, method: null, reviewReason: "DuplicateAcrossClients", unmatchedArrivalNumber: null, evidence };
+  }
+
+  private async draft(
+    batch: UploadBatch,
+    incoming: IncomingFile,
+    format: FileRecord["format"],
+    sha256: string,
+    resolution: Resolution,
+  ): Promise<FileRecord> {
+    const type = decideByRules(
+      stemOf(incoming.fileName),
+      "Outbound",
+      await this.deps.repository.docTypes.list(),
+      await this.deps.repository.docTypes.listRules(),
+    );
+    const id = this.deps.ids.newId();
+    const needsReview = resolution.reviewReason !== null;
+    return {
+      id,
+      batchId: batch.id,
+      direction: "Outbound",
+      clientId: resolution.clientId,
+      caseId: resolution.caseId,
+      docTypeId: type.docTypeId,
+      targetMonth: null,
+      displayName: "",
+      format,
+      sha256,
+      sizeBytes: incoming.bytes.length,
+      r2Key: `${FILE_KEY_PREFIX}${id}`,
+      state: needsReview ? "NeedsReview" : "Staged",
+      trashedFrom: null,
+      resolutionMethod: resolution.method,
+      reviewReason: resolution.reviewReason,
+      reviewDetail: needsReview ? resolution.evidence : null,
+      unmatchedArrivalNumber: resolution.unmatchedArrivalNumber,
+      typeSource: type.source,
+      jevModel: null,
+      jevConfidence: null,
+      jevCandidateDocTypeId: null,
+      withdrawReason: null,
+      incidentFlag: false,
+      receivedAt: this.deps.writer.now(),
+      publishedAt: null,
+      acknowledgedAt: null,
+      trashedAt: null,
+      version: 1,
+    };
+  }
+
+  private async afterStored(actor: Actor, file: FileRecord): Promise<IntakeResult> {
+    await this.deps.audit.record(actor, "file.accept", FILE_TARGET, file.id);
+    await this.deps.metrics.record("intake.accepted", file.clientId, {
+      fileId: file.id,
+      state: file.state,
+      method: file.resolutionMethod,
+      reviewReason: file.reviewReason,
+      typeSource: file.typeSource,
+    });
+    if (file.caseId !== null) {
+      await this.deps.cases.onFileEvent(file.caseId);
+    }
+    const published = file.state === "Staged" && (await this.deps.autoPublisher.autoPublishIfEligible(file.id));
+    const current = published ? await this.deps.repository.files.findById(file.id) : file;
+    return { outcome: "stored", file: current ?? file, published };
+  }
+
+  private async duplicate(existing: FileRecord & { clientId: Id | null }): Promise<IntakeResult> {
+    if (existing.clientId === null) {
+      throw notFound("file");
+    }
+    await this.deps.metrics.record("intake.duplicate", existing.clientId, { fileId: existing.id });
+    return { outcome: "duplicate", existingFileId: existing.id, existingDisplayName: existing.displayName, clientId: existing.clientId };
+  }
+}

@@ -326,7 +326,8 @@ export class MemoryRepository implements Repository {
       const compact = receivedOn.replaceAll("-", "");
       const used = this.fileRows
         .filter((row) => row.clientId === clientId && row.displayName.includes(`_${compact}_`))
-        .map((row) => Number(row.displayName.slice(row.displayName.lastIndexOf("_") + 1)));
+        .map((row) => Number(row.displayName.slice(row.displayName.lastIndexOf("_") + 1)))
+        .filter((value) => Number.isFinite(value));
       return Math.max(0, ...used) + 1;
     },
     insert: async (file: FileRecord): Promise<FileWriteResult> => {
