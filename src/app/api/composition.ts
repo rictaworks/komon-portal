@@ -29,13 +29,13 @@ import type { AppEnv } from "../env";
 
 /** Adapters that tests and later issues can replace. */
 export interface AdapterOverrides {
-  clock?: Clock;
-  ids?: IdGenerator;
-  identity?: IdentityProvider;
-  humans?: HumanVerifier;
-  notifier?: Notifier;
-  store?: FileStore;
-  fetcher?: typeof fetch;
+  clock?: Clock | undefined;
+  ids?: IdGenerator | undefined;
+  identity?: IdentityProvider | undefined;
+  humans?: HumanVerifier | undefined;
+  notifier?: Notifier | undefined;
+  store?: FileStore | undefined;
+  fetcher?: typeof fetch | undefined;
 }
 
 export interface Services {
