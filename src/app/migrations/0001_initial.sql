@@ -56,6 +56,7 @@ CREATE TABLE memberships (
 );
 CREATE UNIQUE INDEX memberships_ongoing ON memberships (user_id, client_id) WHERE status IN ('Pending', 'Active');
 CREATE INDEX memberships_client ON memberships (client_id);
+CREATE INDEX memberships_user ON memberships (user_id, status);
 
 CREATE TABLE invitations (
   id TEXT PRIMARY KEY,
@@ -86,7 +87,7 @@ CREATE TABLE case_records (
   id TEXT PRIMARY KEY,
   client_id TEXT NOT NULL REFERENCES clients (id),
   case_type_id TEXT NOT NULL REFERENCES case_types (id),
-  target_month TEXT NOT NULL CHECK (target_month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
+  target_month TEXT NOT NULL CHECK (target_month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(target_month, 6, 2) BETWEEN '01' AND '12'),
   sequence INTEGER NOT NULL CHECK (sequence > 0),
   reference_code TEXT NOT NULL CHECK (length(reference_code) BETWEEN 1 AND 64 AND reference_code NOT GLOB '*[^A-Za-z0-9-]*'),
   assignee_id TEXT REFERENCES users (id),
@@ -95,7 +96,8 @@ CREATE TABLE case_records (
   state TEXT NOT NULL CHECK (state IN ('Open', 'Submitted', 'MaterialsReceived', 'DocumentReceived', 'Delivered', 'Confirmed', 'Closed', 'Cancelled')),
   version INTEGER NOT NULL,
   created_at TEXT NOT NULL,
-  UNIQUE (client_id, case_type_id, target_month, sequence)
+  UNIQUE (client_id, case_type_id, target_month, sequence),
+  UNIQUE (id, client_id)
 );
 CREATE INDEX case_records_client ON case_records (client_id);
 CREATE INDEX case_records_state ON case_records (state);
@@ -133,9 +135,9 @@ CREATE TABLE file_records (
   batch_id TEXT NOT NULL REFERENCES upload_batches (id),
   direction TEXT NOT NULL CHECK (direction IN ('Outbound', 'Inbound')),
   client_id TEXT REFERENCES clients (id),
-  case_id TEXT REFERENCES case_records (id),
+  case_id TEXT,
   doc_type_id TEXT REFERENCES doc_types (id),
-  target_month TEXT CHECK (target_month IS NULL OR target_month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
+  target_month TEXT CHECK (target_month IS NULL OR (target_month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(target_month, 6, 2) BETWEEN '01' AND '12')),
   display_name TEXT NOT NULL UNIQUE,
   format TEXT NOT NULL CHECK (format IN ('pdf', 'zip', 'xml', 'csv', 'xlsx', 'docx', 'txt', 'png', 'jpeg')),
   sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
@@ -145,6 +147,7 @@ CREATE TABLE file_records (
   trashed_from TEXT CHECK (trashed_from IN ('Staged', 'NeedsReview', 'Withdrawn', 'Submitted', 'Acknowledged')),
   resolution_method TEXT CHECK (resolution_method IN ('ArrivalNumber', 'ClientCode', 'CorporateNumber', 'StaffSelected')),
   review_reason TEXT CHECK (review_reason IN ('ConflictingKeys', 'MultipleArrivalNumbers', 'NoKey', 'HintMismatch', 'ClientNotActive', 'CaseCancelled', 'DuplicateAcrossClients', 'Withdrawn', 'Restored', 'SentBack')),
+  review_detail TEXT CHECK (review_detail IS NULL OR json_valid(review_detail)),
   unmatched_arrival_number TEXT,
   type_source TEXT CHECK (type_source IN ('Rule', 'Jev', 'Staff')),
   jev_model TEXT,
@@ -165,7 +168,16 @@ CREATE TABLE file_records (
   CHECK ((state = 'Trashed') = (trashed_at IS NOT NULL)),
   CHECK ((state = 'Trashed') = (trashed_from IS NOT NULL)),
   CHECK (state <> 'NeedsReview' OR review_reason IS NOT NULL),
-  CHECK (state <> 'Published' OR published_at IS NOT NULL)
+  CHECK (state <> 'Published' OR published_at IS NOT NULL),
+  CHECK (state <> 'Withdrawn' OR withdraw_reason IS NOT NULL),
+  CHECK (state <> 'Acknowledged' OR acknowledged_at IS NOT NULL),
+  CHECK (
+    trashed_from IS NULL
+    OR (direction = 'Outbound' AND trashed_from IN ('Staged', 'NeedsReview', 'Withdrawn'))
+    OR (direction = 'Inbound' AND trashed_from IN ('Submitted', 'Acknowledged'))
+  ),
+  -- A file can only be linked to a case of its own client.
+  FOREIGN KEY (case_id, client_id) REFERENCES case_records (id, client_id)
 );
 CREATE UNIQUE INDEX file_records_client_content ON file_records (client_id, sha256) WHERE state <> 'Trashed' AND client_id IS NOT NULL;
 CREATE INDEX file_records_state ON file_records (state, direction);
@@ -173,6 +185,7 @@ CREATE INDEX file_records_client_state ON file_records (client_id, state);
 CREATE INDEX file_records_case ON file_records (case_id);
 CREATE INDEX file_records_sha ON file_records (sha256);
 CREATE INDEX file_records_trashed ON file_records (trashed_at);
+CREATE INDEX file_records_batch ON file_records (batch_id);
 
 CREATE TABLE file_receipts (
   id TEXT PRIMARY KEY,
@@ -181,6 +194,7 @@ CREATE TABLE file_receipts (
   first_viewed_at TEXT NOT NULL,
   UNIQUE (file_id, user_id)
 );
+CREATE INDEX file_receipts_user ON file_receipts (user_id);
 
 CREATE TABLE push_subscriptions (
   id TEXT PRIMARY KEY,
@@ -201,6 +215,13 @@ CREATE TABLE audit_log (
   occurred_at TEXT NOT NULL
 );
 CREATE INDEX audit_log_occurred ON audit_log (occurred_at);
+
+-- INSERT OR REPLACE deletes the old row without firing the DELETE trigger, so it is blocked here.
+CREATE TRIGGER audit_log_no_replace BEFORE INSERT ON audit_log
+WHEN EXISTS (SELECT 1 FROM audit_log WHERE id = NEW.id)
+BEGIN
+  SELECT RAISE(ABORT, 'audit_log is append-only');
+END;
 
 CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log
 BEGIN
