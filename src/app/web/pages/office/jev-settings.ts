@@ -1,7 +1,7 @@
 const KEY_STORAGE = "komon.jev.key";
 const MODEL_STORAGE = "komon.jev.model";
-const MODEL_NAME = /^[a-z0-9][a-z0-9.-]{0,63}$/;
-const ALIAS_SUFFIXES = ["-latest", "-preview"];
+/** A fixed version such as jev-1.13.0. Aliases (jev-latest, jev-preview) and bare names do not match. */
+const MODEL_NAME = /^[a-z][a-z0-9]*-\d+(?:\.\d+)+$/;
 
 export interface JevSettings {
   key: string;
@@ -25,5 +25,5 @@ export function removeJevSettings(): void {
 
 /** Only fixed versions are accepted: an alias would move to another model without notice. */
 export function isFixedModelName(model: string): boolean {
-  return MODEL_NAME.test(model) && !ALIAS_SUFFIXES.some((suffix) => model.endsWith(suffix));
+  return model.length <= 64 && MODEL_NAME.test(model);
 }
