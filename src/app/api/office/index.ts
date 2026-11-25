@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppBindings } from "../context";
 import { caseRoutes } from "./cases";
+import { classifyRoutes } from "./classify";
 import { clientRoutes } from "./clients";
 import { fileRoutes } from "./files";
 import { settingsRoutes } from "./settings";
@@ -12,5 +13,6 @@ export function officeRoutes(): Hono<AppBindings> {
   routes.route("/", clientRoutes());
   routes.route("/", caseRoutes());
   routes.route("/", settingsRoutes());
+  routes.route("/", classifyRoutes());
   return routes;
 }

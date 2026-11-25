@@ -13,6 +13,7 @@ export const API_CODES = {
   invalidState: "invalid_state",
   conflict: "conflict",
   signInFailed: "sign_in_failed",
+  classifierFailed: "classifier_failed",
 } as const;
 
 export type ApiCode = (typeof API_CODES)[keyof typeof API_CODES];

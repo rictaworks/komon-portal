@@ -1,5 +1,6 @@
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { DomainError, type DomainErrorCode } from "../../../core/model/errors";
+import { ClassifierError } from "../../../core/ports/classifier";
 import { IdentityError } from "../../adapters/identity-provider";
 import { API_CODES } from "../codes";
 import { HttpError, type AppContext } from "../context";
@@ -30,6 +31,10 @@ export function handleError(error: Error, c: AppContext): Response {
       return c.json({ error: API_CODES.notFound }, 404);
     }
     return c.json({ error: error.code, detail: error.detail }, DOMAIN_STATUS[error.code]);
+  }
+  if (error instanceof ClassifierError) {
+    // Reported as it is; the files stay unclassified. The error never contains the key.
+    return c.json({ error: API_CODES.classifierFailed, detail: error.code }, 502);
   }
   if (error instanceof IdentityError) {
     return c.json({ error: API_CODES.signInFailed }, 400);
