@@ -87,6 +87,14 @@ describe("client API and file delivery", () => {
     expect(await response.text()).toBe("%PDF-1.7 published");
   });
 
+  it("refuses a cross-site navigation to a file, which would otherwise record an open", async () => {
+    const response = await member.call("GET", `/api/files/${ids.published}/content`, { headers: { "Sec-Fetch-Site": "cross-site" } });
+    expect(response.status).toBe(403);
+    expect(await json(response)).toEqual({ error: "bad_origin" });
+    const same = await member.call("GET", `/api/files/${ids.published}/content`, { headers: { "Sec-Fetch-Site": "same-origin" } });
+    expect(same.status).toBe(200);
+  });
+
   it("records the first open of a member once and never a staff view", async () => {
     await member.call("GET", `/api/files/${ids.published}/content`);
     await staff.call("GET", `/api/files/${ids.published}/content`);
