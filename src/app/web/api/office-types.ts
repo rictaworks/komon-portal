@@ -68,6 +68,12 @@ export interface CaseView {
   version: number;
 }
 
+/** The case list, with the active office users a case can be assigned to. */
+export interface CaseList {
+  items: CaseView[];
+  assignees: { id: string; displayName: string }[];
+}
+
 export interface Dashboard {
   today: string;
   needsReview: number;

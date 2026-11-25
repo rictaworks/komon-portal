@@ -63,10 +63,22 @@ export function caseRoutes(): Hono<AppBindings> {
     await services.guard.require(actor, "staff.operate", { type: "case", id: "list" });
     const filter: CaseFilter = {};
     const clientId = c.req.query("clientId");
+    const clientCode = c.req.query("clientCode");
     const targetMonth = c.req.query("targetMonth");
     const kind = c.req.query("kind");
     const states = c.req.query("states");
     if (clientId !== undefined && clientId !== "") filter.clientId = clientId;
+    // The code search of the Cases screen: an exact client code, never combined with a client ID.
+    let unknownClient = false;
+    if (clientCode !== undefined && clientCode !== "") {
+      if (filter.clientId !== undefined) throw invalidInput("clientCode");
+      const client = await services.repository.clients.findByCode(clientCode);
+      if (client === null) {
+        unknownClient = true;
+      } else {
+        filter.clientId = client.id;
+      }
+    }
     if (targetMonth !== undefined && targetMonth !== "") filter.targetMonth = targetMonth;
     if (kind !== undefined && kind !== "") {
       const match = CASE_KINDS.find((candidate) => candidate === kind);
@@ -80,10 +92,15 @@ export function caseRoutes(): Hono<AppBindings> {
     }
     const lookups = new Lookups(services);
     const items = [];
-    for (const record of await services.repository.cases.list(filter, pageOf(c))) {
+    const page = pageOf(c);
+    for (const record of unknownClient ? [] : await services.repository.cases.list(filter, page)) {
       items.push(await caseView(lookups, record, await deadlinesOf(services, lookups, record)));
     }
-    return c.json({ items });
+    // Active office users, so that staff can choose an assignee without the Owner-only staff list.
+    const assignees = (await services.repository.users.listOffice())
+      .filter((user) => user.officeStatus === "Active")
+      .map((user) => ({ id: user.id, displayName: user.displayName }));
+    return c.json({ items, assignees });
   });
 
   routes.post("/cases", async (c) => {
