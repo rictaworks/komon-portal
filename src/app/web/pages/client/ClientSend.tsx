@@ -1,9 +1,8 @@
-import { faUpload, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import type { DocTypes, ListPage, SendResult, Submission } from "../../api/client-types";
 import { SelectField, TextField } from "../../components/Form";
-import { formatSize } from "../../components/format";
 import { Icon } from "../../components/Icon";
 import { ErrorNotice, IndividualNumberNotice, Notice } from "../../components/Notice";
 import { Pager } from "../../components/Pager";
@@ -14,12 +13,13 @@ import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import { sendEach, submissionsPath, unsent } from "./client-lists";
-import { SendResults, SubmissionCard, type SendRow } from "./ClientRows";
+import { ChosenFiles, SendResults, SubmissionCard, type SendRow } from "./ClientRows";
 import { usePagedList } from "./usePagedList";
 
-/** A file chosen on this screen. The key keeps two files of the same name apart. */
+/** A file chosen on this screen. The key keeps two files of the same name apart; the number is fixed when it is chosen. */
 interface Chosen {
   key: string;
+  number: number;
   file: File;
 }
 
@@ -53,7 +53,7 @@ export function ClientSend() {
   const onPick = (event: ChangeEvent<HTMLInputElement>): void => {
     const added = [...(event.target.files ?? [])].map((file) => {
       picked.current += 1;
-      return { key: String(picked.current), file };
+      return { key: String(picked.current), number: picked.current, file };
     });
     setChosen((current) => [...current, ...added]);
     // The same file can be chosen again after it was removed.
@@ -84,7 +84,7 @@ export function ClientSend() {
             throw new Error("a result arrived for a file that was not sent");
           }
           setProgress({ done: index + 1, total: batch.length });
-          setRows((current) => [...current, { key: item.key, position: index + 1, size: item.file.size, outcome }]);
+          setRows((current) => [...current, { key: item.key, position: item.number, size: item.file.size, outcome }]);
         },
         () => onScreen.current,
       );
@@ -130,20 +130,11 @@ export function ClientSend() {
         <input ref={picker} className="visually-hidden" type="file" multiple tabIndex={-1} aria-label={t("client.send.chooseFiles")} onChange={onPick} />
         <span className="muted">{t("client.send.formats")}</span>
         {chosen.length === 0 ? null : (
-          <ul className="list card" aria-label={t("client.send.chosen")}>
-            {chosen.map((item, index) => (
-              <li key={item.key} className="list__item">
-                <span className="grow stack stack--tight">
-                  <strong>{t("client.send.fileNumber", { number: index + 1 })}</strong>
-                  <span className="muted">{formatSize(item.file.size)}</span>
-                </span>
-                <button type="button" className="button button--small" disabled={busy} onClick={() => setChosen((current) => current.filter((other) => other.key !== item.key))}>
-                  <Icon icon={faXmark} />
-                  {t("client.send.remove")}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ChosenFiles
+            files={chosen.map((item) => ({ key: item.key, number: item.number, size: item.file.size }))}
+            busy={busy}
+            onRemove={(key) => setChosen((current) => current.filter((other) => other.key !== key))}
+          />
         )}
         <button type="submit" className="button button--primary button--block" disabled={busy || chosen.length === 0 || docTypeId === "" || targetMonth === ""}>
           {t("client.send.submit")}

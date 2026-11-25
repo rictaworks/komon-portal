@@ -1,4 +1,4 @@
-import { faDownload, faEye, faFileLines } from "@fortawesome/free-solid-svg-icons";
+import { faDownload, faEye, faFileLines, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { Link } from "react-router-dom";
 import type { OpenMode } from "../../api/client";
 import type { ClientCase, ClientDocument, DocTypeRef, Submission } from "../../api/client-types";
@@ -121,9 +121,44 @@ export function SubmissionCard({ submission, busy, onCancel }: SubmissionCardPro
   );
 }
 
+/** A file chosen to send, as its row shows it. */
+export interface ChosenRowFile {
+  key: string;
+  /** The number the file was given when it was chosen. Its result row shows the same number. */
+  number: number;
+  size: number;
+}
+
+export interface ChosenFilesProps {
+  files: readonly ChosenRowFile[];
+  busy: boolean;
+  onRemove(key: string): void;
+}
+
+/** The files chosen to send. Each keeps its number, so a file still chosen after a send keeps the number of its result. */
+export function ChosenFiles({ files, busy, onRemove }: ChosenFilesProps) {
+  const t = useT();
+  return (
+    <ul className="list card" aria-label={t("client.send.chosen")}>
+      {files.map((item) => (
+        <li key={item.key} className="list__item">
+          <span className="grow stack stack--tight">
+            <strong>{t("client.send.fileNumber", { number: item.number })}</strong>
+            <span className="muted">{formatSize(item.size)}</span>
+          </span>
+          <button type="button" className="button button--small" disabled={busy} onClick={() => onRemove(item.key)}>
+            <Icon icon={faXmark} />
+            {t("client.send.remove")}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export interface SendRow {
   key: string;
-  /** Where the file stood among the files sent, from 1. The file's own name is not shown: it may name an employee. */
+  /** The number the file was given when it was chosen, as on its chosen row. The file's own name is not shown: it may name an employee. */
   position: number;
   size: number;
   outcome: SendOutcome;

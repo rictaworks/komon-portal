@@ -7,7 +7,7 @@ import type { ClientCase, ClientDocument, Submission } from "../../src/app/web/a
 import { Pager } from "../../src/app/web/components/Pager";
 import { englishTranslator, I18nContext } from "../../src/app/web/i18n";
 import { IndividualNumberNotice } from "../../src/app/web/components/Notice";
-import { CaseRow, DocumentCard, NewDocumentsHeading, SendResults, SubmissionCard, UnreadRow } from "../../src/app/web/pages/client/ClientRows";
+import { CaseRow, ChosenFiles, DocumentCard, NewDocumentsHeading, SendResults, SubmissionCard, UnreadRow } from "../../src/app/web/pages/client/ClientRows";
 
 function ignore(): void {
   // The markup test never presses a button.
@@ -106,6 +106,26 @@ describe("sent file card", () => {
     expect(badges(html)).toEqual([{ tone: "published", icon: true, word: "Confirmed by the office" }]);
     expect(html).not.toContain("<button");
     expect(textOf(html)).toMatch(/Confirmed by the office on 25 Nov 2026, \d\d:\d\d$/);
+  });
+});
+
+describe("chosen files after a partial send", () => {
+  it("shows a file that stays chosen under the same number as its result row", () => {
+    // Files a, b, c were chosen as 1, 2, 3. b was rejected, so it stays chosen with its number.
+    const english = englishTranslator();
+    const chosen = render(createElement(ChosenFiles, { busy: false, onRemove: ignore, files: [{ key: "2", number: 2, size: 1024 }] }));
+    const results = render(createElement(SendResults, {
+      busy: false,
+      onOpenExisting: ignore,
+      rows: [
+        { key: "1", position: 1, size: 2048, outcome: { outcome: "stored" } },
+        { key: "2", position: 2, size: 1024, outcome: { outcome: "rejected", reason: "UnsupportedFormat" } },
+        { key: "3", position: 3, size: 512, outcome: { outcome: "stored" } },
+      ],
+    }));
+    expect(textOf(chosen)).toBe(`File 2 1.0 KB ${english("client.send.remove")}`);
+    const rejected = [...results.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textOf(match[1] ?? ""))[1];
+    expect(rejected?.startsWith("File 2 ")).toBe(true);
   });
 });
 
