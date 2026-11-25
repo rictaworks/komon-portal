@@ -106,6 +106,12 @@ describe("ViewService", () => {
     expect(written()).toEqual(before);
   });
 
+  it("writes nothing when a download without a ticket is refused for a file the user may read", async () => {
+    const before = written();
+    await expect(kit.view.download(member, "f1", SESSION, null)).rejects.toThrow(NOT_OPENED);
+    expect(written()).toEqual(before);
+  });
+
   it("answers not found for a download of another client's file and audits the denial", async () => {
     await expect(kit.view.download(member, "f2", SESSION, null)).rejects.toThrow("not_found: file");
     expect(kit.repo.auditRows).toEqual([expect.objectContaining({ action: "file.download", targetId: "f2", result: "denied" })]);

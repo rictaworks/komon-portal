@@ -1,6 +1,6 @@
 # Specification: komon-portal
 
-The design rationale and the full requirements are in [`instructions.md`](../instructions.md) (Japanese). This folder holds the parts that describe the software as built:
+The design rationale and the full requirements are in [`requirements.md`](../requirements.md) (Japanese). This folder holds the parts that describe the software as built:
 
 - [`api/openapi.json`](api/openapi.json): every operation of the office Worker's API. A test (`test/api/docs/api-docs.test.ts`) fails when a route is added or removed without this file changing.
 
@@ -71,7 +71,7 @@ sequenceDiagram
 
 - The ticket is valid for 60 seconds, for the same session, user and file. It is an HMAC-SHA256 signature, keyed with the session secret, over the user, the file and the expiry time. Nothing is stored for it, and it is not used up by the download, so it can be used again until it expires.
 - The ticket is returned only after the open has succeeded. A failure part way through the open returns no ticket, so no body can be downloaded for it.
-- The download writes nothing when it succeeds. It writes an audit entry only for a refusal because the user may not read the file, or a failure because the body is missing. A missing or wrong ticket is refused and writes nothing.
+- The download writes nothing when it succeeds. It writes an audit entry only for a refusal because the user may not read the file, or a failure because the body is missing. A missing or wrong ticket for a file the user may read is refused and writes nothing. For a file the user may not read, the request is refused as a denial first and that denial is audited, as above.
 - The first view by a client member is the receipt, recorded once per file and user. Views by staff are never receipts.
 - The body is sent with `Content-Disposition: attachment` and a generated file name, and with `Cache-Control: no-store`.
 
