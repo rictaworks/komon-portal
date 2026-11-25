@@ -430,9 +430,15 @@ export class MemoryRepository implements Repository {
         this.fileRows.filter((row) => row.state === "Trashed" && row.trashedAt !== null && row.trashedAt.getTime() <= threshold.getTime()),
         page,
       ),
-    purge: async (id: Id): Promise<void> => {
-      this.fileRows = this.fileRows.filter((row) => row.id !== id);
-      this.receiptRows = this.receiptRows.filter((row) => row.fileId !== id);
+    purge: async (id: Id, trashedBefore: Date, audit: AuditEntry): Promise<boolean> => {
+      const row = this.fileRows.find((candidate) => candidate.id === id);
+      if (row === undefined || row.state !== "Trashed" || row.trashedAt === null || row.trashedAt.getTime() > trashedBefore.getTime()) {
+        return false;
+      }
+      this.fileRows = this.fileRows.filter((candidate) => candidate.id !== id);
+      this.receiptRows = this.receiptRows.filter((candidate) => candidate.fileId !== id);
+      this.auditRows.push(copy(audit));
+      return true;
     },
     insertBatch: async (batch: UploadBatch): Promise<void> => {
       this.batchRows.push(copy(batch));
