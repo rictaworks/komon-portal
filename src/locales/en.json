@@ -5,5 +5,9 @@
   },
   "shell": {
     "loading": "Loading"
+  },
+  "notification": {
+    "title": "Komon Portal",
+    "body": "You have a new document."
   }
 }

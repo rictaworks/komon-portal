@@ -26,10 +26,12 @@ import { D1Repository } from "../adapters/d1/d1-repository";
 import { GoogleOidc } from "../adapters/google-oidc";
 import { JevClassifier } from "../adapters/jev-classifier";
 import type { HumanVerifier, IdentityProvider } from "../adapters/identity-provider";
+import { PushSubscriptionStore } from "../adapters/push-subscription-store";
 import { R2FileStore } from "../adapters/r2-file-store";
 import { SessionStore } from "../adapters/session-store";
 import { CryptoIdGenerator, SystemClock } from "../adapters/system-clock";
 import { TurnstileVerifier } from "../adapters/turnstile";
+import { WebPushNotifier } from "../adapters/web-push-notifier";
 import { loadConfig, type AppConfig } from "../config/app-config";
 import type { AppEnv } from "../env";
 
@@ -75,9 +77,12 @@ export interface Services {
   settings: SettingsService;
   dashboard: DashboardQueries;
   classification: ClassificationService;
+  pushSubscriptions: PushSubscriptionStore;
+  /** Whether browser notifications can be sent (VAPID keys and subject are configured). */
+  pushConfigured: boolean;
 }
 
-/** Used until Web Push is wired in: publishing must work without any notification channel. */
+/** Used when Web Push is not configured: publishing works without any notification channel. */
 class SilentNotifier implements Notifier {
   async notifyNewDocument(): Promise<void> {
     return undefined;
@@ -110,7 +115,18 @@ export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Se
   const writer = new FileWriter(repository, clock);
   const shared = { repository, store, guard, audit, metrics, ids, clock, writer, policy };
   const cases = new CaseService(shared);
-  const publish = new PublishService({ ...shared, cases, notifier: overrides.notifier ?? new SilentNotifier() });
+  const pushSubscriptions = new PushSubscriptionStore(env.DB);
+  const vapidValues = [config.vapidPublicKey, config.vapidPrivateKey, config.vapidSubject];
+  if (vapidValues.some((value) => value !== undefined) && vapidValues.some((value) => value === undefined)) {
+    // Half a configuration would switch push off without any signal, so it is refused outright.
+    throw new Error("VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set together");
+  }
+  const vapid =
+    config.vapidPublicKey !== undefined && config.vapidPrivateKey !== undefined && config.vapidSubject !== undefined
+      ? { publicKey: config.vapidPublicKey, privateKey: config.vapidPrivateKey, subject: config.vapidSubject }
+      : null;
+  const notifier = overrides.notifier ?? (vapid === null ? new SilentNotifier() : new WebPushNotifier(pushSubscriptions, vapid, fetcher, clock));
+  const publish = new PublishService({ ...shared, cases, notifier });
   return {
     config, repository, store, clock, ids, policy, guard, audit, metrics,
     actors: new ActorLoader(repository),
@@ -129,6 +145,8 @@ export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Se
     clients: new ClientService(shared),
     settings: new SettingsService(shared),
     dashboard: new DashboardQueries(env.DB),
+    pushSubscriptions,
+    pushConfigured: vapid !== null,
     classification: new ClassificationService({ ...shared, classifier: overrides.classifier ?? new JevClassifier(fetcher) }),
     setup: new SetupService({ repository, policy, audit, setupToken: config.setupToken }),
   };

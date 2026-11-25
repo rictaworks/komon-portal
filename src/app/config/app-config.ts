@@ -13,6 +13,8 @@ export interface AppConfig {
   setupToken: string | undefined;
   vapidPublicKey: string | undefined;
   vapidPrivateKey: string | undefined;
+  /** Operator contact sent to push services (mailto: or https: URL). */
+  vapidSubject: string | undefined;
 }
 
 export const SESSION = {
@@ -57,5 +59,6 @@ export function loadConfig(env: AppEnv): AppConfig {
     setupToken: emptyToUndefined(env.SETUP_TOKEN),
     vapidPublicKey: emptyToUndefined(env.VAPID_PUBLIC_KEY),
     vapidPrivateKey: emptyToUndefined(env.VAPID_PRIVATE_KEY),
+    vapidSubject: emptyToUndefined(env.VAPID_SUBJECT),
   };
 }
