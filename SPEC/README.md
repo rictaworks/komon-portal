@@ -2,7 +2,7 @@
 
 The design rationale and the full requirements are in [`instructions.md`](../instructions.md) (Japanese). This folder holds the parts that describe the software as built:
 
-- [`api/openapi.json`](api/openapi.json): every operation of the office Worker's API. A test (`test/static/api-docs.test.ts`) fails when a route is added or removed without this file changing.
+- [`api/openapi.json`](api/openapi.json): every operation of the office Worker's API. A test (`test/api/docs/api-docs.test.ts`) fails when a route is added or removed without this file changing.
 
 ## Components
 
@@ -45,4 +45,4 @@ sequenceDiagram
   P->>D: first-view receipt, audit entry
 ```
 
-A failure at a step leaves the record as it was, and the result for that file says why. Two known exceptions, listed in the README, are a publish whose follow-up notice fails (reported as a warning) and a purge whose body cannot be removed after its record is erased.
+A failure at a step leaves the record as it was, and the result for that file says why. Two known exceptions, both listed in the README: a publish whose follow-up writes (audit, metric or case update) fail is still published and carries a warning; and a purge whose body cannot be removed after its record is erased.

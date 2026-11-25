@@ -42,7 +42,7 @@ describe("API documentation", () => {
       for (const method of METHODS) {
         const operation = item[method];
         if (operation !== undefined) {
-          expect(operation.summary, `${method} ${path}`).toBeTruthy();
+          expect(operation.summary?.trim(), `${method} ${path}`).toBeTruthy();
         }
       }
     }

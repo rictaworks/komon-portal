@@ -10,11 +10,13 @@ The design is in [`instructions.md`](instructions.md) (Japanese). The software a
 
 Every feature in the design has been built and merged: the domain core, the D1 schema and adapters, sign-in and sessions, the office and client APIs, the office and client screens, the Jev classifier (with the office's own key), Web Push notifications, daily trash purging, the developer's admin Worker, and the release workflow.
 
-**Known gaps** (none is a silent failure; each is reported where it occurs):
+**Known gaps:**
 
 - A document whose stored body cannot be removed after its record was erased is left without a row, so it cannot be retried. Fixing it needs a purge state.
-- The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).
+- A publish whose follow-up writes (audit, metric or case update) fail is still published; its result carries a warning.
+- The Owner dashboard's mis-delivery count and the incidents list both show at most 100 items, with no truncation flag yet.
 - The Owner dashboard shows a count of mis-deliveries; the spec asks for the readers and times, which are in the incidents list.
+- The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).
 - The weekly count of staff using the portal is not measured: events do not record the acting staff member.
 - The Settings page fetches the staff list for Staff as well; the server still refuses the Owner-only actions.
 - The client pickers and the document list load a first page only (200 clients; documents are not paged in the screen yet).
@@ -125,7 +127,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | GET | `/api/office/clients` | Lists clients, optionally filtered by status. | staff |
 | POST | `/api/office/clients` | Registers a client. | staff |
 | GET | `/api/office/clients/{id}` | One client. | staff |
-| PATCH | `/api/office/clients/{id}` | Updates a client's name, number or status (version required). | staff |
+| PATCH | `/api/office/clients/{id}` | Updates a client's name or number (version required). Setting the status to Closed is Owner only. | staff |
 | POST | `/api/office/clients/{id}/invitations` | Issues a client invitation. The code is shown once. | staff |
 | GET | `/api/office/clients/{id}/members` | Members and open invitations of a client. | staff |
 | GET | `/api/office/dashboard` | Office dashboard counts and the lists of unread, retrieval and due items. | staff |
@@ -199,7 +201,7 @@ Each deployment serves one office, in that office's own Cloudflare account.
    npx wrangler secret put VAPID_SUBJECT
    ```
 
-   `TURNSTILE_SITE_KEY` is public and goes in `wrangler.jsonc`. The three VAPID values must be set together; a partial set is refused. `ENVIRONMENT` must be `production`.
+   `TURNSTILE_SITE_KEY` is public: add it to the `vars` block of `wrangler.jsonc` next to `ENVIRONMENT`. The three VAPID values must be set together; a partial set is refused. `ENVIRONMENT` must be `production`.
 
 4. Create the Access application for the admin Worker, then set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` on `komon-portal-admin` and deploy it with `npx wrangler deploy --config wrangler.admin.jsonc`.
 
@@ -209,7 +211,10 @@ Each deployment serves one office, in that office's own Cloudflare account.
 
 Versions have the form `01.01.00`. A published GitHub release with that tag runs `.github/workflows/release.yml`: it checks the tag format, runs lint, types, tests and the build, and then deploys the portal Worker and the admin Worker. The deploy job uses the `production` environment, which needs the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
-To release: create an annotated tag `01.01.00` on the commit to ship, push it, and publish a release for that tag.
+To release:
+
+1. If the release adds migrations, apply them to the remote database first. The workflow deploys code only and does not run migrations: `npx wrangler d1 migrations apply komon-portal --remote`.
+2. Create an annotated tag `01.01.00` on the commit to ship, push it, and publish a release for that tag.
 
 ## Security and personal data
 

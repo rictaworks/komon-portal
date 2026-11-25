@@ -543,11 +543,11 @@
         ]
       },
       "patch": {
-        "summary": "Updates a client's name, number or status (version required).",
+        "summary": "Updates a client's name or number (version required). Setting the status to Closed is Owner only.",
         "tags": [
           "office"
         ],
-        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "description": "Active office staff (Owner or Staff) may change the name and number. Owner only for the status Closed. Denials look like not found, except for Closed by Staff, which is forbidden.",
         "x-access": "staff",
         "responses": {
           "default": {

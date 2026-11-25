@@ -41,6 +41,10 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Two releases never deploy at the same time; a queued deploy waits instead of being cancelled.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
