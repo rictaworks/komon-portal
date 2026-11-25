@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ClassificationService, CLASSIFIER_BATCH_SIZE } from "../../../src/core/intake/classification-service";
 import { classifierTitle, isFixedModelName } from "../../../src/core/intake/classifier-input";
 import { ClassifierError, type ClassifierPort, type ClassifierRequest, type ClassifierResponse } from "../../../src/core/ports/classifier";
-import { fileRecord, memberActor, staffActor } from "../../support/builders";
+import { docRule, fileRecord, memberActor, staffActor } from "../../support/builders";
 import { intakeKit, type IntakeKit } from "../../support/intake-kit";
 
 const staff = staffActor();
 const KEY = "tsk-user-secret-key";
-const options = { arrivalNumberPattern: "[0-9]{17,18}", clientCodes: ["C0031", "C0142"] };
+const options = {
+  arrivalNumberPattern: "[0-9]{17,18}",
+  clientCodes: ["C0031", "C0142"],
+  vocabulary: ["Standard remuneration decision notice", "HYOJUN", "kettei", "hyojun-hoshu", "資格取得確認通知書", "2026 summary"],
+};
 
 class StubClassifier implements ClassifierPort {
   requests: ClassifierRequest[] = [];
@@ -30,25 +34,69 @@ class StubClassifier implements ClassifierPort {
 }
 
 describe("classifierTitle", () => {
-  it("keeps the form name and removes arrival numbers, client codes and long digit runs", () => {
+  it("keeps only words of the office's document types and rules, without identifiers", () => {
     expect(classifierTitle("C0031_202611240912345678_hyojun-hoshu_kettei(2026)_123456.pdf", options)).toBe("hyojun hoshu kettei 2026");
-    expect(classifierTitle("folder/C0142 notice 20261124.PDF", options)).toBe("notice");
-    expect(classifierTitle("12345_notice.pdf", options)).toBe("12345 notice");
+    expect(classifierTitle("folder/C0142 Decision NOTICE 20261124.PDF", options)).toBe("decision notice");
+    expect(classifierTitle("12345_notice.pdf", options)).toBe("notice");
   });
 
-  it("returns an empty title when nothing but identifiers is left", () => {
+  it("drops every word that is not in the vocabulary, such as a personal name", () => {
+    expect(classifierTitle("Taro Yamada_kettei_notice.pdf", options)).toBe("kettei notice");
+    expect(classifierTitle("山田太郎_資格取得確認通知書.pdf", options)).toBe("資格取得確認通知書");
+    expect(classifierTitle("山田太郎資格取得確認通知書(控).pdf", options)).toBe("資格取得確認通知書");
+    expect(classifierTitle("ｋｅｔｔｅｉ＿山田.pdf", options)).toBe("kettei");
+  });
+
+  it("matches alphanumeric words as whole words only", () => {
+    expect(classifierTitle("ketteiko_noticeboard.pdf", options)).toBe("");
+    expect(classifierTitle("xC0142yz_kettei.pdf", options)).toBe("kettei");
+  });
+
+  it("returns an empty title when no vocabulary word is left", () => {
     expect(classifierTitle("202611240912345678.zip", options)).toBe("");
     expect(classifierTitle("C0031_20261124.pdf", options)).toBe("");
+    expect(classifierTitle("Taro Yamada.pdf", options)).toBe("");
+    expect(classifierTitle("notice.pdf", { ...options, vocabulary: [] })).toBe("");
   });
 
-  it("limits the length", () => {
-    expect(classifierTitle(`${"a".repeat(500)}.pdf`, options).length).toBe(120);
+  it("never keeps an identifier, even when the vocabulary names it", () => {
+    const withIdentifiers = { ...options, vocabulary: ["C0031", "20261124", "notice"] };
+    expect(classifierTitle("C0031_20261124_notice.pdf", withIdentifiers)).toBe("notice");
+  });
+
+  it("limits the length to whole words and keeps as many as fit", () => {
+    const title = classifierTitle(`${"notice ".repeat(100)}.pdf`, options);
+    expect(title).toBe(Array.from({ length: 17 }, () => "notice").join(" "));
+    expect(title).toHaveLength(118);
+  });
+
+  it("drops a word that would pass the length limit instead of cutting it", () => {
+    const longWord = "a".repeat(100);
+    const withLongWord = { ...options, vocabulary: [longWord, "notice", "kettei"] };
+    const title = classifierTitle(`${longWord}_notice_notice_kettei.pdf`, withLongWord);
+    expect(title).toBe(`${longWord} notice notice`);
+    expect(title).toHaveLength(114);
+  });
+
+  it("splits vocabulary phrases at any punctuation, so each word of a label can match", () => {
+    const japanese = { ...options, vocabulary: ["算定基礎届・月額変更届", "賞与支払届、資格喪失届", "「離職票」/【労働保険】"] };
+    expect(classifierTitle("算定基礎届.pdf", japanese)).toBe("算定基礎届");
+    expect(classifierTitle("月額変更届_山田.pdf", japanese)).toBe("月額変更届");
+    expect(classifierTitle("資格喪失届・賞与支払届.pdf", japanese)).toBe("資格喪失届 賞与支払届");
+    expect(classifierTitle("離職票_労働保険.pdf", japanese)).toBe("離職票 労働保険");
+    const latin = { ...options, vocabulary: ["Notice, decision", "Payroll/Bonus", "Tax & pension: summary"] };
+    expect(classifierTitle("notice.pdf", latin)).toBe("notice");
+    expect(classifierTitle("decision_bonus.pdf", latin)).toBe("decision bonus");
+    expect(classifierTitle("Taro Yamada payroll tax pension summary.pdf", latin)).toBe("payroll tax pension summary");
+  });
+
+  it("keeps a long vowel mark inside a vocabulary word", () => {
+    expect(classifierTitle("山田_タイムカード.pdf", { ...options, vocabulary: ["タイムカード"] })).toBe("タイムカード");
   });
 
   it("removes client codes in any letter case and inside a longer word", () => {
     expect(classifierTitle("c0031_notice.pdf", options)).toBe("notice");
     expect(classifierTitle("C0031notice.pdf", options)).toBe("notice");
-    expect(classifierTitle("xC0142yz_kettei.pdf", options)).toBe("x yz kettei");
   });
 });
 
@@ -77,7 +125,7 @@ describe("ClassificationService", () => {
     );
   });
 
-  function request(items = [{ fileId: "f1", fileName: "C0031_hyojun kettei.pdf" }], model = "jev-1.13.0") {
+  function request(items = [{ fileId: "f1", fileName: "C0031_social insurance notice.pdf" }], model = "jev-1.13.0") {
     return { model, credential: KEY, items };
   }
 
@@ -143,10 +191,39 @@ describe("ClassificationService", () => {
   });
 
   it("sends only the sanitised title and the outbound type choices", async () => {
-    await service.classify(staff, request([{ fileId: "f1", fileName: "C0031_202611240912345678_hyojun kettei_1234567.pdf" }]));
+    await service.classify(staff, request([{ fileId: "f1", fileName: "C0031_202611240912345678_shaho notice hyojun_1234567.pdf" }]));
     expect(classifier.requests).toHaveLength(1);
-    expect(classifier.requests[0]).toMatchObject({ model: "jev-1.13.0", credential: KEY, items: [{ id: "f1", text: "hyojun kettei" }] });
+    expect(classifier.requests[0]).toMatchObject({ model: "jev-1.13.0", credential: KEY, items: [{ id: "f1", text: "shaho notice" }] });
     expect(classifier.requests[0]?.choices.map((choice) => choice.id)).toEqual(["d1", "d2"]);
+  });
+
+  it("does not let a personal name in a file name reach the classifier request", async () => {
+    await service.classify(staff, request([
+      { fileId: "f1", fileName: "Taro Yamada_SHAHO_social insurance notice.pdf" },
+      { fileId: "f2", fileName: "山田太郎_koyou_資格取得確認通知書.pdf" },
+    ]));
+    expect(classifier.requests).toHaveLength(1);
+    expect(classifier.requests[0]?.items).toEqual([
+      { id: "f1", text: "shaho social insurance notice" },
+      { id: "f2", text: "koyou" },
+    ]);
+    const sent = JSON.stringify(classifier.requests);
+    for (const word of ["Taro", "taro", "Yamada", "yamada", "山田", "太郎", "資格取得"]) {
+      expect(sent).not.toContain(word);
+    }
+  });
+
+  it("takes the vocabulary from labels, short codes and keyword rules of every document type", async () => {
+    kit.repo.ruleRows.push(docRule({ id: "r3", docTypeId: "d1", keyword: "資格取得" }));
+    await service.classify(staff, request([{ fileId: "f1", fileName: "山田太郎_資格取得確認通知書_KYUYO_payroll.pdf" }]));
+    expect(classifier.requests[0]?.items).toEqual([{ id: "f1", text: "資格取得 kyuyo payroll" }]);
+  });
+
+  it("skips a file whose name holds no word of the office's types and rules, and sends nothing", async () => {
+    const report = await service.classify(staff, request([{ fileId: "f1", fileName: "Taro Yamada_hyojun kettei.pdf" }]));
+    expect(report).toEqual({ model: null, results: [{ fileId: "f1", outcome: "skipped", reason: "no_title" }] });
+    expect(classifier.requests).toEqual([]);
+    expect(kit.repo.fileRows[0]).toMatchObject({ docTypeId: null, version: 1 });
   });
 
   it("puts all files of one request into one call, 50 at most per call", async () => {
@@ -216,7 +293,7 @@ describe("ClassificationService", () => {
   });
 
   it("never stores the key or the file name", async () => {
-    await service.classify(staff, request([{ fileId: "f1", fileName: "C0031_hyojun Taro Yamada.pdf" }]));
+    await service.classify(staff, request([{ fileId: "f1", fileName: "C0031_shaho Taro Yamada.pdf" }]));
     const persisted = JSON.stringify([kit.repo.fileRows, kit.repo.auditRows, kit.repo.metricRows]);
     expect(persisted).not.toContain(KEY);
     expect(persisted).not.toContain("Yamada");

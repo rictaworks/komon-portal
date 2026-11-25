@@ -10,7 +10,10 @@ import type { FileWriter } from "./file-writer";
 
 export interface ClassificationItem {
   fileId: Id;
-  /** File name as the browser still knows it right after intake. Used for this call only, never stored. */
+  /**
+   * File name as the browser still knows it right after intake. Used for this call only, never stored.
+   * Only its words that belong to the office's document types and rules are sent on.
+   */
   fileName: string;
 }
 
@@ -72,12 +75,13 @@ export class ClassificationService {
     if (request.items.length === 0 || request.items.length > MAX_CLASSIFICATION_ITEMS) {
       throw invalidInput("items");
     }
-    const choices = (await this.deps.repository.docTypes.list()).filter((docType) => docType.direction !== "Inbound");
+    const docTypes = await this.deps.repository.docTypes.list();
+    const choices = docTypes.filter((docType) => docType.direction !== "Inbound");
     if (choices.length === 0) {
       throw invalidState("no_doc_types");
     }
     const results: ClassificationResult[] = [];
-    const candidates = await this.candidates(request.items, results);
+    const candidates = await this.candidates(request.items, await this.vocabulary(docTypes), results);
     // One threshold applies to the whole request, so the report never mixes two rules.
     const threshold = (await this.deps.repository.settings.get()).jevThreshold;
     // Every batch is answered and every answer checked before anything is written. A provider error or a
@@ -104,7 +108,13 @@ export class ClassificationService {
     return { model, results };
   }
 
-  private async candidates(items: readonly ClassificationItem[], results: ClassificationResult[]): Promise<Candidate[]> {
+  /** The office's own words for its documents: type labels, short codes and rule keywords. Nothing else is ever sent. */
+  private async vocabulary(docTypes: readonly DocType[]): Promise<string[]> {
+    const rules = await this.deps.repository.docTypes.listRules();
+    return [...docTypes.flatMap((docType) => [docType.label, docType.shortCode]), ...rules.map((rule) => rule.keyword)];
+  }
+
+  private async candidates(items: readonly ClassificationItem[], vocabulary: readonly string[], results: ClassificationResult[]): Promise<Candidate[]> {
     const setting = await this.deps.repository.settings.get();
     const clientCodes = (await this.deps.repository.clients.listAll()).map((client) => client.code);
     const candidates: Candidate[] = [];
@@ -120,7 +130,7 @@ export class ClassificationService {
       } else if (file.direction !== "Outbound" || file.docTypeId !== null || (file.state !== "Staged" && file.state !== "NeedsReview")) {
         results.push({ fileId: item.fileId, outcome: "skipped", reason: "not_unclassified" });
       } else {
-        const title = classifierTitle(item.fileName, { arrivalNumberPattern: setting.arrivalNumberPattern, clientCodes });
+        const title = classifierTitle(item.fileName, { arrivalNumberPattern: setting.arrivalNumberPattern, clientCodes, vocabulary });
         if (title === "") {
           results.push({ fileId: item.fileId, outcome: "skipped", reason: "no_title" });
         } else {
