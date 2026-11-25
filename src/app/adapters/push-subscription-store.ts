@@ -1,4 +1,4 @@
-import { invalidInput } from "../../core/model/errors";
+import { conflict, invalidInput } from "../../core/model/errors";
 import type { Id } from "../../core/model/types";
 
 export interface PushSubscriptionInput {
@@ -52,13 +52,18 @@ export class PushSubscriptionStore {
     if (!KEY_SHAPE.test(input.keys.p256dh) || !KEY_SHAPE.test(input.keys.auth)) {
       throw invalidInput("keys");
     }
-    await this.db
+    // An endpoint already held by another user is never taken over: the update applies to this user's row only.
+    const result = await this.db
       .prepare(
         `INSERT INTO push_subscriptions (id, user_id, endpoint, keys, created_at) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (endpoint) DO UPDATE SET user_id = excluded.user_id, keys = excluded.keys, created_at = excluded.created_at`,
+         ON CONFLICT (endpoint) DO UPDATE SET keys = excluded.keys, created_at = excluded.created_at
+         WHERE push_subscriptions.user_id = excluded.user_id`,
       )
       .bind(id, userId, input.endpoint, JSON.stringify(input.keys), now.toISOString())
       .run();
+    if (result.meta.changes === 0) {
+      throw conflict("subscription");
+    }
   }
 
   async remove(userId: Id, endpoint: string): Promise<boolean> {
