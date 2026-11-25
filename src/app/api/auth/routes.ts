@@ -5,7 +5,7 @@ import type { User } from "../../../core/model/types";
 import { OIDC, SESSION } from "../../config/app-config";
 import { API_CODES } from "../codes";
 import type { Services } from "../composition";
-import { HttpError, requireAuth, type AppBindings, type AppContext } from "../context";
+import { HttpError, requireAuth, type AppBindings, type AppContext, type AuthContext } from "../context";
 import { readJson, requireEnum, requireString } from "../input";
 import { codeChallenge, safeReturnPath } from "./pkce";
 
@@ -91,6 +91,27 @@ async function developmentUser(services: Services, role: (typeof DEV_ROLES)[numb
   return user;
 }
 
+async function describeSession(services: Services, auth: AuthContext): Promise<Record<string, unknown>> {
+  const memberships = [];
+  for (const membership of auth.actor.memberships) {
+    const client = await services.repository.clients.findById(membership.clientId);
+    const reachable = services.policy.can(auth.actor, "client.read", { clientId: membership.clientId });
+    memberships.push({
+      clientId: membership.clientId,
+      status: membership.status,
+      // Name and code are shown only for clients the member can actually reach.
+      code: reachable ? (client?.code ?? null) : null,
+      corporateName: reachable ? (client?.corporateName ?? null) : null,
+      clientStatus: reachable ? membership.clientStatus : null,
+    });
+  }
+  return {
+    user: { id: auth.user.id, displayName: auth.user.displayName, officeRole: auth.user.officeRole, officeStatus: auth.user.officeStatus },
+    memberships,
+    csrfToken: auth.session.csrfToken,
+  };
+}
+
 export function authRoutes(): Hono<AppBindings> {
   const routes = new Hono<AppBindings>();
 
@@ -155,27 +176,12 @@ export function authRoutes(): Hono<AppBindings> {
     return c.json({ status: API_CODES.ok });
   });
 
-  routes.get("/me", async (c) => {
-    const auth = requireAuth(c);
-    const services = c.get("services");
-    const memberships = [];
-    for (const membership of auth.actor.memberships) {
-      const client = await services.repository.clients.findById(membership.clientId);
-      const reachable = services.policy.can(auth.actor, "client.read", { clientId: membership.clientId });
-      memberships.push({
-        clientId: membership.clientId,
-        status: membership.status,
-        // Name and code are shown only for clients the member can actually reach.
-        code: reachable ? (client?.code ?? null) : null,
-        corporateName: reachable ? (client?.corporateName ?? null) : null,
-        clientStatus: reachable ? membership.clientStatus : null,
-      });
-    }
-    return c.json({
-      user: { id: auth.user.id, displayName: auth.user.displayName, officeRole: auth.user.officeRole, officeStatus: auth.user.officeStatus },
-      memberships,
-      csrfToken: auth.session.csrfToken,
-    });
+  routes.get("/me", async (c) => c.json(await describeSession(c.get("services"), requireAuth(c))));
+
+  // Same content as /me, but answers 200 with null when nobody is signed in, so that a page can ask without causing an error.
+  routes.get("/session", async (c) => {
+    const auth = c.get("auth");
+    return c.json({ me: auth === undefined ? null : await describeSession(c.get("services"), auth) });
   });
 
   routes.post("/setup/claim", async (c) => {

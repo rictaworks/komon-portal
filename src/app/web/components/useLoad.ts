@@ -38,7 +38,6 @@ export function useLoad<T>(load: () => Promise<T>, dependencies: readonly unknow
       cancelled = true;
     };
     // The loader is rebuilt on every render; the listed dependencies decide when to run it again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...dependencies, tick]);
 
   const reload = useCallback(() => setTick((value) => value + 1), []);

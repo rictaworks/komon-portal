@@ -24,17 +24,9 @@ export function useSession(): Session {
 }
 
 async function loadMe(api: ApiClient): Promise<Me | null> {
-  try {
-    const me = await api.get<Me>("/api/me");
-    api.setCsrfToken(me.csrfToken);
-    return me;
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      api.setCsrfToken(null);
-      return null;
-    }
-    throw error;
-  }
+  const { me } = await api.get<{ me: Me | null }>("/api/session");
+  api.setCsrfToken(me === null ? null : me.csrfToken);
+  return me;
 }
 
 export interface SessionProviderProps {
