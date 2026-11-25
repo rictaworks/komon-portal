@@ -493,7 +493,6 @@
       "staffInviteLink": "Staff invitation link",
       "staffInviteHint": "Pass this link to the new staff member through the office's usual channel. It works once.",
       "staffUsedInvitation": "Used an invitation on {when}.",
-      "staffUseTimeUnknown": "The time the invitation was used is not recorded.",
       "staffActiveSince": "Active since {when}",
       "outstandingInvitations": "Outstanding invitations",
       "invitationExpires": "Valid until {when}",

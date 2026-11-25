@@ -98,7 +98,7 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
 }
 
 /** Staff members and staff invitations. Rendered for the Owner only, so the Owner-only list is never requested by Staff. */
-function StaffSection() {
+export function StaffSection() {
   const t = useT();
   const { api, me } = useSession();
   const staff = useLoad<StaffList>(() => api.get<StaffList>("/api/office/staff"), []);
@@ -128,7 +128,8 @@ function StaffSection() {
   };
 
   const cancelInvitation = (id: string) => () => {
-    void action.run(() => api.post(`/api/office/invitations/${id}/cancel`, {})).then((ok) => ok && staff.reload());
+    // Reload whatever the outcome: a refused cancel means the invitation was used or cancelled elsewhere, and the row must go.
+    void action.run(() => api.post(`/api/office/invitations/${id}/cancel`, {})).then(() => staff.reload());
   };
 
   const open = outstandingInvitations(staff.data?.invitations ?? [], new Date());
@@ -144,7 +145,7 @@ function StaffSection() {
               <span>{member.displayName}</span>
               {member.officeStatus === "Pending" ? (
                 <span className="muted">
-                  {member.redeemedAt === null ? t("office.settings.staffUseTimeUnknown") : t("office.settings.staffUsedInvitation", { when: formatDateTime(member.redeemedAt) })}
+                  {member.redeemedAt === null ? t("office.clients.useTimeUnknown") : t("office.settings.staffUsedInvitation", { when: formatDateTime(member.redeemedAt) })}
                 </span>
               ) : null}
               {member.officeStatus === "Active" && member.approvedAt !== null ? (
