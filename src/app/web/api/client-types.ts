@@ -55,3 +55,9 @@ export interface NotificationStatus {
   vapidPublicKey: string | null;
   subscriptions: number;
 }
+
+/** Result of a send: the server answers 200 with an outcome, and a rejected or duplicate file is not stored. */
+export interface SendResult {
+  outcome: "stored" | "duplicate" | "rejected";
+  reason?: string;
+}

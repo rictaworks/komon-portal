@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
-import type { DocTypes, Submission } from "../../api/client-types";
+import type { DocTypes, SendResult, Submission } from "../../api/client-types";
 import { SelectField, TextField } from "../../components/Form";
 import { formatDateTime, formatSize } from "../../components/format";
 import { ErrorNotice, IndividualNumberNotice, Notice } from "../../components/Notice";
@@ -18,25 +18,33 @@ export function ClientSend() {
   const types = useLoad<DocTypes>(() => api.get<DocTypes>(`/api/client/${clientId}/doc-types`), [clientId]);
   const sent = useLoad<{ items: Submission[] }>(() => api.get<{ items: Submission[] }>(`/api/client/${clientId}/submissions`), [clientId]);
   const action = useAction();
+  const fileInput = useRef<HTMLInputElement>(null);
   const [docTypeId, setDocTypeId] = useState("");
   const [targetMonth, setTargetMonth] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [result, setResult] = useState<SendResult | null>(null);
 
   const send = (event: FormEvent) => {
     event.preventDefault();
     if (file === null) {
       return;
     }
-    void action
-      .run(async () => {
-        const form = new FormData();
-        form.set("file", file, file.name);
-        form.set("docTypeId", docTypeId);
-        form.set("targetMonth", targetMonth);
-        await api.upload(`/api/client/${clientId}/submissions`, form);
+    void action.run(async () => {
+      const form = new FormData();
+      form.set("file", file, file.name);
+      form.set("docTypeId", docTypeId);
+      form.set("targetMonth", targetMonth);
+      const response = await api.upload<SendResult>(`/api/client/${clientId}/submissions`, form);
+      setResult(response);
+      // Only a stored file is sent. Anything else stays selected, so the client can see why and choose again.
+      if (response.outcome === "stored") {
         setFile(null);
-        sent.reload();
-      });
+        if (fileInput.current !== null) {
+          fileInput.current.value = "";
+        }
+      }
+      sent.reload();
+    });
   };
 
   const cancel = (submission: Submission) => () => {
@@ -48,6 +56,12 @@ export function ClientSend() {
       <h1 className="title">{t("client.send.title")}</h1>
       <IndividualNumberNotice />
       <ErrorNotice error={action.error} />
+      {result === null || result.outcome === "stored" ? null : (
+        <Notice tone="danger">
+          {result.outcome === "duplicate" ? t("client.send.duplicate") : t("client.send.rejected", { reason: t(`rejection.${result.reason ?? "UnsupportedFormat"}`) })}
+        </Notice>
+      )}
+      {result?.outcome === "stored" ? <Notice tone="success">{t("client.send.sentNotice")}</Notice> : null}
       <form className="card card--pad stack" onSubmit={send} aria-label={t("client.send.form")}>
         {types.data === null ? <Loading /> : null}
         <SelectField
@@ -59,7 +73,15 @@ export function ClientSend() {
         <TextField label={t("client.send.month")} type="month" value={targetMonth} onChange={setTargetMonth} />
         <label className="field">
           <span className="field__label">{t("client.send.file")}</span>
-          <input type="file" className="input" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          <input
+            ref={fileInput}
+            type="file"
+            className="input"
+            onChange={(event) => {
+              setResult(null);
+              setFile(event.target.files?.[0] ?? null);
+            }}
+          />
         </label>
         <Notice tone="info">{t("client.send.formats")}</Notice>
         <button type="submit" className="button button--primary button--block" disabled={action.busy || file === null || docTypeId === "" || targetMonth === ""}>

@@ -474,7 +474,8 @@
       "offThisDevice": "Notifications are off on this device.",
       "onThisDevice": "Notifications are on for this device.",
       "title": "Notifications",
-      "unsupported": "This browser does not support notifications."
+      "unsupported": "This browser does not support notifications.",
+      "denied": "Notifications are blocked by your browser. Allow them in the browser settings, then try again."
     },
     "send": {
       "cancel": "Cancel this submission",
@@ -489,7 +490,10 @@
       "submit": "Send to office",
       "title": "Send Files",
       "type": "Document type",
-      "waiting": "Waiting for the office to confirm"
+      "waiting": "Waiting for the office to confirm",
+      "duplicate": "This content is already held for your company, so it was not sent again.",
+      "rejected": "The file was not sent: {reason}.",
+      "sentNotice": "The file was sent to the office."
     }
   },
   "notices": {
