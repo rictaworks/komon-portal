@@ -10,7 +10,11 @@ async function notificationText() {
 }
 
 async function showNewDocument() {
-  const text = await notificationText();
+  // A push must always show something. If the text cannot be loaded, the failure is logged explicitly.
+  const text = await notificationText().catch((error) => {
+    console.error("komon: cannot load the notification text", error);
+    throw error;
+  });
   await self.registration.showNotification(text.title, { body: text.body, tag: "new-document" });
 }
 

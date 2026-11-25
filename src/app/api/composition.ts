@@ -116,6 +116,11 @@ export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Se
   const shared = { repository, store, guard, audit, metrics, ids, clock, writer, policy };
   const cases = new CaseService(shared);
   const pushSubscriptions = new PushSubscriptionStore(env.DB);
+  const vapidValues = [config.vapidPublicKey, config.vapidPrivateKey, config.vapidSubject];
+  if (vapidValues.some((value) => value !== undefined) && vapidValues.some((value) => value === undefined)) {
+    // Half a configuration would switch push off without any signal, so it is refused outright.
+    throw new Error("VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set together");
+  }
   const vapid =
     config.vapidPublicKey !== undefined && config.vapidPrivateKey !== undefined && config.vapidSubject !== undefined
       ? { publicKey: config.vapidPublicKey, privateKey: config.vapidPrivateKey, subject: config.vapidSubject }
