@@ -18,6 +18,7 @@ export default defineConfig({
             miniflare: {
               compatibilityDate: "2026-08-01",
               d1Databases: ["DB"],
+              r2Buckets: ["FILES"],
               bindings: {
                 ENVIRONMENT: "development",
                 TEST_MIGRATIONS: await readD1Migrations("src/app/migrations"),

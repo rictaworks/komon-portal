@@ -17,6 +17,12 @@
       "migrations_dir": "src/app/migrations"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "komon-portal-files"
+    }
+  ],
   "vars": {
     "ENVIRONMENT": "production"
   },
