@@ -46,6 +46,8 @@ export class MemoryRepository implements Repository {
   batchRows: UploadBatch[] = [];
   receiptRows: FileReceipt[] = [];
   auditRows: AuditEntry[] = [];
+  /** Test hook: makes the audit half of an atomic write fail for the entries it selects. */
+  failAuditFor: ((entry: AuditEntry) => boolean) | null = null;
   metricRows: MetricEvent[] = [];
   revokedSessionsOf: Id[] = [];
 
@@ -295,6 +297,22 @@ export class MemoryRepository implements Repository {
       this.caseRows[index] = copy(record);
       return true;
     },
+    updateWithAudit: async (record: CaseRecord, expectedVersion: number, audit: AuditEntry): Promise<boolean> => {
+      const index = this.caseRows.findIndex((row) => row.id === record.id);
+      if (index < 0 || this.caseRows[index]?.version !== expectedVersion) {
+        return false;
+      }
+      // Mirrors the transaction: an entry that cannot be stored stops the change.
+      if (this.failAuditFor?.(audit) === true) {
+        throw new Error("audit unavailable");
+      }
+      if (this.auditRows.some((row) => row.id === audit.id)) {
+        throw new Error("audit_log is append-only");
+      }
+      this.caseRows[index] = copy(record);
+      this.auditRows.push(copy(audit));
+      return true;
+    },
     updateWithArrivals: async (record: CaseRecord, expectedVersion: number, arrivals: readonly CaseArrival[]): Promise<"ok" | "stale" | "arrival_taken"> => {
       const index = this.caseRows.findIndex((row) => row.id === record.id);
       if (index < 0 || this.caseRows[index]?.version !== expectedVersion) {
@@ -464,6 +482,25 @@ export class MemoryRepository implements Repository {
       const conflict = this.fileConflict(file);
       if (conflict === "ok") {
         this.fileRows[index] = copy(file);
+      }
+      return conflict;
+    },
+    updateWithAudit: async (file: FileRecord, expectedVersion: number, audit: AuditEntry): Promise<FileWriteResult> => {
+      const index = this.fileRows.findIndex((row) => row.id === file.id);
+      if (index < 0 || this.fileRows[index]?.version !== expectedVersion || this.purgingSince.has(file.id)) {
+        return "stale";
+      }
+      // Mirrors the transaction: an entry that cannot be stored stops the change.
+      if (this.failAuditFor?.(audit) === true) {
+        throw new Error("audit unavailable");
+      }
+      if (this.auditRows.some((row) => row.id === audit.id)) {
+        throw new Error("audit_log is append-only");
+      }
+      const conflict = this.fileConflict(file);
+      if (conflict === "ok") {
+        this.fileRows[index] = copy(file);
+        this.auditRows.push(copy(audit));
       }
       return conflict;
     },

@@ -1,7 +1,7 @@
 import type { Guard } from "../access/guard";
 import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
 import { compileArrivalNumberPattern } from "../intake/key-extractor";
-import type { Actor } from "../model/actor";
+import { systemActor, type Actor } from "../model/actor";
 import { conflict, invalidInput, invalidState, notFound } from "../model/errors";
 import type { CaseKind, CaseRecord, CaseState, CaseType, Id, LocalDate, YearMonth } from "../model/types";
 import type { Clock } from "../ports/clock";
@@ -141,7 +141,11 @@ export class CaseService {
         return record;
       }
       const updated: CaseRecord = { ...record, state: next, version: record.version + 1 };
-      if (await this.deps.repository.cases.update(updated, record.version)) {
+      // Nobody chose this change: it follows from the files, so the system is the actor. The
+      // entry is stored in the same atomic step as the new state: a later call sees no difference
+      // any more and could not add a missing entry, so the state must not change without it.
+      const entry = this.deps.audit.entry(systemActor(), "case.state_change", CASE_TARGET, caseId);
+      if (await this.deps.repository.cases.updateWithAudit(updated, record.version, entry)) {
         await this.recordStateChange(record, next);
       }
       // Loop again: the files may have changed while this write was in flight, so the stored
