@@ -1,7 +1,7 @@
 import { UNASSIGNED_CODE } from "../../../core/intake/display-name";
 import type {
   AuditEntry, FileDirection, FileFormat, FileReceipt, FileRecord, FileState, Id, KeyEvidence, LocalDate, MetricEvent,
-  ResolutionMethod, ReviewReason, TypeSource, UploadBatch, WithdrawReason,
+  PendingPurge, ResolutionMethod, ReviewReason, TypeSource, UploadBatch, WithdrawReason,
 } from "../../../core/model/types";
 import type {
   AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository,
@@ -100,8 +100,11 @@ function uniqueConflict(error: unknown): FileWriteResult | null {
   return null;
 }
 
+/** A file being purged is hidden from every read except the purge job's own listing. */
+const NOT_PURGING = "purging_at IS NULL";
+
 function fileWhere(filter: FileFilter): Where | null {
-  const where: Where = { clauses: [], params: [] };
+  const where: Where = { clauses: [NOT_PURGING], params: [] };
   const equals = (column: string, value: unknown): void => {
     if (value !== undefined) {
       where.clauses.push(`${column} = ?`);
@@ -131,12 +134,12 @@ export class D1FileRepository implements FileRepository {
   constructor(private readonly db: D1Database) {}
 
   async findById(id: Id): Promise<FileRecord | null> {
-    const row = await this.db.prepare("SELECT * FROM file_records WHERE id = ?").bind(id).first<Row>();
+    const row = await this.db.prepare(`SELECT * FROM file_records WHERE id = ? AND ${NOT_PURGING}`).bind(id).first<Row>();
     return row === null ? null : toFile(row);
   }
 
   async findActiveBySha256(sha256: string): Promise<FileRecord[]> {
-    const rows = await this.db.prepare("SELECT * FROM file_records WHERE sha256 = ? AND state <> 'Trashed' ORDER BY received_at, id").bind(sha256).all<Row>();
+    const rows = await this.db.prepare(`SELECT * FROM file_records WHERE sha256 = ? AND state <> 'Trashed' AND ${NOT_PURGING} ORDER BY received_at, id`).bind(sha256).all<Row>();
     return rows.results.map(toFile);
   }
 
@@ -200,7 +203,7 @@ export class D1FileRepository implements FileRepository {
   async update(file: FileRecord, expectedVersion: number): Promise<FileWriteResult> {
     try {
       const result = await this.db
-        .prepare(`UPDATE file_records SET ${MUTABLE_COLUMNS.map((column) => `${column} = ?`).join(", ")} WHERE id = ? AND version = ?`)
+        .prepare(`UPDATE file_records SET ${MUTABLE_COLUMNS.map((column) => `${column} = ?`).join(", ")} WHERE id = ? AND version = ? AND ${NOT_PURGING}`)
         .bind(...MUTABLE_COLUMNS.map((column) => columnValue(file, column)), file.id, expectedVersion)
         .run();
       return changes(result) === 1 ? "ok" : "stale";
@@ -222,7 +225,7 @@ export class D1FileRepository implements FileRepository {
            COALESCE(SUM(direction = 'Outbound' AND state = 'Published'
                         AND EXISTS (SELECT 1 FROM file_receipts r WHERE r.file_id = file_records.id)), 0) AS opened,
            COALESCE(SUM(direction = 'Inbound'), 0) AS inbound
-         FROM file_records WHERE case_id = ? AND state <> 'Trashed'`,
+         FROM file_records WHERE case_id = ? AND state <> 'Trashed' AND ${NOT_PURGING}`,
       )
       .bind(caseId)
       .first<{ outbound: number; published: number; opened: number; inbound: number }>();
@@ -236,25 +239,45 @@ export class D1FileRepository implements FileRepository {
 
   async listTrashedBefore(threshold: Date, page: Page): Promise<FileRecord[]> {
     const rows = await this.db
-      .prepare("SELECT * FROM file_records WHERE state = 'Trashed' AND trashed_at <= ? ORDER BY trashed_at, id LIMIT ? OFFSET ?")
+      .prepare(`SELECT * FROM file_records WHERE state = 'Trashed' AND trashed_at <= ? AND ${NOT_PURGING} ORDER BY trashed_at, id LIMIT ? OFFSET ?`)
       .bind(toIso(threshold), page.limit, page.offset)
       .all<Row>();
     return rows.results.map(toFile);
   }
 
-  async purge(id: Id, trashedBefore: Date, audit: AuditEntry): Promise<boolean> {
-    // One transaction. The audit row is written only while the file is still due, and the same
+  async beginPurge(id: Id, trashedBefore: Date, at: Date): Promise<boolean> {
+    // One transaction. The mark is set only while the file is still due, and receipts go only for
+    // a file that carries the mark, so a file that was restored in the meantime keeps its receipts.
+    const results = await this.db.batch([
+      this.db
+        .prepare(`UPDATE file_records SET purging_at = ? WHERE id = ? AND state = 'Trashed' AND trashed_at <= ? AND ${NOT_PURGING}`)
+        .bind(toIso(at), id, toIso(trashedBefore)),
+      this.db.prepare("DELETE FROM file_receipts WHERE file_id = ? AND EXISTS (SELECT 1 FROM file_records WHERE id = ? AND purging_at IS NOT NULL)").bind(id, id),
+    ]);
+    const marked = results[0];
+    return marked !== undefined && changes(marked) === 1;
+  }
+
+  async listPurging(page: Page): Promise<PendingPurge[]> {
+    const rows = await this.db
+      .prepare("SELECT id, client_id, r2_key FROM file_records WHERE purging_at IS NOT NULL ORDER BY purging_at, id LIMIT ? OFFSET ?")
+      .bind(page.limit, page.offset)
+      .all<Row>();
+    return rows.results.map((row) => ({ id: text(row.id), clientId: textOrNull(row.client_id), r2Key: text(row.r2_key) }));
+  }
+
+  async completePurge(id: Id, audit: AuditEntry): Promise<boolean> {
+    // One transaction. The audit row is written only while the file is being purged, and the same
     // condition guards the delete, so either both happen or neither does.
-    const due = "id = ? AND state = 'Trashed' AND trashed_at <= ?";
-    const threshold = toIso(trashedBefore);
+    const purging = "id = ? AND purging_at IS NOT NULL";
     const results = await this.db.batch([
       this.db
         .prepare(
           `INSERT INTO audit_log (id, actor_user_id, action, target_type, target_id, result, occurred_at)
-           SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM file_records WHERE ${due})`,
+           SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM file_records WHERE ${purging})`,
         )
-        .bind(audit.id, audit.actorUserId, audit.action, audit.targetType, audit.targetId, audit.result, toIso(audit.occurredAt), id, threshold),
-      this.db.prepare(`DELETE FROM file_records WHERE ${due}`).bind(id, threshold),
+        .bind(audit.id, audit.actorUserId, audit.action, audit.targetType, audit.targetId, audit.result, toIso(audit.occurredAt), id),
+      this.db.prepare(`DELETE FROM file_records WHERE ${purging}`).bind(id),
     ]);
     const recorded = results[0];
     return recorded !== undefined && changes(recorded) === 1;

@@ -21,6 +21,7 @@ import type {
   MembershipStatus,
   MetricEvent,
   OfficeSetting,
+  PendingPurge,
   ReviewReason,
   UploadBatch,
   User,
@@ -181,6 +182,7 @@ export interface CaseFileSummary {
 export type FileWriteResult = "ok" | "name_taken" | "duplicate_content" | "stale";
 
 export interface FileRepository {
+  /** Files being purged are not found; the same holds for every read below except `listPurging`. */
   findById(id: Id): Promise<FileRecord | null>;
   /** Files with this content that are not trashed. */
   findActiveBySha256(sha256: string): Promise<FileRecord[]>;
@@ -191,13 +193,23 @@ export interface FileRepository {
   insert(file: FileRecord): Promise<FileWriteResult>;
   update(file: FileRecord, expectedVersion: number): Promise<FileWriteResult>;
   summarizeForCase(caseId: Id): Promise<CaseFileSummary>;
+  /** Trashed files that are due for erasure and are not being purged yet, oldest first. */
   listTrashedBefore(threshold: Date, page: Page): Promise<FileRecord[]>;
   /**
-   * Permanently removes the record and its receipts and appends the audit entry, as one atomic
-   * step, only while the file is still trashed and was trashed at or before `trashedBefore`.
+   * Marks the file as being purged and removes its receipts, as one atomic step, only while the
+   * file is still trashed, was trashed at or before `trashedBefore` and is not being purged yet.
    * Returns false, writing nothing, when the file was restored or erased in the meantime.
+   * From then on the file cannot be restored and no other method of this repository returns or
+   * counts it; only `listPurging` and `completePurge` see it.
    */
-  purge(id: Id, trashedBefore: Date, audit: AuditEntry): Promise<boolean>;
+  beginPurge(id: Id, trashedBefore: Date, at: Date): Promise<boolean>;
+  /** Files being purged, the longest-waiting first. */
+  listPurging(page: Page): Promise<PendingPurge[]>;
+  /**
+   * Permanently removes the record of a file being purged and appends the audit entry, as one
+   * atomic step. Returns false, writing nothing, when no file being purged has this id.
+   */
+  completePurge(id: Id, audit: AuditEntry): Promise<boolean>;
   insertBatch(batch: UploadBatch): Promise<void>;
   findBatch(id: Id): Promise<UploadBatch | null>;
 }

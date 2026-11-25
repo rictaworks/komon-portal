@@ -191,6 +191,21 @@ describe("D1 schema", () => {
     expect(left?.n).toBe(0);
   });
 
+  it("marks a file as being purged only while it is trashed", async () => {
+    const column = await db.prepare("SELECT \"notnull\" AS required, dflt_value AS fallback FROM pragma_table_info('file_records') WHERE name = 'purging_at'").first<{ required: number; fallback: string | null }>();
+    expect(column).toEqual({ required: 0, fallback: null });
+    await run(db, fileSql(), ...fileParams({ id: "fp1", state: "Staged", sha: "c".repeat(64) }));
+    await run(db, fileSql(), ...fileParams({ id: "fp2", state: "Trashed", trashedFrom: "Staged", trashedAt: NOW, sha: "d".repeat(64) }));
+    const unmarked = await db.prepare("SELECT COUNT(*) AS n FROM file_records WHERE id IN ('fp1', 'fp2') AND purging_at IS NULL").first<{ n: number }>();
+    expect(unmarked?.n).toBe(2);
+    expect(await rejects(db, "UPDATE file_records SET purging_at = ? WHERE id = 'fp1'", NOW)).toBe(true);
+    expect(await rejects(db, "UPDATE file_records SET purging_at = ? WHERE id = 'fp2'", NOW)).toBe(false);
+    // A file being purged cannot leave the trash.
+    expect(await rejects(db, "UPDATE file_records SET state = 'Staged', trashed_from = NULL, trashed_at = NULL WHERE id = 'fp2'")).toBe(true);
+    const index = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'file_records_purging'").first<{ sql: string }>();
+    expect(index?.sql).toContain("purging_at IS NOT NULL");
+  });
+
   it("enforces foreign keys", async () => {
     expect(await rejects(db, "INSERT INTO memberships (id, user_id, client_id, status, created_at) VALUES ('m9', 'nobody', 'c1', 'Pending', ?)", NOW)).toBe(true);
   });
