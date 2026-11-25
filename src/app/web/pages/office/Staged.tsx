@@ -1,6 +1,7 @@
 import { faBan, faCircleCheck } from "@fortawesome/free-solid-svg-icons";
 import { useMemo, useState } from "react";
 import type { ClientRef, FileView, PublishResult } from "../../api/office-types";
+import { ClientPicker } from "../../components/ClientPicker";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SelectField } from "../../components/Form";
 import { Icon } from "../../components/Icon";
@@ -11,7 +12,8 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
-import { clientOptions, useClients } from "./useMasterData";
+import { stagedFilesPath, UNCLASSIFIED } from "./staged-filter";
+import { useSettings } from "./useMasterData";
 
 interface Group {
   client: ClientRef;
@@ -33,18 +35,22 @@ function groupByClient(files: readonly FileView[]): Group[] {
 export function Staged() {
   const t = useT();
   const { api } = useSession();
-  const clients = useClients();
+  const settings = useSettings();
   const action = useAction();
-  const [clientId, setClientId] = useState("");
+  const [client, setClient] = useState<ClientRef | null>(null);
+  const [docType, setDocType] = useState("");
+  const clientId = client?.id ?? "";
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [results, setResults] = useState<{ result: PublishResult; name: string }[] | null>(null);
-  const files = useLoad<FileView[]>(
-    async () => (await api.get<{ items: FileView[] }>(`/api/office/files?direction=Outbound&states=Staged&limit=200${clientId === "" ? "" : `&clientId=${clientId}`}`)).items,
-    [clientId],
-  );
-  const groups = useMemo(() => groupByClient(files.data ?? []), [files.data]);
-  const selected = (files.data ?? []).filter((file) => checked.has(file.id));
+  // The server narrows by client and by type, "no type" included, so the list is never a part picked out of another list.
+  const path = stagedFilesPath({ clientId, docType });
+  const files = useLoad<FileView[]>(async () => (await api.get<{ items: FileView[] }>(path)).items, [path]);
+  // Only documents that are listed can be selected, published or sent back.
+  const visible = useMemo(() => files.data ?? [], [files.data]);
+  const groups = useMemo(() => groupByClient(visible), [visible]);
+  const selected = visible.filter((file) => checked.has(file.id));
+  const outbound = (settings.data?.docTypes ?? []).filter((type) => type.direction !== "Inbound");
   const selectedGroups = groupByClient(selected);
 
   const toggle = (ids: readonly string[], on: boolean): void => {
@@ -83,9 +89,16 @@ export function Staged() {
     <div className="page">
       <div className="row row--end">
         <h1 className="title grow">{t("office.staged.title")}</h1>
-        <SelectField label={t("office.columns.client")} value={clientId} options={[{ value: "", label: t("office.allClients") }, ...clientOptions(clients.data)]} onChange={setClientId} />
+        <ClientPicker label={t("office.columns.client")} emptyLabel={t("office.allClients")} value={client} onChange={setClient} status={null} compact />
+        <SelectField
+          label={t("office.staged.type")}
+          value={docType}
+          options={[{ value: "", label: t("office.staged.allTypes") }, ...outbound.map((type) => ({ value: type.id, label: `${type.shortCode} ${type.label}` })), { value: UNCLASSIFIED, label: t("office.unclassified") }]}
+          onChange={setDocType}
+        />
       </div>
       <ErrorNotice error={files.error ?? action.error} />
+      <ErrorNotice error={settings.error} />
       {files.loading && files.data === null ? <Loading /> : null}
       <div className="split">
         <section className="split__main stack" aria-label={t("office.staged.list")}>
