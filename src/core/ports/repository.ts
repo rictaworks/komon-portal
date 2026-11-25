@@ -53,6 +53,11 @@ export interface UserRepository {
    * active Owner or is not an Active office member.
    */
   revokeOfficeUnlessLastOwner(id: Id): Promise<"ok" | "last_owner" | "not_active">;
+  /**
+   * Makes the user an Active Owner in one atomic step, only while no active Owner exists and the
+   * user holds no ongoing office membership. Returns false otherwise.
+   */
+  claimOwnerIfNone(id: Id): Promise<boolean>;
   listOffice(): Promise<User[]>;
   countActiveOwners(): Promise<number>;
 }
