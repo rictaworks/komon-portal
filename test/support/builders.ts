@@ -102,7 +102,8 @@ export function fileRecord(overrides: Partial<FileRecord> = {}): FileRecord {
     displayName: `C0031_UNCLASSIFIED_20261124_${overrides.id ?? "f1"}`, format: "pdf", sha256: "a".repeat(64), sizeBytes: 10,
     r2Key: `files/${overrides.id ?? "f1"}`, state: "Staged", trashedFrom: null, resolutionMethod: "StaffSelected",
     reviewReason: null, reviewDetail: null, unmatchedArrivalNumber: null, typeSource: null, jevModel: null,
-    jevConfidence: null, jevCandidateDocTypeId: null, withdrawReason: null, incidentFlag: false, receivedAt: NOW,
+    jevConfidence: null, jevCandidateDocTypeId: null, withdrawReason: null, incidentFlag: false,
+    incidentClientId: null, incidentReason: null, incidentAt: null, receivedAt: NOW,
     publishedAt: null, acknowledgedAt: null, trashedAt: null, version: 1, ...overrides,
   };
 }

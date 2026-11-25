@@ -22,6 +22,19 @@ const VIEW_STATES: Readonly<Record<ShelfView, readonly string[]>> = {
   Trashed: ["Trashed"],
 };
 
+const DIRECTION_PARAMETER = "direction";
+
+/** The address of a client's shelf. The direction is named only when it is not the one the shelf opens on. */
+export function shelfPath(clientId: string, direction: ShelfDirection): string {
+  const path = `/office/shelf/${encodeURIComponent(clientId)}`;
+  return direction === SHELF_DIRECTIONS[0] ? path : `${path}?${new URLSearchParams({ [DIRECTION_PARAMETER]: direction }).toString()}`;
+}
+
+/** The direction the shelf opens on: what the office sent, unless the address names the other direction exactly. */
+export function shelfDirectionOf(search: string): ShelfDirection {
+  return new URLSearchParams(search).get(DIRECTION_PARAMETER) === "Inbound" ? "Inbound" : "Outbound";
+}
+
 const LIST_LIMIT = 200;
 
 export interface ShelfQuery {

@@ -763,20 +763,34 @@
     },
     "/api/office/incidents": {
       "get": {
-        "summary": "Mis-delivered files that were withdrawn as wrong client or wrong file.",
+        "summary": "Mis-delivered files that were withdrawn as wrong client or wrong file, the most recently withdrawn first.",
         "tags": [
           "office"
         ],
-        "description": "Office Owner only. Denials look like not found.",
+        "description": "Office Owner only. Denials look like not found. Each item is the file with the client, the reason and the readers as they were at the withdrawal that raised the incident (`client`, `withdrawReason`, `readers`) and the time of that withdrawal (`withdrawnAt`); they are not the file's current ones once it was assigned and published again.",
         "x-access": "owner",
         "responses": {
           "default": {
             "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
           },
           "200": {
-            "description": "Success."
+            "description": "Success. {\"items\": [...], \"total\": number, \"truncated\": boolean}: `total` counts every incident and `truncated` is true when more exist than `items` holds."
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Number of incidents to return. A value that is not a whole number from 1 to 100 is refused with 400 invalid_input.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          }
+        ]
       }
     },
     "/api/office/settings": {

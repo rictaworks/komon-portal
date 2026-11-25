@@ -73,6 +73,7 @@ export class SubmissionService {
       sizeBytes: incoming.bytes.length, r2Key: `${FILE_KEY_PREFIX}${id}`, state: "Submitted", trashedFrom: null,
       resolutionMethod: null, reviewReason: null, reviewDetail: null, unmatchedArrivalNumber: null, typeSource: null,
       jevModel: null, jevConfidence: null, jevCandidateDocTypeId: null, withdrawReason: null, incidentFlag: false,
+      incidentClientId: null, incidentReason: null, incidentAt: null,
       receivedAt: now, publishedAt: null, acknowledgedAt: null, trashedAt: null, version: 1,
     };
     await this.deps.store.put(draft.r2Key, incoming.bytes);
