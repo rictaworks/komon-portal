@@ -5,10 +5,10 @@ import {
   FILE_DIRECTIONS, FILE_STATES, REVIEW_REASONS, WITHDRAW_REASONS, type FileState, type Id,
 } from "../../../core/model/types";
 import type { FileFilter } from "../../../core/ports/repository";
-import { AFTER_WITHDRAW } from "../../../core/publish/publish-service";
+import { AFTER_WITHDRAW, MAX_INCIDENTS } from "../../../core/publish/publish-service";
 import { requireAuth, type AppBindings, type AppContext } from "../context";
 import { optionalBoolean, optionalString, readJson, requireArray, requireEnum, requireInteger, requireString, type JsonObject } from "../input";
-import { fileView, Lookups, pageOf } from "./views";
+import { fileView, incidentView, Lookups, pageOf } from "./views";
 
 const MAX_PUBLISH_ITEMS = 200;
 /** Multipart overhead allowed on top of the largest file. */
@@ -251,11 +251,16 @@ export function fileRoutes(): Hono<AppBindings> {
     const { actor } = requireAuth(c);
     const services = c.get("services");
     const lookups = new Lookups(services);
+    const raw = c.req.query("limit");
+    // The service checks the role first and then refuses a limit that is not a whole number from 1 to MAX_INCIDENTS.
+    const limit = raw === undefined ? MAX_INCIDENTS : /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+    const incidents = await services.publish.listIncidents(actor, limit);
     const items = [];
-    for (const incident of await services.publish.listIncidents(actor)) {
-      items.push(await fileView(lookups, incident.file, incident.receipts));
+    for (const incident of incidents.items) {
+      items.push(await incidentView(lookups, incident));
     }
-    return c.json({ items });
+    // The most recently withdrawn come first. `total` counts every incident; `truncated` is true when more exist than the items shown.
+    return c.json({ items, total: incidents.total, truncated: incidents.truncated });
   });
 
   return routes;

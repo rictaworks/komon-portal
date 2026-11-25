@@ -297,10 +297,72 @@ describe("PublishService.withdraw", () => {
     const viewedAt = new Date("2026-11-19T01:42:00.000Z");
     kit.repo.receiptRows.push({ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: viewedAt });
     await kit.publish.withdraw(staff, "f1", { reason: "WrongClient", next: "NeedsReview" }, 1);
-    const incidents = await kit.publish.listIncidents(owner);
-    expect(incidents).toHaveLength(1);
-    expect(incidents[0]?.file).toMatchObject({ id: "f1", withdrawReason: "WrongClient", incidentFlag: true });
-    expect(incidents[0]?.receipts).toEqual([{ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: viewedAt }]);
-    await expect(kit.publish.listIncidents(staff)).rejects.toThrow("forbidden: incident.read");
+    const incidents = await kit.publish.listIncidents(owner, 100);
+    expect(incidents).toMatchObject({ total: 1, truncated: false });
+    expect(incidents.items).toHaveLength(1);
+    expect(incidents.items[0]?.file).toMatchObject({ id: "f1", withdrawReason: "WrongClient", incidentFlag: true });
+    expect(incidents.items[0]?.receipts).toEqual([{ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: viewedAt }]);
+    await expect(kit.publish.listIncidents(staff, 100)).rejects.toThrow("forbidden: incident.read");
+  });
+
+  it("keeps the client, reason and readers of the withdrawal after the file is assigned to the right client and published again", async () => {
+    const viewedAt = new Date(kit.clock.now().getTime() - 60_000);
+    kit.repo.receiptRows.push({ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: viewedAt });
+    const withdrawnAt = kit.clock.now();
+    const withdrawn = await kit.publish.withdraw(staff, "f1", { reason: "WrongClient", next: "NeedsReview" }, 1);
+    expect(withdrawn).toMatchObject({ incidentFlag: true, incidentClientId: "c1", incidentReason: "WrongClient", incidentAt: withdrawnAt });
+    // The office corrects the mistake: the right client gets the file and one of its members opens it.
+    kit.clock.advanceDays(1);
+    const staged = await kit.review.assign(staff, "f1", { clientId: "c2", caseId: null, confirmed: true }, withdrawn.version);
+    expect(await kit.publish.publish(staff, [{ fileId: "f1", version: staged.version }])).toEqual([{ fileId: "f1", outcome: "published", clientId: "c2" }]);
+    kit.repo.receiptRows.push({ id: "x2", fileId: "f1", userId: "u-right", firstViewedAt: kit.clock.now() });
+    const incidents = await kit.publish.listIncidents(owner, 100);
+    expect(incidents.items).toHaveLength(1);
+    expect(incidents.items[0]).toMatchObject({ clientId: "c1", reason: "WrongClient", occurredAt: withdrawnAt });
+    expect(incidents.items[0]?.file).toMatchObject({ id: "f1", clientId: "c2", state: "Published" });
+    expect(incidents.items[0]?.receipts.map((receipt) => receipt.userId)).toEqual(["u-member"]);
+    // A later withdrawal that is not a mis-delivery leaves the recorded incident as it was.
+    kit.clock.advanceDays(1);
+    await kit.publish.withdraw(staff, "f1", { reason: "Superseded", next: "NeedsReview" }, staged.version + 1);
+    expect((await kit.publish.listIncidents(owner, 100)).items[0]).toMatchObject({ clientId: "c1", reason: "WrongClient", occurredAt: withdrawnAt });
+  });
+
+  it("lists the most recently withdrawn incidents first, whenever the files were taken in", async () => {
+    // f-old was taken in long before the others and is withdrawn last.
+    kit.repo.fileRows.push(
+      fileRecord({ id: "f-new", state: "Published", publishedAt: new Date(), sha256: "b".repeat(64), receivedAt: new Date("2026-11-20T00:00:00.000Z") }),
+      fileRecord({ id: "f-old", state: "Published", publishedAt: new Date(), sha256: "c".repeat(64), receivedAt: new Date("2026-10-01T00:00:00.000Z") }),
+    );
+    for (const id of ["f1", "f-new", "f-old"]) {
+      kit.repo.receiptRows.push({ id: `x-${id}`, fileId: id, userId: "u-member", firstViewedAt: new Date("2026-11-19T01:42:00.000Z") });
+      await kit.publish.withdraw(staff, id, { reason: "WrongClient", next: "NeedsReview" }, 1);
+      kit.clock.advanceDays(1);
+    }
+    expect((await kit.publish.listIncidents(owner, 100)).items.map((incident) => incident.file.id)).toEqual(["f-old", "f-new", "f1"]);
+    const recent = await kit.publish.listIncidents(owner, 1);
+    expect(recent).toMatchObject({ total: 3, truncated: true });
+    expect(recent.items.map((incident) => incident.file.id)).toEqual(["f-old"]);
+  });
+
+  it("refuses to list an incident whose record of the withdrawal is missing", async () => {
+    kit.repo.fileRows[0] = fileRecord({ id: "f1", state: "NeedsReview", reviewReason: "Withdrawn", withdrawReason: "WrongClient", incidentFlag: true });
+    await expect(kit.publish.listIncidents(owner, 100)).rejects.toThrow("invalid_state: incident_record");
+  });
+
+  it("counts every incident and says when more exist than the limit shows", async () => {
+    kit.repo.fileRows.push(
+      fileRecord({ id: "f2", state: "Published", publishedAt: new Date(), sha256: "b".repeat(64) }),
+      fileRecord({ id: "f3", state: "Published", publishedAt: new Date(), sha256: "c".repeat(64) }),
+    );
+    for (const id of ["f1", "f2", "f3"]) {
+      kit.repo.receiptRows.push({ id: `x-${id}`, fileId: id, userId: "u-member", firstViewedAt: new Date("2026-11-19T01:42:00.000Z") });
+      await kit.publish.withdraw(staff, id, { reason: "WrongFile", next: "NeedsReview" }, 1);
+    }
+    const shown = await kit.publish.listIncidents(owner, 2);
+    expect(shown).toMatchObject({ total: 3, truncated: true });
+    expect(shown.items).toHaveLength(2);
+    expect(shown.items.every((incident) => incident.receipts.length === 1 && incident.receipts[0]?.fileId === incident.file.id)).toBe(true);
+    expect(await kit.publish.listIncidents(owner, 3)).toMatchObject({ total: 3, truncated: false });
+    await expect(kit.publish.listIncidents(owner, 0)).rejects.toThrow("invalid_input: limit");
   });
 });

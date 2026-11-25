@@ -208,6 +208,8 @@ export interface FileRepository {
   /** Files with this content that are not trashed. */
   findActiveBySha256(sha256: string): Promise<FileRecord[]>;
   list(filter: FileFilter, page: Page): Promise<FileRecord[]>;
+  /** Files flagged as an incident, the most recently withdrawn first. `count({ incidentOnly: true })` counts them. */
+  listIncidents(page: Page): Promise<FileRecord[]>;
   count(filter: FileFilter): Promise<number>;
   /**
    * Published outbound files of the client that this user has not opened, the most recently

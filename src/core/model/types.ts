@@ -222,6 +222,14 @@ export interface FileRecord {
   jevCandidateDocTypeId: Id | null;
   withdrawReason: WithdrawReason | null;
   incidentFlag: boolean;
+  /**
+   * The mis-delivery as it was at the withdrawal that raised it: the client that had the file,
+   * the reason given and the time. A later assignment or publication does not change them.
+   * All three are null while `incidentFlag` is false.
+   */
+  incidentClientId: Id | null;
+  incidentReason: WithdrawReason | null;
+  incidentAt: Date | null;
   receivedAt: Date;
   publishedAt: Date | null;
   acknowledgedAt: Date | null;

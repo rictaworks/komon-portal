@@ -15,7 +15,7 @@ const FILE_COLUMNS = [
   "id", "batch_id", "direction", "client_id", "case_id", "doc_type_id", "target_month", "display_name", "format", "sha256",
   "size_bytes", "r2_key", "state", "trashed_from", "resolution_method", "review_reason", "review_detail",
   "unmatched_arrival_number", "type_source", "jev_model", "jev_confidence", "jev_candidate_doc_type_id", "withdraw_reason",
-  "incident_flag", "received_at", "published_at", "acknowledged_at", "trashed_at", "version",
+  "incident_flag", "incident_client_id", "incident_reason", "incident_at", "received_at", "published_at", "acknowledged_at", "trashed_at", "version",
 ] as const;
 /** Columns that never change after insert. */
 const IMMUTABLE = new Set(["id", "batch_id", "direction", "format", "sha256", "size_bytes", "r2_key", "received_at"]);
@@ -48,6 +48,9 @@ function toFile(row: Row): FileRecord {
     jevCandidateDocTypeId: textOrNull(row.jev_candidate_doc_type_id),
     withdrawReason: textOrNull(row.withdraw_reason) as WithdrawReason | null,
     incidentFlag: Number(row.incident_flag) === 1,
+    incidentClientId: textOrNull(row.incident_client_id),
+    incidentReason: textOrNull(row.incident_reason) as WithdrawReason | null,
+    incidentAt: fromIsoOrNull(row.incident_at),
     receivedAt: fromIso(row.received_at),
     publishedAt: fromIsoOrNull(row.published_at),
     acknowledgedAt: fromIsoOrNull(row.acknowledged_at),
@@ -82,6 +85,9 @@ function columnValue(file: FileRecord, column: (typeof FILE_COLUMNS)[number]): u
     case "jev_candidate_doc_type_id": return file.jevCandidateDocTypeId;
     case "withdraw_reason": return file.withdrawReason;
     case "incident_flag": return file.incidentFlag ? 1 : 0;
+    case "incident_client_id": return file.incidentClientId;
+    case "incident_reason": return file.incidentReason;
+    case "incident_at": return toIsoOrNull(file.incidentAt);
     case "received_at": return toIso(file.receivedAt);
     case "published_at": return toIsoOrNull(file.publishedAt);
     case "acknowledged_at": return toIsoOrNull(file.acknowledgedAt);
@@ -157,6 +163,14 @@ export class D1FileRepository implements FileRepository {
     const rows = await this.db
       .prepare(`SELECT * FROM file_records${whereSql(where)} ORDER BY received_at DESC, id LIMIT ? OFFSET ?`)
       .bind(...where.params, page.limit, page.offset)
+      .all<Row>();
+    return rows.results.map(toFile);
+  }
+
+  async listIncidents(page: Page): Promise<FileRecord[]> {
+    const rows = await this.db
+      .prepare(`SELECT * FROM file_records WHERE ${NOT_PURGING} AND incident_flag = 1 ORDER BY incident_at DESC, id LIMIT ? OFFSET ?`)
+      .bind(page.limit, page.offset)
       .all<Row>();
     return rows.results.map(toFile);
   }

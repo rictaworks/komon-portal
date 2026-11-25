@@ -235,7 +235,7 @@ describe("office API", () => {
 
   it("shows the dashboard counts and deadline lists", async () => {
     const dashboard = await json(await owner.call("GET", "/api/office/dashboard"));
-    expect(dashboard).toMatchObject({ today: "2026-11-24", needsReview: 1, staged: 1, submitted: 0, unread: [], incidents: 0 });
+    expect(dashboard).toMatchObject({ today: "2026-11-24", needsReview: 1, staged: 1, submitted: 0, unread: [], incidents: { total: 0, truncated: false, items: [] } });
     expect((dashboard.due as Json[]).map((item) => item.id)).toEqual([ids.k1]);
     expect((dashboard.due as Json[])[0]).toMatchObject({ due: { level: "caution", daysLeft: 6 } });
     expect(dashboard.retrieval).toEqual([]);

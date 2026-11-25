@@ -38,13 +38,31 @@ export interface WithdrawInput {
   next: AfterWithdraw;
 }
 
+/** A mis-delivery as it was when the file was withdrawn, whatever happened to the file afterwards. */
 export interface Incident {
   file: FileRecord;
+  /** The client that had the file when it was withdrawn. */
+  clientId: Id;
+  /** The reason given at that withdrawal. */
+  reason: WithdrawReason;
+  /** When the file was withdrawn. */
+  occurredAt: Date;
+  /** The views up to the withdrawal. A view after a later publication is not part of the incident. */
   receipts: FileReceipt[];
 }
 
+export interface IncidentList {
+  /** The most recently withdrawn incidents, up to the requested limit. */
+  items: Incident[];
+  /** Every incident, including those beyond the limit. */
+  total: number;
+  /** True when more incidents exist than `items` holds. */
+  truncated: boolean;
+}
+
 const FILE_TARGET = "file";
-const INCIDENT_PAGE = { limit: 100, offset: 0 };
+/** The most incidents one answer may hold. */
+export const MAX_INCIDENTS = 100;
 
 export interface PublishServiceDeps {
   repository: Repository;
@@ -121,7 +139,12 @@ export class PublishService implements AutoPublisher {
     const reason = hidden.withdrawReason ?? input.reason;
     const receipts = await this.deps.repository.receipts.listByFile(fileId);
     const incident = receipts.length > 0 && INCIDENT_WITHDRAW_REASONS.includes(reason);
-    const settled = await this.settleWithdrawn({ ...hidden, incidentFlag: hidden.incidentFlag || incident }, input.next);
+    // The incident is recorded with the client, reason and time of this withdrawal, in the same
+    // write that settles the file, so a later assignment to another client cannot rewrite it.
+    const flagged: FileRecord = incident
+      ? { ...hidden, incidentFlag: true, incidentClientId: file.clientId, incidentReason: reason, incidentAt: this.deps.writer.now() }
+      : hidden;
+    const settled = await this.settleWithdrawn(flagged, input.next);
     await this.bestEffort(() => this.deps.metrics.record("file.withdrawn", file.clientId, { fileId, reason, incident, opened: receipts.length }));
     if (file.caseId !== null) {
       await this.deps.cases.onFileEvent(file.caseId);
@@ -129,12 +152,28 @@ export class PublishService implements AutoPublisher {
     return settled;
   }
 
-  /** Withdrawn files that had already been opened by a client member. Owner only. */
-  async listIncidents(actor: Actor): Promise<Incident[]> {
+  /**
+   * Withdrawn files that had already been opened by a client member, with the client that had
+   * each one, who opened it before the withdrawal and when. Owner only. The most recently
+   * withdrawn come first; at most `limit` are returned and `total` counts all of them.
+   */
+  async listIncidents(actor: Actor, limit: number): Promise<IncidentList> {
     await this.deps.guard.require(actor, "incident.read", { type: FILE_TARGET, id: "incidents" });
-    const files = await this.deps.repository.files.list({ incidentOnly: true }, INCIDENT_PAGE);
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_INCIDENTS) {
+      throw invalidInput("limit");
+    }
+    const total = await this.deps.repository.files.count({ incidentOnly: true });
+    const files = await this.deps.repository.files.listIncidents({ limit, offset: 0 });
     const receipts = await this.deps.repository.receipts.listByFiles(files.map((file) => file.id));
-    return files.map((file) => ({ file, receipts: receipts.filter((receipt) => receipt.fileId === file.id) }));
+    const items = files.map((file): Incident => {
+      const { incidentClientId: clientId, incidentReason: reason, incidentAt: occurredAt } = file;
+      if (clientId === null || reason === null || occurredAt === null) {
+        throw invalidState("incident_record");
+      }
+      const opened = receipts.filter((receipt) => receipt.fileId === file.id && receipt.firstViewedAt.getTime() <= occurredAt.getTime());
+      return { file, clientId, reason, occurredAt, receipts: opened };
+    });
+    return { items, total, truncated: total > items.length };
   }
 
   private async settleWithdrawn(withdrawn: FileRecord, next: AfterWithdraw): Promise<FileRecord> {

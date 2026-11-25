@@ -78,15 +78,37 @@ export interface CaseList {
   assignees: { id: string; displayName: string }[];
 }
 
+/**
+ * A mis-delivered file as it was when it was withdrawn: `client`, `withdrawReason` and `readers`
+ * are those of that withdrawal, not the file's current ones.
+ */
+export interface IncidentView extends FileView {
+  withdrawnAt: string;
+}
+
+/** Mis-deliveries, the most recently withdrawn first. `total` counts all of them; `truncated` says that more exist than `items` holds. */
+export interface IncidentList {
+  items: IncidentView[];
+  total: number;
+  truncated: boolean;
+}
+
 export interface Dashboard {
   today: string;
+  /** The office time zone that `today` is counted in. */
+  timezone: string;
   needsReview: number;
   staged: number;
   submitted: number;
+  /** Submissions the office has not opened yet, newest first. */
+  submissions: { id: string; displayName: string; receivedAt: string; client: ClientRef | null }[];
   unread: { id: string; displayName: string; publishedAt: string; client: ClientRef | null }[];
+  /** True for a list when more items matched than the 100 it holds. */
+  truncated: { unread: boolean; retrieval: boolean; due: boolean; submissions: boolean };
   retrieval: CaseView[];
   due: CaseView[];
-  incidents: number | null;
+  /** The most recent mis-deliveries. Null for Staff: only the Owner receives them. */
+  incidents: IncidentList | null;
 }
 
 export interface ClientRecord {

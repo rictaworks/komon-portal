@@ -1,14 +1,16 @@
 import { useState } from "react";
-import type { AuditEntry, FileView } from "../../api/office-types";
+import { useLocation } from "react-router-dom";
+import type { AuditEntry, IncidentList } from "../../api/office-types";
 import { SelectField } from "../../components/Form";
 import { formatDateTime } from "../../components/format";
-import { ErrorNotice } from "../../components/Notice";
+import { ErrorNotice, Notice } from "../../components/Notice";
 import { Badge } from "../../components/StatusBadge";
 import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import { auditActorLabelKey } from "./audit-view";
+import { sortedReaders } from "./shelf-view";
 
 const VIEWS = ["audit", "incidents"] as const;
 type View = (typeof VIEWS)[number];
@@ -17,12 +19,13 @@ type View = (typeof VIEWS)[number];
 export function Audit() {
   const t = useT();
   const { api } = useSession();
-  const [view, setView] = useState<View>("audit");
+  // The dashboard links straight to the incidents with `?view=incidents`.
+  const [view, setView] = useState<View>(new URLSearchParams(useLocation().search).get("view") === "incidents" ? "incidents" : "audit");
   const audit = useLoad<{ items: AuditEntry[] }>(
     () => api.get<{ items: AuditEntry[] }>("/api/office/audit"),
     [view],
   );
-  const incidents = useLoad<{ items: FileView[] }>(() => api.get<{ items: FileView[] }>("/api/office/incidents"), [view]);
+  const incidents = useLoad<IncidentList>(() => api.get<IncidentList>("/api/office/incidents"), [view]);
   const current = view === "audit" ? audit : incidents;
 
   return (
@@ -62,6 +65,9 @@ export function Audit() {
           </table>
         </div>
       ) : null}
+      {view === "incidents" && incidents.data !== null && incidents.data.truncated ? (
+        <Notice tone="info">{t("office.audit.incidentsTruncated", { shown: incidents.data.items.length, total: incidents.data.total })}</Notice>
+      ) : null}
       {view === "incidents" && incidents.data !== null && incidents.data.items.length > 0 ? (
         <ul className="list card">
           {incidents.data.items.map((file) => (
@@ -69,8 +75,13 @@ export function Audit() {
               <span className="grow stack stack--tight">
                 <strong>{file.displayName}</strong>
                 <span className="muted">
-                  {file.client === null ? "" : `${file.client.code} ${file.client.corporateName}`} · {formatDateTime(file.receivedAt)}
+                  {file.client === null ? "" : `${file.client.code} ${file.client.corporateName}`} · {t("office.audit.incidentWithdrawnAt", { at: formatDateTime(file.withdrawnAt) })}
                 </span>
+                {sortedReaders(file.readers).map((reader, index) => (
+                  <span key={`${reader.firstViewedAt}-${index}`}>
+                    {t("office.shelf.readerAt", { name: reader.displayName ?? t("office.shelf.unnamedReader"), at: formatDateTime(reader.firstViewedAt) })}
+                  </span>
+                ))}
               </span>
               <Badge tone="danger" label={t(`withdrawReason.${file.withdrawReason ?? "Other"}`)} />
             </li>
