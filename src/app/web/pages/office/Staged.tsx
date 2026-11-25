@@ -12,6 +12,7 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { rowsOutside } from "./list-limit";
 import { stagedFilesPath, UNCLASSIFIED } from "./staged-filter";
 import { useSettings } from "./useMasterData";
 
@@ -45,9 +46,11 @@ export function Staged() {
   const [results, setResults] = useState<{ result: PublishResult; name: string }[] | null>(null);
   // The server narrows by client and by type, "no type" included, so the list is never a part picked out of another list.
   const path = stagedFilesPath({ clientId, docType });
-  const files = useLoad<FileView[]>(async () => (await api.get<{ items: FileView[] }>(path)).items, [path]);
+  const files = useLoad<{ items: FileView[]; total: number }>(() => api.get<{ items: FileView[]; total: number }>(path), [path]);
   // Only documents that are listed can be selected, published or sent back.
-  const visible = useMemo(() => files.data ?? [], [files.data]);
+  const visible = useMemo(() => files.data?.items ?? [], [files.data]);
+  // Rows the server holds beyond the list. They are not shown, so they cannot be published or sent back from here.
+  const outside = files.data === null ? 0 : rowsOutside(visible.length, files.data.total);
   const groups = useMemo(() => groupByClient(visible), [visible]);
   const selected = visible.filter((file) => checked.has(file.id));
   const outbound = (settings.data?.docTypes ?? []).filter((type) => type.direction !== "Inbound");
@@ -98,6 +101,7 @@ export function Staged() {
         />
       </div>
       <ErrorNotice error={files.error ?? action.error} />
+      {files.data === null || outside === 0 ? null : <p className="muted">{t("office.shownOf", { shown: visible.length, total: files.data.total })}</p>}
       <ErrorNotice error={settings.error} />
       {files.loading && files.data === null ? <Loading /> : null}
       <div className="split">
@@ -139,6 +143,7 @@ export function Staged() {
         <section className="card card--pad card--emphasis split__side" aria-label={t("office.staged.confirmation")}>
           <h2 className="heading">{t("office.staged.publishCount", { count: selected.length })}</h2>
           <p className="muted">{t("office.staged.check")}</p>
+          {outside === 0 ? null : <p className="muted">{t("office.staged.outside", { count: outside })}</p>}
           <table className="table">
             <thead>
               <tr>

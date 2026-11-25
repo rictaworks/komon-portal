@@ -17,6 +17,7 @@ import {
   shelfDirectionOf, shelfListPath, shownList, sortedReaders,
   type ShelfDirection, type ShelfList, type ShelfView,
 } from "./shelf-view";
+import { rowsOutside } from "./list-limit";
 import { useSettings } from "./useMasterData";
 
 const WITHDRAW_REASONS = ["WrongClient", "WrongFile", "Superseded", "Other"] as const;
@@ -246,7 +247,11 @@ export function Shelf() {
               {t(`office.shelf.tab.${value}`)}
             </button>
           ))}
-          {shown === null ? null : <span className="muted">{t("office.shelf.count", { count: shown.total })}</span>}
+          {shown === null ? null : (
+            <span className="muted">
+              {rowsOutside(items.length, shown.total) === 0 ? t("office.shelf.count", { count: shown.total }) : t("office.shownOf", { shown: items.length, total: shown.total })}
+            </span>
+          )}
         </nav>
         {shown === null && files.error === null ? <Loading /> : null}
         {shown !== null && items.length === 0 ? <p className="card empty">{t("office.shelf.empty")}</p> : null}

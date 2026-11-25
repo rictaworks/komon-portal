@@ -1,5 +1,6 @@
 import type { CaseView, DocTypeRecord, FileView, Reader } from "../../api/office-types";
 import { formatMonth } from "../../components/format";
+import { LIST_LIMIT } from "./list-limit";
 
 /** Rules of the Shelf screen that do not need React: what is listed, and which actions a row offers. */
 
@@ -35,7 +36,6 @@ export function shelfDirectionOf(search: string): ShelfDirection {
   return new URLSearchParams(search).get(DIRECTION_PARAMETER) === "Inbound" ? "Inbound" : "Outbound";
 }
 
-const LIST_LIMIT = 200;
 
 export interface ShelfQuery {
   clientId: string;
