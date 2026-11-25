@@ -6,6 +6,14 @@ export function formatDateTime(iso: string | null): string {
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 }
 
+/** The day of a moment as shown beside a document: 24 Nov 2026. */
+export function formatDate(iso: string | null): string {
+  if (iso === null) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(iso));
+}
+
 /** A calendar day (YYYY-MM-DD) as 24 Nov 2026, without shifting it by time zone. */
 export function formatDay(day: string | null): string {
   if (day === null) {

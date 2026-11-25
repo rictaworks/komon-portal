@@ -1,67 +1,112 @@
-import { useRef, useState, type FormEvent } from "react";
+import { faUpload, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
-import type { DocTypes, SendResult, Submission } from "../../api/client-types";
+import type { DocTypes, ListPage, SendResult, Submission } from "../../api/client-types";
 import { SelectField, TextField } from "../../components/Form";
-import { formatDateTime, formatSize } from "../../components/format";
+import { formatSize } from "../../components/format";
+import { Icon } from "../../components/Icon";
 import { ErrorNotice, IndividualNumberNotice, Notice } from "../../components/Notice";
+import { Pager } from "../../components/Pager";
 import { useAction } from "../../components/useAction";
 import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { sendEach, submissionsPath, unsent } from "./client-lists";
+import { SendResults, SubmissionCard, type SendRow } from "./ClientRows";
+import { usePagedList } from "./usePagedList";
 
-/** Send one file to the office, and see what was sent and whether the office has confirmed it. */
+/** A file chosen on this screen. The key keeps two files of the same name apart. */
+interface Chosen {
+  key: string;
+  file: File;
+}
+
+/** Send files to the office, each with its own result, and see what was sent and whether the office has confirmed it. */
 export function ClientSend() {
   const t = useT();
   const { clientId = "" } = useParams();
   const { api } = useSession();
   const types = useLoad<DocTypes>(() => api.get<DocTypes>(`/api/client/${clientId}/doc-types`), [clientId]);
-  const sent = useLoad<{ items: Submission[] }>(() => api.get<{ items: Submission[] }>(`/api/client/${clientId}/submissions`), [clientId]);
-  const action = useAction();
-  const fileInput = useRef<HTMLInputElement>(null);
+  const sent = usePagedList<Submission>(clientId, (page) => api.get<ListPage<Submission>>(submissionsPath(clientId, page)));
+  const sending = useAction();
+  const cancelling = useAction();
+  const picker = useRef<HTMLInputElement>(null);
+  const picked = useRef(0);
   const [docTypeId, setDocTypeId] = useState("");
   const [targetMonth, setTargetMonth] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<SendResult | null>(null);
+  const [chosen, setChosen] = useState<Chosen[]>([]);
+  const [rows, setRows] = useState<SendRow[]>([]);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const busy = sending.busy || cancelling.busy;
+  // Whether the member is still on this screen. A send that is under way stops before its next file once they leave.
+  const onScreen = useRef(false);
+  useEffect(() => {
+    onScreen.current = true;
+    return () => {
+      onScreen.current = false;
+    };
+  }, []);
 
-  const send = (event: FormEvent) => {
+  const onPick = (event: ChangeEvent<HTMLInputElement>): void => {
+    const added = [...(event.target.files ?? [])].map((file) => {
+      picked.current += 1;
+      return { key: String(picked.current), file };
+    });
+    setChosen((current) => [...current, ...added]);
+    // The same file can be chosen again after it was removed.
+    event.target.value = "";
+  };
+
+  const send = (event: FormEvent): void => {
     event.preventDefault();
-    if (file === null) {
+    if (chosen.length === 0 || busy) {
       return;
     }
-    void action.run(async () => {
-      const form = new FormData();
-      form.set("file", file, file.name);
-      form.set("docTypeId", docTypeId);
-      form.set("targetMonth", targetMonth);
-      const response = await api.upload<SendResult>(`/api/client/${clientId}/submissions`, form);
-      setResult(response);
-      // Only a stored file is sent. Anything else stays selected, so the client can see why and choose again.
-      if (response.outcome === "stored") {
-        setFile(null);
-        if (fileInput.current !== null) {
-          fileInput.current.value = "";
-        }
+    const batch = chosen;
+    setRows([]);
+    void sending.run(async () => {
+      // One file per request, in order, so that every file gets its own result.
+      const outcomes = await sendEach(
+        batch,
+        (item) => {
+          const form = new FormData();
+          form.set("file", item.file, item.file.name);
+          form.set("docTypeId", docTypeId);
+          form.set("targetMonth", targetMonth);
+          return api.upload<SendResult>(`/api/client/${clientId}/submissions`, form);
+        },
+        (index, outcome) => {
+          const item = batch[index];
+          if (item === undefined) {
+            throw new Error("a result arrived for a file that was not sent");
+          }
+          setProgress({ done: index + 1, total: batch.length });
+          setRows((current) => [...current, { key: item.key, fileName: item.file.name, outcome }]);
+        },
+        () => onScreen.current,
+      );
+      if (!onScreen.current) {
+        // The member left: the remaining files were not sent, and there is no screen to report on.
+        return;
       }
-      sent.reload();
+      setProgress(null);
+      // Only a stored file is sent. Anything else stays chosen, so the member can see why and decide again.
+      setChosen(unsent(batch, outcomes));
+      // The newest files are on the first page; asking for it again reloads it.
+      sent.goTo(0);
     });
   };
 
-  const cancel = (submission: Submission) => () => {
-    void action.run(() => api.post(`/api/client/${clientId}/submissions/${submission.id}/cancel`, { version: submission.version })).then(() => sent.reload());
+  const cancel = (submission: Submission): void => {
+    void cancelling.run(() => api.post(`/api/client/${clientId}/submissions/${submission.id}/cancel`, { version: submission.version })).then(() => sent.reload());
   };
 
   return (
     <div className="page">
       <h1 className="title">{t("client.send.title")}</h1>
       <IndividualNumberNotice />
-      <ErrorNotice error={action.error} />
-      {result === null || result.outcome === "stored" ? null : (
-        <Notice tone="danger">
-          {result.outcome === "duplicate" ? t("client.send.duplicate") : t("client.send.rejected", { reason: t(`rejection.${result.reason ?? "UnsupportedFormat"}`) })}
-        </Notice>
-      )}
-      {result?.outcome === "stored" ? <Notice tone="success">{t("client.send.sentNotice")}</Notice> : null}
+      <ErrorNotice error={sending.error ?? cancelling.error} />
       <form className="card card--pad stack" onSubmit={send} aria-label={t("client.send.form")}>
         {types.data === null ? <Loading /> : null}
         <SelectField
@@ -71,42 +116,56 @@ export function ClientSend() {
           onChange={setDocTypeId}
         />
         <TextField label={t("client.send.month")} type="month" value={targetMonth} onChange={setTargetMonth} />
-        <label className="field">
-          <span className="field__label">{t("client.send.file")}</span>
-          <input
-            ref={fileInput}
-            type="file"
-            className="input"
-            onChange={(event) => {
-              setResult(null);
-              setFile(event.target.files?.[0] ?? null);
-            }}
-          />
-        </label>
-        <Notice tone="info">{t("client.send.formats")}</Notice>
-        <button type="submit" className="button button--primary button--block" disabled={action.busy || file === null || docTypeId === "" || targetMonth === ""}>
+        <button type="button" className="chooser" disabled={busy} onClick={() => picker.current?.click()}>
+          <Icon icon={faUpload} />
+          {t("client.send.chooseFiles")}
+        </button>
+        <input ref={picker} className="visually-hidden" type="file" multiple tabIndex={-1} aria-label={t("client.send.chooseFiles")} onChange={onPick} />
+        <span className="muted">{t("client.send.formats")}</span>
+        {chosen.length === 0 ? null : (
+          <ul className="list card" aria-label={t("client.send.chosen")}>
+            {chosen.map((item) => (
+              <li key={item.key} className="list__item">
+                <span className="grow stack stack--tight">
+                  <strong className="wrap">{item.file.name}</strong>
+                  <span className="muted">{formatSize(item.file.size)}</span>
+                </span>
+                <button type="button" className="button button--small" disabled={busy} onClick={() => setChosen((current) => current.filter((other) => other.key !== item.key))}>
+                  <Icon icon={faXmark} />
+                  {t("client.send.remove")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button type="submit" className="button button--primary button--block" disabled={busy || chosen.length === 0 || docTypeId === "" || targetMonth === ""}>
           {t("client.send.submit")}
         </button>
       </form>
+      {progress === null ? null : <Notice tone="info">{t("client.send.progress", { done: progress.done, total: progress.total })}</Notice>}
+      <SendResults rows={rows} />
       <section className="stack" aria-label={t("client.send.sent")}>
         <h2 className="subtitle">{t("client.send.sent")}</h2>
-        {sent.data !== null && sent.data.items.length === 0 ? <p className="empty">{t("client.send.none")}</p> : null}
-        <ul className="stack">
-          {(sent.data?.items ?? []).map((submission) => (
-            <li key={submission.id} className="card card--pad stack">
-              <strong>{submission.displayName}</strong>
-              <span className="muted">
-                {submission.docType?.label ?? t("client.home.unknownType")} · {formatSize(submission.sizeBytes)} · {formatDateTime(submission.submittedAt)}
-              </span>
-              <span className="muted">{submission.acknowledgedAt === null ? t("client.send.waiting") : t("client.send.confirmed", { date: formatDateTime(submission.acknowledgedAt) })}</span>
-              {submission.canCancel ? (
-                <button type="button" className="button button--danger" disabled={action.busy} onClick={cancel(submission)}>
-                  {t("client.send.cancel")}
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        {sent.shown === null ? (
+          sent.error === null ? <Loading /> : <ErrorNotice error={sent.error} />
+        ) : (
+          <>
+            {sent.shown.items.length === 0 ? (
+              <p className="empty">{t("client.send.none")}</p>
+            ) : (
+              <ul className="list stack">
+                {sent.shown.items.map((submission) => (
+                  <li key={submission.id}>
+                    <SubmissionCard submission={submission} busy={busy} onCancel={cancel} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* A page that failed to load is reported beside the pager that asked for it; the rows above are still those of the page named here. */}
+            <ErrorNotice error={sent.error} />
+            <Pager page={sent.shown.page} hasMore={sent.shown.hasMore} busy={sent.loading} onPage={sent.goTo} />
+          </>
+        )}
       </section>
     </div>
   );

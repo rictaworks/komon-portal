@@ -171,7 +171,7 @@
     },
     "/api/client/{clientId}/documents": {
       "get": {
-        "summary": "Published documents of the company, filtered by type and month.",
+        "summary": "Published documents of the company, filtered by type and month, paged with `limit` and `offset`; `hasMore` tells whether more exist.",
         "tags": [
           "client"
         ],
@@ -255,7 +255,7 @@
     },
     "/api/client/{clientId}/submissions": {
       "get": {
-        "summary": "Files the company has sent, with their confirmation state.",
+        "summary": "Files the company has sent, with their confirmation state, paged with `limit` and `offset`; `hasMore` tells whether more exist.",
         "tags": [
           "client"
         ],
