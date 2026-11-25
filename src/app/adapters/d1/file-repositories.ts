@@ -7,7 +7,7 @@ import type {
   AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository,
 } from "../../../core/ports/repository";
 import {
-  changes, chunk, escapeLike, fromIso, fromIsoOrNull, IN_CHUNK, isUniqueViolation, numberOrNull, placeholders, text, textOrNull,
+  changes, chunk, fromIso, fromIsoOrNull, IN_CHUNK, isUniqueViolation, numberOrNull, placeholders, text, textOrNull,
   toIso, toIsoOrNull, whereSql, type Row, type Where,
 } from "./sql";
 
@@ -167,9 +167,15 @@ export class D1FileRepository implements FileRepository {
     if (code === undefined) {
       throw new Error("client of the file does not exist");
     }
-    const pattern = `${escapeLike(code)}\\_%\\_${receivedOn.replaceAll("-", "")}\\_%`;
-    const rows = await this.db.prepare("SELECT display_name FROM file_records WHERE display_name LIKE ? ESCAPE '\\'").bind(pattern).all<{ display_name: string }>();
+    // A range on the unique index: every name of this client starts with "{code}_", and the
+    // backtick is the character right after the underscore.
+    const compact = `_${receivedOn.replaceAll("-", "")}_`;
+    const rows = await this.db
+      .prepare("SELECT display_name FROM file_records WHERE display_name >= ? AND display_name < ?")
+      .bind(`${code}_`, `${code}\``)
+      .all<{ display_name: string }>();
     const used = rows.results
+      .filter((row) => row.display_name.includes(compact))
       .map((row) => Number(row.display_name.slice(row.display_name.lastIndexOf("_") + 1)))
       .filter((value) => Number.isFinite(value));
     return Math.max(0, ...used) + 1;
@@ -236,8 +242,22 @@ export class D1FileRepository implements FileRepository {
     return rows.results.map(toFile);
   }
 
-  async purge(id: Id): Promise<void> {
-    await this.db.prepare("DELETE FROM file_records WHERE id = ? AND state = 'Trashed'").bind(id).run();
+  async purge(id: Id, trashedBefore: Date, audit: AuditEntry): Promise<boolean> {
+    // One transaction. The audit row is written only while the file is still due, and the same
+    // condition guards the delete, so either both happen or neither does.
+    const due = "id = ? AND state = 'Trashed' AND trashed_at <= ?";
+    const threshold = toIso(trashedBefore);
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO audit_log (id, actor_user_id, action, target_type, target_id, result, occurred_at)
+           SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM file_records WHERE ${due})`,
+        )
+        .bind(audit.id, audit.actorUserId, audit.action, audit.targetType, audit.targetId, audit.result, toIso(audit.occurredAt), id, threshold),
+      this.db.prepare(`DELETE FROM file_records WHERE ${due}`).bind(id, threshold),
+    ]);
+    const recorded = results[0];
+    return recorded !== undefined && changes(recorded) === 1;
   }
 
   async insertBatch(batch: UploadBatch): Promise<void> {

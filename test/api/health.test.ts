@@ -15,3 +15,15 @@ describe("GET /api/health", () => {
     expect(await response.json()).toEqual({ error: "not_found" });
   });
 });
+
+describe("static assets", () => {
+  it("are served through the Worker with the security headers", async () => {
+    const assets = { fetch: async () => Response.redirect("https://portal.test/index.html", 307) };
+    const immutable = { fetch: async () => (await fetch("data:text/html,<p>shell</p>")) };
+    for (const binding of [assets, immutable]) {
+      const response = await createApp().request("https://portal.test/office/dashboard", {}, { ...env, ASSETS: binding });
+      expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
+      expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    }
+  });
+});

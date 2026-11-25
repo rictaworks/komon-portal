@@ -150,7 +150,8 @@ export interface DocTypeRepository {
   update(docType: DocType): Promise<boolean>;
   listRules(): Promise<DocRule[]>;
   insertRule(rule: DocRule): Promise<void>;
-  deleteRule(id: Id): Promise<void>;
+  /** Returns false when no rule had this id. */
+  deleteRule(id: Id): Promise<boolean>;
 }
 
 export interface FileFilter {
@@ -191,8 +192,12 @@ export interface FileRepository {
   update(file: FileRecord, expectedVersion: number): Promise<FileWriteResult>;
   summarizeForCase(caseId: Id): Promise<CaseFileSummary>;
   listTrashedBefore(threshold: Date, page: Page): Promise<FileRecord[]>;
-  /** Permanently removes the record and its receipts. */
-  purge(id: Id): Promise<void>;
+  /**
+   * Permanently removes the record and its receipts and appends the audit entry, as one atomic
+   * step, only while the file is still trashed and was trashed at or before `trashedBefore`.
+   * Returns false, writing nothing, when the file was restored or erased in the meantime.
+   */
+  purge(id: Id, trashedBefore: Date, audit: AuditEntry): Promise<boolean>;
   insertBatch(batch: UploadBatch): Promise<void>;
   findBatch(id: Id): Promise<UploadBatch | null>;
 }

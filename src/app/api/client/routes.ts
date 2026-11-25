@@ -9,7 +9,9 @@ import { readJson, requireInteger } from "../input";
 import { uploadedFile } from "../office/files";
 import { Lookups, pageOf } from "../office/views";
 
-const HOME_LIMIT = { limit: 100, offset: 0 };
+const HOME_WINDOW = 100;
+/** One extra row tells the home view whether anything lies beyond the window. */
+const HOME_FETCH = { limit: HOME_WINDOW + 1, offset: 0 };
 
 /** A client the member cannot reach is answered exactly like a client that does not exist. */
 async function requireReach(c: AppContext, clientId: Id): Promise<{ actor: UserActor; services: Services }> {
@@ -66,12 +68,18 @@ export function clientPortalRoutes(): Hono<AppBindings> {
 
   routes.get("/:clientId/home", async (c) => {
     const { actor, services } = await requireReach(c, c.req.param("clientId"));
-    const documents = await publishedDocuments(services, actor, c.req.param("clientId"), c, HOME_LIMIT);
+    const documentRows = await publishedDocuments(services, actor, c.req.param("clientId"), c, HOME_FETCH);
+    const caseRows = await services.repository.cases.list({ clientId: c.req.param("clientId") }, HOME_FETCH);
     const cases = [];
-    for (const record of await services.repository.cases.list({ clientId: c.req.param("clientId") }, HOME_LIMIT)) {
+    for (const record of caseRows.slice(0, HOME_WINDOW)) {
       cases.push(await services.cases.clientView(record));
     }
-    return c.json({ unread: documents.filter((document) => !document.opened), cases });
+    // `truncated` is true when more items exist than the window shows.
+    return c.json({
+      unread: documentRows.slice(0, HOME_WINDOW).filter((document) => !document.opened),
+      cases,
+      truncated: { documents: documentRows.length > HOME_WINDOW, cases: caseRows.length > HOME_WINDOW },
+    });
   });
 
   routes.get("/:clientId/documents", async (c) => {
