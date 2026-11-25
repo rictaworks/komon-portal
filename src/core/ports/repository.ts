@@ -150,7 +150,8 @@ export interface DocTypeRepository {
   update(docType: DocType): Promise<boolean>;
   listRules(): Promise<DocRule[]>;
   insertRule(rule: DocRule): Promise<void>;
-  deleteRule(id: Id): Promise<void>;
+  /** Returns false when no rule had this id. */
+  deleteRule(id: Id): Promise<boolean>;
 }
 
 export interface FileFilter {

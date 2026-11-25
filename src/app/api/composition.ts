@@ -11,12 +11,15 @@ import { IntakeService } from "../../core/intake/intake-service";
 import { ReviewService } from "../../core/intake/review-service";
 import { SubmissionService } from "../../core/intake/submission-service";
 import { TrashService } from "../../core/intake/trash-service";
+import { ClientService } from "../../core/office/client-service";
+import { SettingsService } from "../../core/office/settings-service";
 import type { Clock } from "../../core/ports/clock";
 import type { FileStore } from "../../core/ports/file-store";
 import type { IdGenerator } from "../../core/ports/id-generator";
 import type { Notifier } from "../../core/ports/notifier";
 import { PublishService } from "../../core/publish/publish-service";
 import { ViewService } from "../../core/publish/view-service";
+import { DashboardQueries } from "../adapters/d1/dashboard-queries";
 import { D1Repository } from "../adapters/d1/d1-repository";
 import { GoogleOidc } from "../adapters/google-oidc";
 import type { HumanVerifier, IdentityProvider } from "../adapters/identity-provider";
@@ -64,6 +67,9 @@ export interface Services {
   trash: TrashService;
   invitations: InvitationService;
   setup: SetupService;
+  clients: ClientService;
+  settings: SettingsService;
+  dashboard: DashboardQueries;
 }
 
 /** Used until Web Push is wired in: publishing must work without any notification channel. */
@@ -115,6 +121,9 @@ export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Se
     submissions: new SubmissionService({ ...shared, cases }),
     trash: new TrashService({ ...shared, cases }),
     invitations: new InvitationService(shared),
+    clients: new ClientService(shared),
+    settings: new SettingsService(shared),
+    dashboard: new DashboardQueries(env.DB),
     setup: new SetupService({ repository, policy, audit, setupToken: config.setupToken }),
   };
 }
