@@ -12,7 +12,6 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 
 **Known gaps:**
 
-- A document whose stored body cannot be removed after its record was erased is left without a row, so it cannot be retried. Fixing it needs a purge state.
 - A publish whose follow-up writes (audit, metric or case update) fail is still published; its result carries a warning.
 - The Owner dashboard's mis-delivery count and the incidents list both show at most 100 items, with no truncation flag yet.
 - The Owner dashboard shows a count of mis-deliveries; the spec asks for the readers and times, which are in the incidents list.

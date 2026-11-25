@@ -3,7 +3,7 @@ import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
 import type { CaseService } from "../cases/case-service";
 import { actorUserId, type Actor } from "../model/actor";
 import { conflict, invalidState, notFound } from "../model/errors";
-import type { FileRecord, Id } from "../model/types";
+import type { FileRecord, Id, PendingPurge } from "../model/types";
 import type { FileStore } from "../ports/file-store";
 import type { IdGenerator } from "../ports/id-generator";
 import type { Repository } from "../ports/repository";
@@ -74,16 +74,34 @@ export class TrashService {
   }
 
   /**
-   * Erases files trashed more than 30 days ago. The record goes first, together with its audit
-   * entry and only if the file is still due, so a file restored at the last moment is never
-   * erased; the body is removed afterwards. A failure on one file is recorded and the remaining
-   * files are still processed.
+   * Erases files trashed more than 30 days ago, in three steps per file. The file is first marked
+   * as being purged, only if it is still due, so a file restored at the last moment is never
+   * erased; from then on it is invisible and cannot be restored. Its body is removed next, and
+   * the record is erased last, together with its audit entry. A file whose body or record could
+   * not be removed keeps its mark and is retried at the start of every later run. A failure on
+   * one file is recorded and the remaining files are still processed.
    */
   async purgeExpired(actor: Actor): Promise<PurgeReport> {
     await this.deps.guard.require(actor, "maintenance.run", { type: FILE_TARGET, id: "purge" });
     const report: PurgeReport = { purged: 0, skipped: 0, failed: 0 };
+    // Left over from earlier runs. Done first, so a file that fails below is not tried twice in one run.
+    // Only files that failed again stay in the listing and ahead of the next page.
+    let stillPurging = 0;
+    for (;;) {
+      const pending = await this.deps.repository.files.listPurging({ limit: PURGE_PAGE.limit, offset: stillPurging });
+      if (pending.length === 0) {
+        break;
+      }
+      for (const file of pending) {
+        const outcome = await this.finishPurge(actor, file);
+        if (outcome === "failed") {
+          stillPurging += 1;
+        }
+        report[outcome] += 1;
+      }
+    }
     const threshold = this.purgeThreshold();
-    // Only files whose record survived a failure stay in the listing and ahead of the next page.
+    // Only files that could not be marked stay in the listing and ahead of the next page.
     let stillListed = 0;
     for (;;) {
       const due = await this.deps.repository.files.listTrashedBefore(threshold, { limit: PURGE_PAGE.limit, offset: stillListed });
@@ -92,21 +110,41 @@ export class TrashService {
       }
       for (const file of due) {
         const outcome = await this.purgeOne(actor, file, threshold);
-        if (outcome === "failed") {
+        if (outcome === "unmarked") {
           stillListed += 1;
         }
-        report[outcome === "orphaned" ? "failed" : outcome] += 1;
+        report[outcome === "unmarked" ? "failed" : outcome] += 1;
       }
     }
   }
 
   /**
-   * "failed": the record survived and is retried by a later run. "orphaned": the record was erased but its
-   * content could not be removed; it is counted as failed and cannot be retried (see the follow-up on purge state).
+   * "unmarked": the file could not be marked, so it is still listed as due. "failed": it is marked
+   * as being purged and a later run finishes it. Both count as failed in the report.
    */
-  private async purgeOne(actor: Actor, file: FileRecord, threshold: Date): Promise<keyof PurgeReport | "orphaned"> {
+  private async purgeOne(actor: Actor, file: FileRecord, threshold: Date): Promise<keyof PurgeReport | "unmarked"> {
+    let marked: boolean;
     try {
-      const erased = await this.deps.repository.files.purge(file.id, threshold, {
+      marked = await this.deps.repository.files.beginPurge(file.id, threshold, this.deps.writer.now());
+    } catch (error) {
+      await this.recordFailure(actor, file, error);
+      return "unmarked";
+    }
+    if (!marked) {
+      // Restored or already gone in the meantime: nothing to do and nothing failed.
+      return "skipped";
+    }
+    return this.finishPurge(actor, file);
+  }
+
+  /**
+   * Removes the body, then erases the record with its audit entry. Removing a body that is
+   * already gone succeeds, so a run interrupted between the two steps is finished by the next one.
+   */
+  private async finishPurge(actor: Actor, file: PendingPurge): Promise<keyof PurgeReport> {
+    try {
+      await this.deps.store.delete(file.r2Key);
+      const erased = await this.deps.repository.files.completePurge(file.id, {
         id: this.deps.ids.newId(),
         actorUserId: actorUserId(actor),
         action: "file.purge",
@@ -115,17 +153,8 @@ export class TrashService {
         result: "ok",
         occurredAt: this.deps.writer.now(),
       });
-      if (!erased) {
-        // Restored or already gone in the meantime: nothing to do and nothing failed.
-        return "skipped";
-      }
-      try {
-        await this.deps.store.delete(file.r2Key);
-      } catch (error) {
-        await this.recordFailure(actor, file, error);
-        return "orphaned";
-      }
-      return "purged";
+      // Not erased: another run finished this file in the meantime.
+      return erased ? "purged" : "skipped";
     } catch (error) {
       await this.recordFailure(actor, file, error);
       return "failed";
@@ -133,7 +162,7 @@ export class TrashService {
   }
 
   /** Recording a failure must not abort the job. */
-  private async recordFailure(actor: Actor, file: FileRecord, error: unknown): Promise<void> {
+  private async recordFailure(actor: Actor, file: PendingPurge, error: unknown): Promise<void> {
     try {
       await this.deps.audit.record(actor, "file.purge", FILE_TARGET, file.id, "failed");
       await this.deps.metrics.record("purge.failed", file.clientId, { fileId: file.id, error: error instanceof Error ? error.name : "unknown" });

@@ -227,6 +227,16 @@ export interface FileRecord {
   version: number;
 }
 
+/**
+ * A file being purged: its 30 days in the trash have passed and its stored body is being removed.
+ * Its record is kept, hidden from every other read, until the body is gone.
+ */
+export interface PendingPurge {
+  id: Id;
+  clientId: Id | null;
+  r2Key: string;
+}
+
 export const EVIDENCE_KINDS = ["ArrivalNumber", "ClientCode", "CorporateNumber", "StaffSelected", "ExistingCopy"] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 

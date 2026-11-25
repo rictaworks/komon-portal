@@ -213,12 +213,12 @@ describe("TrashService", () => {
 
   it("continues with the remaining files when one erasure fails", async () => {
     kit.clock.advanceDays(31);
-    const original = kit.repo.files.purge;
-    kit.repo.files.purge = async (id, before, audit) => {
+    const original = kit.repo.files.beginPurge;
+    kit.repo.files.beginPurge = async (id, before, at) => {
       if (id === "f1") {
         throw new Error("database unavailable");
       }
-      return original(id, before, audit);
+      return original(id, before, at);
     };
     expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 1, skipped: 0, failed: 1 });
     expect(kit.repo.fileRows.map((row) => row.id)).toEqual(["f1"]);
@@ -253,12 +253,12 @@ describe("TrashService", () => {
       }));
     }
     kit.clock.advanceDays(31);
-    const original = kit.repo.files.purge;
-    kit.repo.files.purge = async (id, before, audit) => {
+    const original = kit.repo.files.beginPurge;
+    kit.repo.files.beginPurge = async (id, before, at) => {
       if (Number(id.slice(1)) < 110) {
         throw new Error("database unavailable");
       }
-      return original(id, before, audit);
+      return original(id, before, at);
     };
     expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 20, skipped: 0, failed: 110 });
     expect(kit.repo.fileRows).toHaveLength(110);
@@ -283,14 +283,123 @@ describe("TrashService", () => {
       }
       return original(key);
     };
-    // Three bodies could not be removed; their records were erased, so every due file is reached in this run.
+    // Three bodies could not be removed; their records wait, out of the due listing, so every due file is reached in this run.
     expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 127, skipped: 0, failed: 3 });
+    expect(kit.repo.fileRows.map((row) => row.id)).toEqual(["q000", "q001", "q002"]);
+    expect(calls).toBe(130);
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 3, skipped: 0, failed: 0 });
     expect(kit.repo.fileRows).toHaveLength(0);
+    expect(calls).toBe(133);
+  });
+
+  it("keeps the record of a file whose body cannot be removed and erases both on the next run", async () => {
+    kit.clock.advanceDays(31);
+    const original = kit.store.delete.bind(kit.store);
+    kit.store.delete = async (key: string) => {
+      if (key === "files/f1") {
+        throw new Error("object store unavailable");
+      }
+      return original(key);
+    };
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 1, skipped: 0, failed: 1 });
+    expect(kit.repo.fileRows.map((row) => row.id)).toEqual(["f1"]);
+    expect(kit.store.objects.has("files/f1")).toBe(true);
+    const purges = (): [string, string][] => kit.repo.auditRows.filter((row) => row.action === "file.purge").map((row) => [row.targetId, row.result]);
+    expect(purges()).toEqual([["f1", "failed"], ["f2", "ok"]]);
+    expect(kit.repo.metricRows.filter((row) => row.name === "purge.failed").map((row) => row.attributes.fileId)).toEqual(["f1"]);
+
+    // Still failing on the next run: the same record is found and tried again.
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 0, skipped: 0, failed: 1 });
+    expect(kit.repo.fileRows.map((row) => row.id)).toEqual(["f1"]);
+
+    kit.store.delete = original;
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 1, skipped: 0, failed: 0 });
+    expect(kit.repo.fileRows).toEqual([]);
+    expect(kit.store.objects.size).toBe(0);
+    expect(purges().filter(([id, result]) => id === "f1" && result === "ok")).toHaveLength(1);
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 0, skipped: 0, failed: 0 });
+    expect(purges().filter(([id, result]) => id === "f1" && result === "ok")).toHaveLength(1);
+  });
+
+  it("retries a file whose record could not be erased after its body was removed", async () => {
+    kit.clock.advanceDays(31);
+    const original = kit.repo.files.completePurge;
+    kit.repo.files.completePurge = async (id, audit) => {
+      if (id === "f1") {
+        throw new Error("database unavailable");
+      }
+      return original(id, audit);
+    };
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 1, skipped: 0, failed: 1 });
+    expect(kit.repo.fileRows.map((row) => row.id)).toEqual(["f1"]);
+    expect(kit.store.objects.size).toBe(0);
+    kit.repo.files.completePurge = original;
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 1, skipped: 0, failed: 0 });
+    expect(kit.repo.fileRows).toEqual([]);
+    expect(kit.repo.auditRows.filter((row) => row.action === "file.purge" && row.targetId === "f1").map((row) => row.result)).toEqual(["failed", "ok"]);
+  });
+
+  it("reaches every file being purged even when more than a page of them keeps failing", async () => {
+    kit.repo.fileRows = [];
+    for (let index = 0; index < 130; index += 1) {
+      const id = `r${String(index).padStart(3, "0")}`;
+      kit.repo.fileRows.push(fileRecord({
+        id, r2Key: `files/${id}`, sha256: String(index + 600).padStart(64, "0"), displayName: `N_${id}`, state: "Trashed", trashedFrom: "Staged",
+        trashedAt: new Date(kit.clock.now().getTime() + index),
+      }));
+    }
+    kit.clock.advanceDays(31);
+    const original = kit.store.delete.bind(kit.store);
+    kit.store.delete = async () => {
+      throw new Error("object store unavailable");
+    };
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 0, skipped: 0, failed: 130 });
+    kit.store.delete = async (key: string) => {
+      if (Number(key.slice(-3)) < 110) {
+        throw new Error("object store unavailable");
+      }
+      return original(key);
+    };
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 20, skipped: 0, failed: 110 });
+    expect(kit.repo.fileRows).toHaveLength(110);
+  });
+
+  it("hides a file being purged: it is not listed, counted, opened or restored", async () => {
+    kit.repo.caseRows.push(caseRecord({ id: "k1", clientId: "c1" }));
+    const linked = kit.repo.fileRows.find((row) => row.id === "f1");
+    if (linked === undefined) throw new Error("setup");
+    linked.caseId = "k1";
+    kit.clock.advanceDays(31);
+    kit.store.delete = async () => {
+      throw new Error("object store unavailable");
+    };
+    expect(await kit.repo.files.count({ states: ["Trashed"] })).toBe(2);
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 0, skipped: 0, failed: 2 });
+    expect(await kit.repo.files.findById("f1")).toBeNull();
+    expect(await kit.repo.files.list({}, { limit: 100, offset: 0 })).toEqual([]);
+    expect(await kit.repo.files.count({})).toBe(0);
+    expect(await kit.repo.files.count({ states: ["Trashed"] })).toBe(0);
+    expect(await kit.repo.files.summarizeForCase("k1")).toEqual({ outbound: 0, published: 0, publishedAndOpened: 0, inbound: 0 });
+    expect(await kit.repo.files.listTrashedBefore(kit.trash.purgeThreshold(), { limit: 100, offset: 0 })).toEqual([]);
+    expect(await kit.repo.receipts.listByFile("f1")).toEqual([]);
+    await expect(kit.trash.restore(staff, "f1", 1)).rejects.toThrow("not_found: file");
+    await expect(kit.view.open(staff, "f1", "view")).rejects.toThrow("not_found: file");
+    await expect(kit.view.open(staff, "f2", "download")).rejects.toThrow("not_found: file");
+  });
+
+  it("refuses a restore that read the file before the purge began", async () => {
+    kit.clock.advanceDays(31);
+    const before = kit.repo.fileRows.find((row) => row.id === "f1");
+    if (before === undefined) throw new Error("setup");
+    const stale = { ...before, state: "NeedsReview" as const, reviewReason: "Restored" as const, trashedAt: null, trashedFrom: null, version: 2 };
+    expect(await kit.repo.files.beginPurge("f1", kit.trash.purgeThreshold(), kit.clock.now())).toBe(true);
+    expect(await kit.repo.files.update(stale, 1)).toBe("stale");
+    expect(kit.repo.fileRows.find((row) => row.id === "f1")?.state).toBe("Trashed");
   });
 
   it("finishes the job even when a failure cannot be recorded", async () => {
     kit.clock.advanceDays(31);
-    kit.repo.files.purge = async () => {
+    kit.repo.files.beginPurge = async () => {
       throw new Error("database unavailable");
     };
     kit.repo.audit.append = async () => {
