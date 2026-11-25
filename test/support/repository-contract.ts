@@ -449,6 +449,28 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(purges.map((row) => [row.id, row.targetId])).toEqual([[id("pl3"), old.id]]);
     });
 
+    it("finds the latest successful audit entry of a target among the given actions", async () => {
+      const target = id("aud-user");
+      const entryFor = (label: string, action: string, result: "ok" | "denied", offsetMs: number, targetId = target) => ({
+        id: id(label),
+        actorUserId: null,
+        action,
+        targetType: "user",
+        targetId,
+        result,
+        occurredAt: new Date(T0.getTime() + offsetMs),
+      });
+      await repo.audit.append(entryFor("al1", "office.approve", "ok", 0));
+      await repo.audit.append(entryFor("al2", "office.approve", "ok", 60_000));
+      await repo.audit.append(entryFor("al3", "office.approve", "denied", 120_000));
+      await repo.audit.append(entryFor("al4", "office.revoke", "ok", 180_000));
+      await repo.audit.append(entryFor("al5", "office.approve", "ok", 240_000, id("aud-other")));
+      expect((await repo.audit.latestOk("user", target, ["office.approve", "setup.claim_owner"]))?.id).toBe(id("al2"));
+      expect(await repo.audit.latestOk("user", target, ["setup.claim_owner"])).toBeNull();
+      expect(await repo.audit.latestOk("user", target, [])).toBeNull();
+      expect(await repo.audit.latestOk("client", target, ["office.approve"])).toBeNull();
+    });
+
     it("changes a file and appends its audit entry together, or does neither", async () => {
       const company = await seedClient();
       const actor = await seedUser("actor", { officeRole: "Staff", officeStatus: "Active" });

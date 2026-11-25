@@ -138,6 +138,33 @@ describe("office API", () => {
     expect(invited).not.toHaveProperty("codeHash");
   });
 
+  it("lists outstanding staff invitations, cancels them, and tells when each staff member was approved", async () => {
+    const issued = await json(await owner.call("POST", "/api/office/staff/invitations", { body: { role: "Staff" } }));
+    const listed = await json(await owner.call("GET", "/api/office/staff"));
+    expect(listed.invitations).toEqual(expect.arrayContaining([expect.objectContaining({ id: issued.id, targetType: "Office", status: "Issued", expiresAt: expect.any(String) })]));
+    expect(JSON.stringify(listed)).not.toContain(String(issued.code));
+
+    const newcomer = kit.client();
+    kit.identity.identity = { sub: "office-test-staff-approval", displayName: "R. Ono" };
+    const start = await newcomer.call("GET", "/api/auth/login");
+    await newcomer.call("GET", `/api/auth/callback?code=c&state=${new URL(start.headers.get("Location") ?? "").searchParams.get("state")}`);
+    newcomer.csrfToken = String((await json(await newcomer.call("GET", "/api/me"))).csrfToken);
+    expect((await newcomer.call("POST", "/api/invitations/redeem", { body: { code: issued.code, turnstileToken: "ok" } })).status).toBe(200);
+    const member = ((await json(await owner.call("GET", "/api/office/staff"))).members as Json[]).find((row) => row.displayName === "R. Ono") ?? {};
+    expect(member).toMatchObject({ officeStatus: "Pending", approvedAt: null });
+    expect(member.redeemedAt).toBeTruthy();
+    expect((await owner.call("POST", `/api/office/staff/${String(member.userId)}/approve`)).status).toBe(200);
+    const approved = ((await json(await owner.call("GET", "/api/office/staff"))).members as Json[]).find((row) => row.displayName === "R. Ono") ?? {};
+    expect(approved).toMatchObject({ officeStatus: "Active" });
+    expect(approved.approvedAt).toEqual(expect.any(String));
+    expect(Number.isNaN(Date.parse(String(approved.approvedAt)))).toBe(false);
+
+    const second = await json(await owner.call("POST", "/api/office/staff/invitations", { body: { role: "Staff" } }));
+    expect((await owner.call("POST", `/api/office/invitations/${String(second.id)}/cancel`)).status).toBe(200);
+    const afterCancel = await json(await owner.call("GET", "/api/office/staff"));
+    expect(afterCancel.invitations).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: second.id })]));
+  });
+
   it("registers a case and records the submission", async () => {
     const created = await staff.call("POST", "/api/office/cases", { body: { clientId: ids.c1, caseTypeId: ids.t1, targetMonth: "2026-11", referenceCode: "SHAHO-2611-01", dueOn: "2026-11-30" } });
     expect(created.status).toBe(201);

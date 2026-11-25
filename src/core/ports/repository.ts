@@ -261,6 +261,8 @@ export interface ReceiptRepository {
 export interface AuditRepository {
   append(entry: AuditEntry): Promise<void>;
   list(page: Page): Promise<AuditEntry[]>;
+  /** The most recent entry with a successful result, for this target, whose action is one of `actions`. */
+  latestOk(targetType: string, targetId: string, actions: readonly string[]): Promise<AuditEntry | null>;
 }
 
 export interface MetricRepository {

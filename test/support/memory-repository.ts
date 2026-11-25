@@ -580,6 +580,13 @@ export class MemoryRepository implements Repository {
       this.auditRows.push(copy(entry));
     },
     list: async (page: Page): Promise<AuditEntry[]> => paged([...this.auditRows].reverse(), page),
+    latestOk: async (targetType: string, targetId: string, actions: readonly string[]): Promise<AuditEntry | null> => {
+      const rows = this.auditRows.filter(
+        (row) => row.targetType === targetType && row.targetId === targetId && row.result === "ok" && actions.includes(row.action),
+      );
+      // Rows are appended in time order, so the last match is the most recent.
+      return copy(rows.at(-1) ?? null);
+    },
   };
 
   metrics = {

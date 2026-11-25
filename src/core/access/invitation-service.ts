@@ -33,7 +33,12 @@ export interface OfficeMemberView {
   officeRole: OfficeRole | null;
   officeStatus: MembershipStatus | null;
   redeemedAt: Date | null;
+  /** When the Owner approved this member, or the Owner was set up. Null when no such approval is recorded. */
+  approvedAt: Date | null;
 }
+
+/** Audit actions that make an office member Active: an approval, or the claim that sets up the first Owner. */
+const OFFICE_ACTIVATION_ACTIONS = ["office.approve", "setup.claim_owner"] as const;
 
 export const INVITATION_VALID_HOURS = 72;
 export const INVITATION_CODE_BYTES = 32;
@@ -217,12 +222,14 @@ export class InvitationService {
     const views: OfficeMemberView[] = [];
     for (const user of await this.deps.repository.users.listOffice()) {
       const invitation = await this.deps.repository.invitations.findLatestRedeemedBy(user.id, null);
+      const activation = await this.deps.repository.audit.latestOk(USER_TARGET, user.id, OFFICE_ACTIVATION_ACTIONS);
       views.push({
         userId: user.id,
         displayName: user.displayName,
         officeRole: user.officeRole,
         officeStatus: user.officeStatus,
         redeemedAt: invitation?.redeemedAt ?? null,
+        approvedAt: activation?.occurredAt ?? null,
       });
     }
     return views;
