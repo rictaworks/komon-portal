@@ -252,4 +252,55 @@ describe("office API", () => {
     expect(entries.find((entry) => entry.action === "client.register")).toMatchObject({ actorDisplayName: "Dev staff", result: "ok" });
     expect(JSON.stringify(entries)).not.toContain("Yamada");
   });
+
+  it("narrows the client list by status and by code or name on the server", async () => {
+    const codes = async (query: string) => ((await json(await staff.call("GET", `/api/office/clients?${query}`))).items as Json[]).map((item) => item.code);
+    // DEMO01 is the client of the development member.
+    expect(await codes("status=Active")).toEqual(["C0031", "DEMO01"]);
+    expect(await codes("status=Closed")).toEqual(["C0142"]);
+    expect(await codes("status=Archived")).toEqual([]);
+    expect(await codes("status=Active&query=Hinode")).toEqual(["C0031"]);
+    expect(await codes("status=Active&query=Kita")).toEqual([]);
+    expect(await codes("query=C01")).toEqual(["C0142"]);
+    const unknown = await staff.call("GET", "/api/office/clients?status=Open");
+    expect(unknown.status).toBe(400);
+    expect(await json(unknown)).toEqual({ error: "invalid_input", detail: "status" });
+  });
+
+  it("lists the corporate number and the member counts of each client on request", async () => {
+    const plain = (await json(await staff.call("GET", "/api/office/clients"))).items as Json[];
+    expect(plain.every((item) => !("members" in item))).toBe(true);
+
+    const invitation = await json(await staff.call("POST", `/api/office/clients/${ids.c1}/invitations`));
+    const guest = kit.client();
+    kit.identity.identity = { sub: "office-test-second-guest", displayName: "M. Sato" };
+    const start = await guest.call("GET", "/api/auth/login");
+    await guest.call("GET", `/api/auth/callback?code=c&state=${new URL(start.headers.get("Location") ?? "").searchParams.get("state")}`);
+    guest.csrfToken = String((await json(await guest.call("GET", "/api/me"))).csrfToken);
+    expect((await guest.call("POST", "/api/invitations/redeem", { body: { code: invitation.code, turnstileToken: "ok" } })).status).toBe(200);
+
+    const rows = async () => ((await json(await staff.call("GET", "/api/office/clients?include=members"))).items as Json[]).map((item) => [item.code, item.corporateNumber, item.members]);
+    // The membership revoked earlier is not counted.
+    expect(await rows()).toEqual([
+      ["C0031", CORPORATE_NUMBER, { active: 0, pending: 1 }],
+      ["C0142", null, { active: 0, pending: 0 }],
+      ["DEMO01", null, { active: 1, pending: 0 }],
+    ]);
+    const members = (await json(await staff.call("GET", `/api/office/clients/${ids.c1}/members`))).members as Json[];
+    const pending = members.find((entry) => entry.status === "Pending") ?? {};
+    expect(pending.redeemedAt).toBeTruthy();
+    expect((await staff.call("POST", `/api/office/memberships/${String(pending.membershipId)}/approve`)).status).toBe(200);
+    expect((await rows())[0]).toEqual(["C0031", CORPORATE_NUMBER, { active: 1, pending: 0 }]);
+  });
+
+  it("refuses an unknown include value, and member counts for more than 50 clients at once", async () => {
+    const unknown = await staff.call("GET", "/api/office/clients?include=everything");
+    expect(unknown.status).toBe(400);
+    expect(await json(unknown)).toEqual({ error: "invalid_input", detail: "include" });
+    const wide = await staff.call("GET", "/api/office/clients?include=members&limit=51");
+    expect(wide.status).toBe(400);
+    expect(await json(wide)).toEqual({ error: "invalid_input", detail: "limit" });
+    expect((await staff.call("GET", "/api/office/clients?include=members&limit=50")).status).toBe(200);
+    expect((await member.call("GET", "/api/office/clients?include=members")).status).toBe(404);
+  });
 });
