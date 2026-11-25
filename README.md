@@ -151,7 +151,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | POST | `/api/office/memberships/{id}/revoke` | Revokes a client member's access. | staff |
 | POST | `/api/office/publish` | Publishes staged files, one result per file. | staff |
 | GET | `/api/office/settings` | Office settings (including the Jev confidence threshold), document and case types, rules, and whether Web Push is configured. | staff |
-| PUT | `/api/office/settings/office` | Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing, Jev confidence threshold). | owner |
+| PUT | `/api/office/settings/office` | Updates office settings (office name, time zone, arrival-number pattern, deadlines, automatic publishing, Jev confidence threshold). | owner |
 | GET | `/api/office/staff` | Staff members and open staff invitations. | owner |
 | POST | `/api/office/staff/invitations` | Issues a staff invitation for the Staff or Owner role. | owner |
 | POST | `/api/office/staff/{userId}/approve` | Approves a staff member. | owner |

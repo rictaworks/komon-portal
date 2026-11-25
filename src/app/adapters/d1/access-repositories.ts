@@ -12,6 +12,7 @@ import {
 
 function toSetting(row: Row): OfficeSetting {
   return {
+    officeName: textOrNull(row.office_name),
     timezone: text(row.timezone),
     arrivalNumberPattern: text(row.arrival_number_pattern),
     retrievalDeadlineDays: Number(row.retrieval_deadline_days),
@@ -35,10 +36,10 @@ export class D1SettingsRepository implements SettingsRepository {
   async update(setting: OfficeSetting, expectedVersion: number): Promise<boolean> {
     const result = await this.db
       .prepare(
-        "UPDATE office_setting SET timezone = ?, arrival_number_pattern = ?, retrieval_deadline_days = ?, auto_publish_enabled = ?, jev_threshold = ?, version = ? WHERE id = 1 AND version = ?",
+        "UPDATE office_setting SET office_name = ?, timezone = ?, arrival_number_pattern = ?, retrieval_deadline_days = ?, auto_publish_enabled = ?, jev_threshold = ?, version = ? WHERE id = 1 AND version = ?",
       )
       .bind(
-        setting.timezone, setting.arrivalNumberPattern, setting.retrievalDeadlineDays, setting.autoPublishEnabled ? 1 : 0,
+        setting.officeName, setting.timezone, setting.arrivalNumberPattern, setting.retrievalDeadlineDays, setting.autoPublishEnabled ? 1 : 0,
         setting.jevThreshold, setting.version, expectedVersion,
       )
       .run();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copyText, docTypeUpdate, parseJevThreshold, submissionCaseTypeOptions, takesSubmissions } from "../../src/app/web/pages/office/settings-input";
+import { copyText, docTypeUpdate, parseJevThreshold, parseOfficeName, submissionCaseTypeOptions, takesSubmissions } from "../../src/app/web/pages/office/settings-input";
 
 describe("parseJevThreshold", () => {
   it("accepts every value the server accepts, including one off the 0.01 grid", () => {
@@ -14,6 +14,20 @@ describe("parseJevThreshold", () => {
     expect(parseJevThreshold("")).toBeNull();
     expect(parseJevThreshold("0.9x")).toBeNull();
     expect(parseJevThreshold("NaN")).toBeNull();
+  });
+});
+
+describe("parseOfficeName", () => {
+  it("returns the name trimmed when it is 1 to 100 characters", () => {
+    expect(parseOfficeName(" Aoba Labor Office ")).toBe("Aoba Labor Office");
+    expect(parseOfficeName("事".repeat(100))).toBe("事".repeat(100));
+  });
+
+  it("refuses an empty or blank name and one longer than 100 characters", () => {
+    expect(parseOfficeName("")).toBeNull();
+    expect(parseOfficeName("   ")).toBeNull();
+    expect(parseOfficeName("a".repeat(101))).toBeNull();
+    expect(parseOfficeName("事".repeat(101))).toBeNull();
   });
 });
 
