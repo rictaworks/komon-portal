@@ -16,7 +16,6 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 - The Owner dashboard lists the five most recently withdrawn mis-deliveries, each with the client that had the document, the readers up to the withdrawal and their first view times; the incidents list shows the 100 most recently withdrawn and says when more exist, but has no paging. A document that was mis-delivered more than once is listed once, as of its latest such withdrawal.
 - The Unread, Retrieval and Due soon lists of the dashboard hold at most 100 items each; when more match, the card shows `100+` and the list says so.
 - The document list of a shelf loads a first page only (documents are not paged in the screen yet). The Review and Staged lists show at most 200 documents.
-- Browser checks are manual in this version: there is no automated end-to-end run in CI yet.
 
 ## Stack
 
@@ -24,7 +23,7 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 - Cloudflare D1 for data and R2 for document bodies
 - React 19 and Vite for the web UI, served as static assets by the Worker
 - Google OpenID Connect for sign-in, Cloudflare Turnstile for human checks, Web Push (VAPID) for notifications
-- TypeScript in strict mode, Vitest with the Workers pool, ESLint
+- TypeScript in strict mode, Vitest with the Workers pool, Playwright for the end-to-end browser tests, ESLint
 
 ## Requirements
 
@@ -55,7 +54,10 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm run test:e2e
 ```
+
+`npm run test:e2e` runs the end-to-end browser tests in Chromium with Playwright, separately from `npm test`. It builds the web UI, creates a new run directory under `test-results/e2e/` (git-ignored), applies every migration to a new local database there, starts `wrangler dev` on port 8863 (set `E2E_PORT` to change it) without reading `.dev.vars` or the `.wrangler` state, signs in through the development sign-in and runs the flows: each development role signing in, a file taken in, reviewed and published, the client member opening it, and the client member sending files that the office then sees. The Worker is stopped afterwards, also when a test fails. The first time, install the browser with `npx playwright install chromium`. CI runs the same command after the build.
 
 ## Pages
 
@@ -272,7 +274,7 @@ To update a deployment to a new release, repeat steps 1, 4 and 5 of "Deployment"
 | `src/app` | The portal Worker: API (`api`), adapters (`adapters`), migrations, web UI (`web`), scheduled tasks |
 | `src/admin` | The developer's admin Worker |
 | `src/locales/en.json` | All user-facing strings |
-| `test` | Unit tests for the core, adapter and API tests, admin tests, and static checks (strings, core purity, API documentation) |
+| `test` | Unit tests for the core, adapter and API tests, admin tests, static checks (strings, core purity, API documentation), and the end-to-end browser tests (`test/e2e`) |
 | `SPEC` | The software as built: an overview with diagrams, and the OpenAPI file |
 | `app-ui` | Design mock-ups and the design system used for them |
 | `instructions.md` | The design document (Japanese) |
