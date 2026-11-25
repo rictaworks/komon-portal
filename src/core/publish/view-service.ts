@@ -1,4 +1,5 @@
 import { auditableId, type Guard } from "../access/guard";
+import { secretsEqual } from "../access/secret-compare";
 import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
 import type { CaseService } from "../cases/case-service";
 import type { FileWriter } from "../intake/file-writer";
@@ -24,6 +25,29 @@ const EXTENSIONS: Readonly<Record<FileFormat, string>> = {
 };
 const FILE_TARGET = "file";
 const DOWNLOAD_ACTION = "file.download";
+/** How long the download may follow its open. Long enough for the browser to start it, no longer. */
+export const OPEN_TICKET_SECONDS = 60;
+const TICKET_PATTERN = /^(\d{1,15})\.([0-9a-f]{64})$/;
+
+export interface OpenGrant {
+  file: FileRecord;
+  /** Proof of this open for the download that follows. Valid in the same session, for this file, for a short time. */
+  ticket: string;
+}
+
+/**
+ * Signs "this user opened this file, good until then" with the session's secret, so the proof
+ * cannot be made outside the session and nothing has to be stored for the download to check it.
+ */
+async function signTicket(sessionSecret: string, userId: Id, fileId: Id, expiresAt: number): Promise<string> {
+  if (sessionSecret === "") {
+    throw new Error("a session secret is required to open a file");
+  }
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(sessionSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(JSON.stringify([userId, fileId, expiresAt])));
+  return [...new Uint8Array(signature)].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
 
 export interface ViewServiceDeps {
   repository: Repository;
@@ -37,14 +61,21 @@ export interface ViewServiceDeps {
 }
 
 /**
- * Opens file bodies in two steps. `open` records the view (a receipt or an acknowledgement) and
- * `download` only reads. Permission is checked on every call and a denial looks exactly like a missing file.
+ * Opens file bodies in two steps. `open` records the view (a receipt or an acknowledgement, and the
+ * audit entry) and answers with a ticket; `download` hands out the body for that ticket only.
+ * Permission is checked on every call and a denial looks exactly like a missing file.
  */
 export class ViewService {
   constructor(private readonly deps: ViewServiceDeps) {}
 
-  /** Records that the actor opens the file. The only step that changes anything; the body is not returned. */
-  async open(actor: UserActor, fileId: Id, mode: OpenMode): Promise<FileRecord> {
+  /**
+   * Records that the actor opens the file. The body is not returned: the ticket for it is made
+   * last, so an open that failed part way permits no download.
+   */
+  async open(actor: UserActor, fileId: Id, mode: OpenMode, sessionSecret: string): Promise<OpenGrant> {
+    // Signed before anything is written: a session that cannot be given a ticket records nothing.
+    const expiresAt = this.deps.writer.now().getTime() + OPEN_TICKET_SECONDS * 1000;
+    const signature = await signTicket(sessionSecret, actor.userId, fileId, expiresAt);
     const found = await this.readable(actor, fileId, `file.${mode}`);
     const body = await this.deps.store.get(found.r2Key);
     if (body === null) {
@@ -60,20 +91,25 @@ export class ViewService {
       throw notFound("file");
     }
     await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, fileId);
-    return file;
+    return { file, ticket: `${expiresAt}.${signature}` };
   }
 
   /**
-   * Hands out the body of a file the actor has opened. Writes nothing on success: a file whose
-   * open is not on record yet is refused, so a body never leaves without its receipt or acknowledgement.
+   * Hands out the body of a file for the ticket of an open that this session just completed.
+   * Without that ticket the request is refused and writes nothing, whoever asks and whatever the
+   * file, so no body leaves without the records and the audit entry of its open. Writes nothing on success.
    */
-  async download(actor: UserActor, fileId: Id): Promise<OpenedFile> {
+  async download(actor: UserActor, fileId: Id, sessionSecret: string, ticket: string | null): Promise<OpenedFile> {
+    if (sessionSecret === "") {
+      throw new Error("a session secret is required to download a file");
+    }
     const file = await this.readable(actor, fileId, DOWNLOAD_ACTION);
-    if (!(await this.openRecorded(actor, file))) {
+    if (!(await this.ticketValid(actor, fileId, sessionSecret, ticket))) {
       throw invalidState("not_opened");
     }
     const body = await this.deps.store.get(file.r2Key);
     if (body === null) {
+      await this.deps.audit.record(actor, DOWNLOAD_ACTION, FILE_TARGET, fileId, "failed");
       throw invalidState("body_missing");
     }
     return { file, body, downloadName: `${file.displayName}.${EXTENSIONS[file.format]}` };
@@ -88,12 +124,17 @@ export class ViewService {
     return found;
   }
 
-  /** Whether `open` has left its record: staff must have acknowledged a submission, a member must hold a receipt. */
-  private async openRecorded(actor: UserActor, file: FileRecord): Promise<boolean> {
-    if (this.deps.guard.allows(actor, "staff.operate")) {
-      return !(file.direction === "Inbound" && file.state === "Submitted");
+  /** Whether the ticket was issued by `open` to this session and user for this file, and has not run out. */
+  private async ticketValid(actor: UserActor, fileId: Id, sessionSecret: string, ticket: string | null): Promise<boolean> {
+    const parts = ticket === null ? null : TICKET_PATTERN.exec(ticket);
+    if (parts === null) {
+      return false;
     }
-    return file.direction !== "Outbound" || (await this.deps.repository.receipts.hasOpened(file.id, actor.userId));
+    const expiresAt = Number(parts[1]);
+    if (expiresAt <= this.deps.writer.now().getTime()) {
+      return false;
+    }
+    return secretsEqual(parts[2] ?? "", await signTicket(sessionSecret, actor.userId, fileId, expiresAt));
   }
 
   /** Records the first time this client member opened a published file. Staff views are never receipts. */

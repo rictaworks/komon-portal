@@ -22,26 +22,27 @@ const CONTENT_TYPES: Readonly<Record<FileFormat, string>> = {
 /**
  * File bodies are relayed by the Worker after a permission check on every request. They are
  * always sent as attachments with a generated name, never cached, and never given a URL of their own.
- * Opening is two requests: the POST records the view behind the same-origin and CSRF checks, and
- * the GET that follows only reads.
+ * Opening is two requests: the POST records the view behind the same-origin and CSRF checks and
+ * answers with a ticket, and the GET that follows only reads and is refused without that ticket.
+ * The ticket is signed with the secret of the session cookie, so it is of no use in any other session.
  */
 export function fileContentRoutes(): Hono<AppBindings> {
   const routes = new Hono<AppBindings>();
 
   routes.post("/files/:id/open", async (c) => {
-    const { actor } = requireAuth(c);
+    const { actor, token } = requireAuth(c);
     const requested = requireString(await readJson(c), "mode");
     const mode = OPEN_MODES.find((candidate) => candidate === requested);
     if (mode === undefined) {
       throw invalidInput("mode");
     }
-    const file = await c.get("services").view.open(actor, c.req.param("id"), mode);
-    return c.json({ id: file.id });
+    const opened = await c.get("services").view.open(actor, c.req.param("id"), mode, token);
+    return c.json({ id: opened.file.id, ticket: opened.ticket });
   });
 
   routes.get("/files/:id/content", async (c) => {
-    const { actor } = requireAuth(c);
-    const opened = await c.get("services").view.download(actor, c.req.param("id"));
+    const { actor, token } = requireAuth(c);
+    const opened = await c.get("services").view.download(actor, c.req.param("id"), token, c.req.query("ticket") ?? null);
     return new Response(opened.body.body, {
       headers: {
         "Content-Type": CONTENT_TYPES[opened.file.format],

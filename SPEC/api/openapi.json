@@ -331,7 +331,7 @@
     },
     "/api/files/{id}/content": {
       "get": {
-        "summary": "Sends the body of a file as an attachment. Changes nothing; refused until the file was opened with POST /api/files/{id}/open.",
+        "summary": "Sends the body of a file as an attachment. Changes nothing; refused without the ticket that POST /api/files/{id}/open answered (ticket query parameter).",
         "tags": [
           "public"
         ],
@@ -353,13 +353,21 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ]
       }
     },
     "/api/files/{id}/open": {
       "post": {
-        "summary": "Records that the user opens a file (mode=view or download): the first view or the acknowledgement.",
+        "summary": "Records that the user opens a file (mode=view or download): the first view or the acknowledgement, and the audit entry. Answers with a ticket for the download, valid for 60 seconds in the same session.",
         "tags": [
           "public"
         ],

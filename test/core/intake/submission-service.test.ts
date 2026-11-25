@@ -33,9 +33,9 @@ describe("SubmissionService.submit", () => {
   it("is visible to every member of that client and to staff, and to nobody else", async () => {
     const result = await kit.submissions.submit(member, input, { fileName: "a.pdf", bytes: pdf("a") });
     if (result.outcome !== "stored") throw new Error("setup");
-    await expect(kit.view.open(memberActor(["c1"], "u-colleague"), result.file.id, "view")).resolves.toBeDefined();
-    await expect(kit.view.open(staff, result.file.id, "view")).resolves.toBeDefined();
-    await expect(kit.view.open(memberActor(["c2"], "u-outsider"), result.file.id, "view")).rejects.toThrow("not_found: file");
+    await expect(kit.view.open(memberActor(["c1"], "u-colleague"), result.file.id, "view", "session-secret")).resolves.toBeDefined();
+    await expect(kit.view.open(staff, result.file.id, "view", "session-secret")).resolves.toBeDefined();
+    await expect(kit.view.open(memberActor(["c2"], "u-outsider"), result.file.id, "view", "session-secret")).rejects.toThrow("not_found: file");
   });
 
   it("cannot be sent to another client, and the refusal looks like a missing client", async () => {
@@ -123,7 +123,7 @@ describe("SubmissionService.cancel and linkCase", () => {
 
   it("refuses a colleague, and refuses everyone once the office has opened it", async () => {
     await expect(kit.submissions.cancel(memberActor(["c1"], "u-colleague"), fileId, 1)).rejects.toThrow("invalid_state: not_cancellable");
-    await kit.view.open(staff, fileId, "view");
+    await kit.view.open(staff, fileId, "view", "session-secret");
     await expect(kit.submissions.cancel(member, fileId, 2)).rejects.toThrow("invalid_state: not_cancellable");
     await expect(kit.submissions.cancel(member, "x".repeat(300), 1)).rejects.toThrow("not_found: file");
     expect(kit.repo.auditRows.at(-1)).toMatchObject({ targetId: "invalid", result: "denied" });
@@ -383,8 +383,8 @@ describe("TrashService", () => {
     expect(await kit.repo.files.listTrashedBefore(kit.trash.purgeThreshold(), { limit: 100, offset: 0 })).toEqual([]);
     expect(await kit.repo.receipts.listByFile("f1")).toEqual([]);
     await expect(kit.trash.restore(staff, "f1", 1)).rejects.toThrow("not_found: file");
-    await expect(kit.view.open(staff, "f1", "view")).rejects.toThrow("not_found: file");
-    await expect(kit.view.open(staff, "f2", "download")).rejects.toThrow("not_found: file");
+    await expect(kit.view.open(staff, "f1", "view", "session-secret")).rejects.toThrow("not_found: file");
+    await expect(kit.view.open(staff, "f2", "download", "session-secret")).rejects.toThrow("not_found: file");
   });
 
   it("refuses a restore that read the file before the purge began", async () => {
