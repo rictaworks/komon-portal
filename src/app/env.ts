@@ -13,4 +13,6 @@ export interface AppEnv {
   SETUP_TOKEN?: string;
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
+  /** Operator contact for push services, for example mailto:info@example.com. */
+  VAPID_SUBJECT?: string;
 }
