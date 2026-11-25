@@ -1,9 +1,9 @@
-import type { Guard } from "../access/guard";
+import { auditableId, type Guard } from "../access/guard";
 import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
 import type { CaseService } from "../cases/case-service";
 import { TERMINAL_CASE_STATES } from "../cases/case-state";
 import type { Actor, UserActor } from "../model/actor";
-import { invalidInput, invalidState, notFound } from "../model/errors";
+import { conflict, invalidInput, invalidState, notFound } from "../model/errors";
 import { CASE_STATES, type FileRecord, type Id, type RejectionReason, type YearMonth } from "../model/types";
 import type { FileStore } from "../ports/file-store";
 import type { IdGenerator } from "../ports/id-generator";
@@ -73,7 +73,14 @@ export class SubmissionService {
       receivedAt: now, publishedAt: null, acknowledgedAt: null, trashedAt: null, version: 1,
     };
     await this.deps.store.put(draft.r2Key, incoming.bytes);
-    const written = await this.deps.writer.insert(draft);
+    let written: Awaited<ReturnType<FileWriter["insert"]>>;
+    try {
+      written = await this.deps.writer.insert(draft);
+    } catch (error) {
+      // A body must never stay in the store without a record.
+      await this.deps.store.delete(draft.r2Key);
+      throw error;
+    }
     if (written.result === "duplicate_content") {
       await this.deps.store.delete(draft.r2Key);
       const winner = (await this.deps.repository.files.findActiveBySha256(sha256)).find((copy) => copy.clientId === input.clientId);
@@ -96,12 +103,15 @@ export class SubmissionService {
     const file = await this.deps.repository.files.findById(fileId);
     const batch = file === null ? null : await this.deps.repository.files.findBatch(file.batchId);
     if (file === null || batch === null || !this.deps.guard.allows(actor, "file.read", { file })) {
-      await this.deps.audit.record(actor, "submission.cancel", FILE_TARGET, fileId, "denied");
+      await this.deps.audit.record(actor, "submission.cancel", FILE_TARGET, auditableId(fileId), "denied");
       throw notFound("file");
     }
     if (!this.deps.guard.allows(actor, "submission.cancel", { file, submitterId: batch.uploadedBy })) {
-      await this.deps.audit.record(actor, "submission.cancel", FILE_TARGET, fileId, "denied");
+      await this.deps.audit.record(actor, "submission.cancel", FILE_TARGET, auditableId(fileId), "denied");
       throw invalidState("not_cancellable");
+    }
+    if (file.version !== expectedVersion) {
+      throw conflict("stale");
     }
     const updated = await this.deps.writer.update(
       { ...file, state: "Trashed", trashedFrom: "Submitted", trashedAt: this.deps.writer.now() },
@@ -121,6 +131,9 @@ export class SubmissionService {
     const file = await this.deps.repository.files.findById(fileId);
     if (file === null) {
       throw notFound("file");
+    }
+    if (file.version !== expectedVersion) {
+      throw conflict("stale");
     }
     if (file.direction !== "Inbound" || file.state === "Trashed") {
       throw invalidState("not_a_submission");
@@ -172,7 +185,7 @@ export class SubmissionService {
   /** A client the member cannot reach is reported exactly like a client that does not exist. */
   private async requireReach(actor: UserActor, action: "client.submit" | "client.read", clientId: Id): Promise<void> {
     if (!this.deps.guard.allows(actor, action, { clientId })) {
-      await this.deps.audit.record(actor, action, CLIENT_TARGET, clientId, "denied");
+      await this.deps.audit.record(actor, action, CLIENT_TARGET, auditableId(clientId), "denied");
       throw notFound("client");
     }
   }
