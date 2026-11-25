@@ -1,5 +1,6 @@
 import type { DeadlineStatus } from "../../../core/cases/deadline-calculator";
-import type { CaseRecord, CaseType, Client, DocType, FileReceipt, FileRecord, Id, User } from "../../../core/model/types";
+import { invalidInput } from "../../../core/model/errors";
+import type { CaseRecord, CaseType, Client, DocType, FileReceipt, FileRecord, Id, OfficeSetting, User } from "../../../core/model/types";
 import type { Services } from "../composition";
 import type { AppContext } from "../context";
 
@@ -11,13 +12,24 @@ export interface Page {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
+/** Paging parameters. Out-of-range or malformed values are refused, never replaced with defaults. */
 export function pageOf(c: AppContext): Page {
-  const limit = Number(c.req.query("limit") ?? DEFAULT_LIMIT);
-  const offset = Number(c.req.query("offset") ?? 0);
-  return {
-    limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT,
-    offset: Number.isInteger(offset) && offset >= 0 ? offset : 0,
-  };
+  return { limit: integerParameter(c, "limit", DEFAULT_LIMIT, 1, MAX_LIMIT), offset: integerParameter(c, "offset", 0, 0, Number.MAX_SAFE_INTEGER) };
+}
+
+function integerParameter(c: AppContext, name: string, fallback: number, min: number, max: number): number {
+  const raw = c.req.query(name);
+  if (raw === undefined) {
+    return fallback;
+  }
+  if (!/^\d+$/.test(raw)) {
+    throw invalidInput(name);
+  }
+  const value = Number(raw);
+  if (value < min || value > max) {
+    throw invalidInput(name);
+  }
+  return value;
 }
 
 /** Looks records up once per request and reuses them while building a response. */
@@ -25,9 +37,18 @@ export class Lookups {
   private readonly clients = new Map<Id, Client | null>();
   private readonly users = new Map<Id, User | null>();
   private docTypes: Map<Id, DocType> | null = null;
+  private officeSetting: OfficeSetting | null = null;
   private caseTypes: Map<Id, CaseType> | null = null;
 
   constructor(private readonly services: Services) {}
+
+  /** The office setting, read once per request. */
+  async setting(): Promise<OfficeSetting> {
+    if (this.officeSetting === null) {
+      this.officeSetting = await this.services.repository.settings.get();
+    }
+    return this.officeSetting;
+  }
 
   async client(id: Id | null): Promise<{ id: Id; code: string; corporateName: string; status: Client["status"] } | null> {
     if (id === null) {

@@ -117,7 +117,7 @@ export class D1CaseRepository implements CaseRepository {
         .run();
       return true;
     } catch (error) {
-      if (isUniqueViolation(error, "case_records")) {
+      if (isUniqueViolation(error, "case_records.client_id, case_records.case_type_id")) {
         return false;
       }
       throw error;
@@ -135,15 +135,16 @@ export class D1CaseRepository implements CaseRepository {
   }
 
   async updateWithArrivals(record: CaseRecord, expectedVersion: number, arrivals: readonly CaseArrival[]): Promise<"ok" | "stale" | "arrival_taken"> {
-    // One transaction. Each arrival is inserted only if the guarded case update in the same batch succeeded.
+    // One transaction. The arrivals go in first, each only while the case still has the expected
+    // version; the guarded case update comes last. With a stale version nothing at all is written.
     const inserts = arrivals.map((arrival) =>
       this.db
         .prepare("INSERT INTO case_arrivals (id, case_id, arrival_number) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM case_records WHERE id = ? AND version = ?)")
-        .bind(arrival.id, arrival.caseId, arrival.arrivalNumber, record.id, record.version),
+        .bind(arrival.id, arrival.caseId, arrival.arrivalNumber, record.id, expectedVersion),
     );
     try {
-      const results = await this.db.batch([this.updateStatement(record, expectedVersion), ...inserts]);
-      const updated = results[0];
+      const results = await this.db.batch([...inserts, this.updateStatement(record, expectedVersion)]);
+      const updated = results[results.length - 1];
       return updated !== undefined && changes(updated) === 1 ? "ok" : "stale";
     } catch (error) {
       if (isUniqueViolation(error, "case_arrivals.arrival_number")) {
@@ -230,7 +231,8 @@ export class D1DocTypeRepository implements DocTypeRepository {
     await this.db.prepare("INSERT INTO doc_rules (id, doc_type_id, keyword) VALUES (?, ?, ?)").bind(rule.id, rule.docTypeId, rule.keyword).run();
   }
 
-  async deleteRule(id: Id): Promise<void> {
-    await this.db.prepare("DELETE FROM doc_rules WHERE id = ?").bind(id).run();
+  async deleteRule(id: Id): Promise<boolean> {
+    const result = await this.db.prepare("DELETE FROM doc_rules WHERE id = ?").bind(id).run();
+    return result.meta.changes > 0;
   }
 }
