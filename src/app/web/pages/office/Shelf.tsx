@@ -89,7 +89,7 @@ export function Shelf() {
   const t = useT();
   const { clientId = "" } = useParams();
   const { api } = useSession();
-  // A link (the dashboard's waiting submissions) can open the shelf on what the client sent.
+  // The address can name the direction (`?direction=Inbound`) to open the shelf on what the client sent; otherwise it opens on what the office sent.
   const [direction, setDirection] = useState<ShelfDirection>(shelfDirectionOf(useLocation().search));
   const [view, setView] = useState<ShelfView>(SHELF_VIEWS[direction][0] ?? "Published");
   const [docTypeId, setDocTypeId] = useState("");
