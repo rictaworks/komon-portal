@@ -62,9 +62,10 @@ describe("admin summary figures", () => {
     await event("review.assigned", { clientId: "fig-client-1", actorKind: "staff", actorUserId: "fig-staff-a" });
     await event("intake.rejected", { actorKind: "staff", actorUserId: "fig-staff-b" });
     await event("file.first_viewed", { clientId: "fig-client-1", actorKind: "member", actorUserId: "fig-member-a" });
-    // A job that touches a client's record is not that client using the portal.
+    // A job or a staff member that touches a client's record is not that client using the portal.
     await event("purge.failed", { clientId: "fig-client-2", actorKind: "system" });
-    // Last week: one staff member, two clients.
+    await event("file.published", { clientId: "fig-client-2", actorKind: "staff", actorUserId: "fig-staff-a" });
+    // Last week: one staff member working for one client, and a member of another client.
     await event("intake.accepted", { clientId: "fig-client-1", actorKind: "staff", actorUserId: "fig-staff-b", occurredAt: at(7 * DAY) });
     await event("submission.received", { clientId: "fig-client-2", actorKind: "member", actorUserId: "fig-member-a", occurredAt: at(7 * DAY) });
     // Before the window.
@@ -72,7 +73,7 @@ describe("admin summary figures", () => {
 
     const summary = await metricsSummary(env.DB, NOW);
     expect(summary.activeByWeek).toEqual([
-      { week: "2026-W47", clients: 2, staff: 1 },
+      { week: "2026-W47", clients: 1, staff: 1 },
       { week: "2026-W48", clients: 1, staff: 2 },
     ]);
   });
@@ -133,22 +134,26 @@ describe("admin summary figures", () => {
 
   it("counts the cases that entered a retrieval warning by the state they are in now", async () => {
     await env.DB.prepare("INSERT INTO case_types (id, kind, label) VALUES ('fig-type', 'Procedure', 'Figure type')").run();
-    const warnedCase = async (id: string, sequence: number, state: string, occurredAt: string): Promise<void> => {
+    const warnedCase = async (id: string, sequence: number, state: string, occurredAt: string, warnedSubmission = "2026-08-20"): Promise<void> => {
       await env.DB.prepare(
         "INSERT INTO case_records (id, client_id, case_type_id, target_month, sequence, reference_code, submitted_on, state, version, created_at) VALUES (?, 'fig-client-1', 'fig-type', '2026-08', ?, ?, '2026-08-20', ?, 1, ?)",
       ).bind(id, sequence, `FIG-${sequence}`, state, at(90 * DAY)).run();
-      await event("case.retrieval_warned", { clientId: "fig-client-1", actorKind: "system", attributes: { caseId: id, level: "warning" }, occurredAt });
+      await event("case.retrieval_warned", { clientId: "fig-client-1", actorKind: "system", attributes: { caseId: id, submittedOn: warnedSubmission, level: "warning" }, occurredAt });
     };
     await warnedCase("fig-case-waiting", 1, "Submitted", at(2 * DAY));
     await warnedCase("fig-case-arrived-1", 2, "DocumentReceived", at(5 * DAY));
     await warnedCase("fig-case-arrived-2", 3, "DocumentReceived", at(6 * DAY));
     await warnedCase("fig-case-closed", 4, "Closed", at(9 * DAY));
     await warnedCase("fig-case-before", 5, "Delivered", at(31 * DAY));
+    // Warned before the window and still waiting on the same submission: the unresolved case stays in the figure.
+    await warnedCase("fig-case-stale", 6, "Submitted", at(45 * DAY));
+    // Warned before the window for an earlier submission; submitted again since, so that warning is over.
+    await warnedCase("fig-case-again", 7, "Submitted", at(45 * DAY), "2026-05-01");
 
     const summary = await metricsSummary(env.DB, NOW);
     expect(summary.retrievalWarnings).toEqual({
-      cases: 4,
-      byState: [{ state: "Closed", count: 1 }, { state: "DocumentReceived", count: 2 }, { state: "Submitted", count: 1 }],
+      cases: 5,
+      byState: [{ state: "Closed", count: 1 }, { state: "DocumentReceived", count: 2 }, { state: "Submitted", count: 2 }],
     });
   });
 

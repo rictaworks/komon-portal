@@ -591,7 +591,7 @@ export class MemoryRepository implements Repository {
       }
       this.metricRows.push(copy(event));
     },
-    hasCaseEvent: async (name: string, caseId: Id): Promise<boolean> =>
-      this.metricRows.some((row) => row.name === name && row.attributes.caseId === caseId),
+    hasCaseEvent: async (name: string, caseId: Id, submittedOn: string): Promise<boolean> =>
+      this.metricRows.some((row) => row.name === name && row.attributes.caseId === caseId && row.attributes.submittedOn === submittedOn),
   };
 }

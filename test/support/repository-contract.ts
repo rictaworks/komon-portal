@@ -533,13 +533,14 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       await expect(repo.metrics.append({ ...event, id: id("eb4"), actorKind: null, actorUserId: actor.id })).rejects.toThrow();
     });
 
-    it("tells whether an event was already recorded for a case, by name", async () => {
+    it("tells whether an event was already recorded for a submission of a case, by name", async () => {
       const event = { clientId: null, actorKind: "system" as const, actorUserId: null, occurredAt: T0 };
-      await repo.metrics.append({ ...event, id: id("ec1"), name: "case.retrieval_warned", attributes: { caseId: id("kw1"), level: "warning" } });
+      await repo.metrics.append({ ...event, id: id("ec1"), name: "case.retrieval_warned", attributes: { caseId: id("kw1"), submittedOn: "2026-08-01", level: "warning" } });
       await repo.metrics.append({ ...event, id: id("ec2"), name: "case.state_changed", attributes: { caseId: id("kw2"), from: null, to: "Open" } });
-      expect(await repo.metrics.hasCaseEvent("case.retrieval_warned", id("kw1"))).toBe(true);
-      expect(await repo.metrics.hasCaseEvent("case.retrieval_warned", id("kw2"))).toBe(false);
-      expect(await repo.metrics.hasCaseEvent("case.state_changed", id("kw1"))).toBe(false);
+      expect(await repo.metrics.hasCaseEvent("case.retrieval_warned", id("kw1"), "2026-08-01")).toBe(true);
+      expect(await repo.metrics.hasCaseEvent("case.retrieval_warned", id("kw1"), "2026-09-01")).toBe(false);
+      expect(await repo.metrics.hasCaseEvent("case.retrieval_warned", id("kw2"), "2026-08-01")).toBe(false);
+      expect(await repo.metrics.hasCaseEvent("case.state_changed", id("kw1"), "2026-08-01")).toBe(false);
     });
 
     it("ends the sessions of a user without error when there are none", async () => {

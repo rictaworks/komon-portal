@@ -777,7 +777,7 @@
     },
     "retrieval": {
       "heading": "Retrieval deadline warnings",
-      "total": "{cases} cases entered the warning period. Their state now:"
+      "total": "{cases} cases entered the warning period in the window or are still waiting after an earlier warning. Their state now:"
     },
     "withdrawals": {
       "heading": "Withdrawals by reason",

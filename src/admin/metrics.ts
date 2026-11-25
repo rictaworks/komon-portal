@@ -5,8 +5,9 @@ export interface MetricsSummary {
   /** Event counts by name, for the whole window. */
   events: { name: string; count: number }[];
   /**
-   * Per ISO week (YYYY-Www): distinct clients with at least one event that a person caused, and
-   * distinct staff members who caused at least one event. Events of the scheduled jobs count for neither.
+   * Per ISO week (YYYY-Www): distinct clients with at least one event that one of their members caused, and
+   * distinct staff members who caused at least one event. What staff or the scheduled jobs do for a client
+   * is not that client using the portal.
    */
   activeByWeek: { week: string; clients: number; staff: number }[];
   /** Accepted documents by the way they were matched to a client. */
@@ -17,7 +18,10 @@ export interface MetricsSummary {
   intakeToPublishHours: { count: number; averageHours: number | null };
   /** Jev judgments: how many were applied or stayed below the office's threshold, and how the confidence was spread. */
   jev: { accepted: number; belowThreshold: number; confidence: { range: string; count: number }[] };
-  /** Cases recorded in the window as having entered the retrieval warning period, by the state they are in now. */
+  /**
+   * Cases recorded in the window as having entered the retrieval warning period, and cases recorded
+   * earlier that are still waiting for their document, by the state they are in now.
+   */
   retrievalWarnings: { cases: number; byState: { state: string; count: number }[] };
   /** Runs of the daily job in the window, and what the most recent run (of any age) reported. */
   dailyJob: { runs: number; failedRuns: number; last: DailyJobRun | null };
@@ -88,7 +92,7 @@ export async function metricsSummary(db: D1Database, now: Date): Promise<Metrics
   const weekly = await db
     .prepare(
       // Events recorded before the actor was stored have no kind; they count for the client as they did then.
-      "SELECT strftime('%G-W%V', occurred_at) AS week, COUNT(DISTINCT client_id) AS clients, COUNT(DISTINCT CASE WHEN actor_kind = 'staff' THEN actor_user_id END) AS staff FROM metric_events WHERE occurred_at >= ? AND (actor_kind IS NULL OR actor_kind <> 'system') AND (client_id IS NOT NULL OR actor_kind = 'staff') GROUP BY week ORDER BY week",
+      "SELECT strftime('%G-W%V', occurred_at) AS week, COUNT(DISTINCT CASE WHEN actor_kind IS NULL OR actor_kind = 'member' THEN client_id END) AS clients, COUNT(DISTINCT CASE WHEN actor_kind = 'staff' THEN actor_user_id END) AS staff FROM metric_events WHERE occurred_at >= ? AND (actor_kind IS NULL OR actor_kind <> 'system') AND (client_id IS NOT NULL OR actor_kind = 'staff') GROUP BY week ORDER BY week",
     )
     .bind(since)
     .all<{ week: string; clients: number; staff: number }>();
@@ -118,7 +122,8 @@ export async function metricsSummary(db: D1Database, now: Date): Promise<Metrics
     .all<{ position: number; count: number }>();
   const warned = await db
     .prepare(
-      "SELECT c.state AS state, COUNT(DISTINCT c.id) AS count FROM metric_events m JOIN case_records c ON c.id = json_extract(m.attributes, '$.caseId') WHERE m.name = 'case.retrieval_warned' AND m.occurred_at >= ? GROUP BY c.state ORDER BY c.state",
+      // The event is written once per submission, so an old one still counts while the case waits on that same submission.
+      "SELECT c.state AS state, COUNT(DISTINCT c.id) AS count FROM metric_events m JOIN case_records c ON c.id = json_extract(m.attributes, '$.caseId') WHERE m.name = 'case.retrieval_warned' AND (m.occurred_at >= ? OR (c.state = 'Submitted' AND c.submitted_on = json_extract(m.attributes, '$.submittedOn'))) GROUP BY c.state ORDER BY c.state",
     )
     .bind(since)
     .all<{ state: string; count: number }>();

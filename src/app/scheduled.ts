@@ -19,24 +19,28 @@ export const MAINTENANCE_FINISHED_EVENT = "maintenance.finished";
 const CASE_PAGE_SIZE = 200;
 
 /**
- * Records, once per case, that a submitted case reached the retrieval warning period. The level
- * is otherwise only computed when a screen is read, so without this event nothing would show
- * later how many cases were warned about and what became of them.
+ * Records, once per submission of a case, that the submitted case reached the retrieval warning
+ * period. The level is otherwise only computed when a screen is read, so without this event nothing
+ * would show later how many cases were warned about and what became of them. A case submitted again
+ * on another date has a new deadline and is recorded again when that one comes near.
+ * `progress.recorded` is raised after each event written, so a failure part-way still leaves the true count.
  */
-async function recordRetrievalWarnings(services: Services): Promise<number> {
+async function recordRetrievalWarnings(services: Services, progress: { recorded: number }): Promise<void> {
   const setting = await services.repository.settings.get();
-  let recorded = 0;
   for (let offset = 0; ; offset += CASE_PAGE_SIZE) {
     const page = await services.repository.cases.list({ states: ["Submitted"] }, { limit: CASE_PAGE_SIZE, offset });
     for (const record of page) {
       const level = services.deadlines.retrievalLevel(record, setting).level;
-      if ((level === "warning" || level === "expired") && !(await services.repository.metrics.hasCaseEvent(RETRIEVAL_WARNED_EVENT, record.id))) {
-        await services.metrics.record(systemActor(), RETRIEVAL_WARNED_EVENT, record.clientId, { caseId: record.id, level });
-        recorded += 1;
+      if (record.submittedOn === null || (level !== "warning" && level !== "expired")) {
+        continue;
+      }
+      if (!(await services.repository.metrics.hasCaseEvent(RETRIEVAL_WARNED_EVENT, record.id, record.submittedOn))) {
+        await services.metrics.record(systemActor(), RETRIEVAL_WARNED_EVENT, record.clientId, { caseId: record.id, submittedOn: record.submittedOn, level });
+        progress.recorded += 1;
       }
     }
     if (page.length < CASE_PAGE_SIZE) {
-      return recorded;
+      return;
     }
   }
 }
@@ -59,12 +63,12 @@ export async function runDailyMaintenance(env: AppEnv, overrides: AdapterOverrid
       return initial;
     }
   };
-  const report: MaintenanceReport = {
-    purge: await step("purge", { purged: 0, skipped: 0, failed: 0 }, () => services.trash.purgeExpired(systemActor())),
-    expiredInvitations: await step("invitations", 0, () => services.repository.invitations.expireBefore(services.clock.now())),
-    removedSessions: await step("sessions", 0, () => services.sessions.removeExpired()),
-    retrievalWarnings: await step("retrieval_warnings", 0, () => recordRetrievalWarnings(services)),
-  };
+  const warnings = { recorded: 0 };
+  const purge =  await step("purge", { purged: 0, skipped: 0, failed: 0 }, () => services.trash.purgeExpired(systemActor()));
+  const expiredInvitations = await step("invitations", 0, () => services.repository.invitations.expireBefore(services.clock.now()));
+  const removedSessions = await step("sessions", 0, () => services.sessions.removeExpired());
+  await step("retrieval_warnings", undefined, () => recordRetrievalWarnings(services, warnings));
+  const report: MaintenanceReport = { purge, expiredInvitations, removedSessions, retrievalWarnings: warnings.recorded };
   if (report.purge.failed > 0) {
     failures.push("purge_files");
   }

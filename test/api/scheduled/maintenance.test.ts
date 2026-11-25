@@ -89,8 +89,8 @@ describe("daily maintenance", () => {
   it("records once, as the system, each case whose retrieval deadline is 10 days away or less", async () => {
     const warned = await events("case.retrieval_warned");
     expect(warned.map((row) => row.attributes).sort()).toEqual([
-      JSON.stringify({ caseId: "job-k-late", level: "expired" }),
-      JSON.stringify({ caseId: "job-k-warn", level: "warning" }),
+      JSON.stringify({ caseId: "job-k-late", submittedOn: "2026-08-01", level: "expired" }),
+      JSON.stringify({ caseId: "job-k-warn", submittedOn: "2026-09-05", level: "warning" }),
     ]);
     expect(warned.map((row) => [row.client_id, row.actor_kind, row.actor_user_id])).toEqual([["job-c1", "system", null], ["job-c1", "system", null]]);
   });
@@ -135,5 +135,43 @@ describe("daily maintenance", () => {
     expect(JSON.parse(last?.attributes ?? "")).toMatchObject({ result: "failed", failedSteps: "purge_files", purgeFailed: 1, expiredInvitations: 2, retrievalWarnings: 1 });
     // Two days on, the third case has 9 days left: it entered the warning period and is recorded once.
     expect((await events("case.retrieval_warned")).map((row) => (JSON.parse(row.attributes) as { caseId: string }).caseId).sort()).toEqual(["job-k-far", "job-k-late", "job-k-warn"]);
+  });
+
+  it("records a case again when it was submitted again on another date and that deadline comes near", async () => {
+    const later = new FixedClock(new Date(NOW.getTime() + 2 * DAY));
+    await env.DB.prepare("UPDATE case_records SET submitted_on = '2026-08-20' WHERE id = 'job-k-late'").run();
+    expect((await runDailyMaintenance(appEnv, { clock: later })).retrievalWarnings).toBe(1);
+    const again = (await events("case.retrieval_warned")).map((row) => JSON.parse(row.attributes) as { caseId: string; submittedOn: string }).filter((entry) => entry.caseId === "job-k-late");
+    expect(again.map((entry) => entry.submittedOn).sort()).toEqual(["2026-08-01", "2026-08-20"]);
+    expect((await runDailyMaintenance(appEnv, { clock: later })).retrievalWarnings).toBe(0);
+  });
+
+  it("reports the warnings it did record when recording fails part-way", async () => {
+    // A time of its own, so that the run of this test is the last one recorded.
+    const later = new FixedClock(new Date(NOW.getTime() + 3 * DAY));
+    for (const sequence of [1, 2, 3]) {
+      await repository.cases.insert(
+        caseRecord({ id: `job-p-${sequence}`, clientId: "job-c1", caseTypeId: "job-t1", sequence: 10 + sequence, referenceCode: `JOB-P${sequence}`, submittedOn: "2026-08-01", state: "Submitted" }),
+      );
+    }
+    const before = (await events("case.retrieval_warned")).length;
+    // The database refuses the event of one case; the cases are read in the order of their IDs.
+    await env.DB.prepare(
+      "CREATE TRIGGER job_refuse_warning BEFORE INSERT ON metric_events WHEN NEW.name = 'case.retrieval_warned' AND json_extract(NEW.attributes, '$.caseId') = 'job-p-2' BEGIN SELECT RAISE(ABORT, 'refused'); END",
+    ).run();
+    try {
+      await expect(runDailyMaintenance(appEnv, { clock: later })).rejects.toThrow("maintenance finished with failures: retrieval_warnings");
+    } finally {
+      await env.DB.prepare("DROP TRIGGER job_refuse_warning").run();
+    }
+    const written = (await events("case.retrieval_warned")).length - before;
+    expect(written).toBe(1);
+    const failedRun = (await events("maintenance.finished")).at(-1);
+    expect(failedRun?.occurred_at).toBe(later.now().toISOString());
+    expect(JSON.parse(failedRun?.attributes ?? "")).toMatchObject({ result: "failed", failedSteps: "retrieval_warnings", retrievalWarnings: written });
+
+    // The next run records the rest, so the counts of the runs add up to the cases recorded.
+    expect((await runDailyMaintenance(appEnv, { clock: later })).retrievalWarnings).toBe(2);
+    expect((await events("case.retrieval_warned")).length - before).toBe(3);
   });
 });
