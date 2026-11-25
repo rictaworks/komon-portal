@@ -129,13 +129,7 @@ export function clientRoutes(): Hono<AppBindings> {
     const members = await services.invitations.listOfficeMembers(actor);
     const invitations = await services.repository.invitations.listIssued(null);
     return c.json({
-      members: members.map((view) => ({
-        userId: view.user.id,
-        displayName: view.user.displayName,
-        officeRole: view.user.officeRole,
-        officeStatus: view.user.officeStatus,
-        redeemedAt: view.redeemedAt,
-      })),
+      members,
       invitations: invitations.map(invitationView),
     });
   });

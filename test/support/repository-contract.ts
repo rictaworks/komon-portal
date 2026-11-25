@@ -97,6 +97,20 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       await repo.users.transitionOffice({ ...second, officeStatus: "Revoked" }, "Active");
     });
 
+    it("claims the first Owner atomically and only while there is none", async () => {
+      const candidate = await seedUser("claim");
+      const pending = await seedUser("claim-pending", { officeRole: "Staff", officeStatus: "Pending" });
+      const before = await repo.users.countActiveOwners();
+      expect(await repo.users.claimOwnerIfNone(pending.id)).toBe(false);
+      expect(await repo.users.claimOwnerIfNone(id("nobody"))).toBe(false);
+      expect(await repo.users.claimOwnerIfNone(candidate.id)).toBe(before === 0);
+      if (before === 0) {
+        expect(await repo.users.findById(candidate.id)).toMatchObject({ officeRole: "Owner", officeStatus: "Active" });
+        expect(await repo.users.claimOwnerIfNone((await seedUser("claim-late")).id)).toBe(false);
+        await repo.users.transitionOffice({ ...candidate, officeRole: "Owner", officeStatus: "Revoked" }, "Active");
+      }
+    });
+
     it("keeps client codes unique, finds by code and number, filters and locks by version", async () => {
       const first = await seedClient("a", { corporateNumber: "7000012050002", corporateName: `Hinode ${tag}` });
       const second = await seedClient("b", { corporateNumber: "7000012050002", status: "Archived" });
