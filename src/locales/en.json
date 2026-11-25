@@ -603,5 +603,27 @@
   "role": {
     "Owner": "Owner",
     "Staff": "Staff"
+  },
+  "admin": {
+    "title": "Operations summary",
+    "window": "Last {days} days. Counts only: no names, file names or identifiers.",
+    "events": {
+      "heading": "Events"
+    },
+    "weekly": {
+      "heading": "Active clients per week"
+    },
+    "accepted": {
+      "heading": "Accepted documents by matching method"
+    },
+    "withdrawals": {
+      "heading": "Withdrawals by reason",
+      "incidents": "{count} (incidents {incidents})"
+    },
+    "firstView": {
+      "heading": "Publication to first view",
+      "text": "{count} documents; average {hours} hours from publication to a member's first view.",
+      "noData": "{count} documents; no average yet."
+    }
   }
 }
