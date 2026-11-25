@@ -40,6 +40,10 @@ function parseOidcState(raw: string | undefined): OidcState | null {
 }
 
 async function startSession(c: AppContext, services: Services, user: User): Promise<void> {
+  const previous = getCookie(c, SESSION.cookieName);
+  if (previous !== undefined && previous !== "") {
+    await services.sessions.destroy(previous);
+  }
   const session = await services.sessions.create(user.id);
   setCookie(c, SESSION.cookieName, session.token, { ...COOKIE_BASE, maxAge: SESSION.lifetimeHours * 60 * 60 });
   await services.audit.record(await services.actors.load(user), "auth.login", "user", user.id);

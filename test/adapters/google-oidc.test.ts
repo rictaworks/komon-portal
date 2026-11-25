@@ -59,6 +59,10 @@ describe("GoogleOidc", () => {
     expect(requests[0]?.body).toContain("grant_type=authorization_code");
   });
 
+  it("refuses a verified token without a name instead of storing an empty display name", async () => {
+    await expect(provider(await token({ name: undefined })).exchange(exchange)).rejects.toThrow("identity: name_missing");
+  });
+
   it.each([
     ["another audience", { aud: "someone-else" }, "id_token_invalid"],
     ["another issuer", { iss: "https://evil.example" }, "id_token_invalid"],

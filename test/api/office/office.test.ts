@@ -232,6 +232,15 @@ describe("office API", () => {
     expect((await json(skipped)).results).toEqual([{ fileId: ids.f2, outcome: "skipped", reason: "client_not_active" }]);
   });
 
+  it("refuses malformed or out-of-range paging instead of replacing it with defaults", async () => {
+    for (const query of ["limit=abc", "limit=0", "limit=201", "offset=-5", "offset=1.5"]) {
+      const response = await staff.call("GET", `/api/office/clients?${query}`);
+      expect(response.status).toBe(400);
+      expect(await json(response)).toEqual({ error: "invalid_input", detail: query.split("=")[0] });
+    }
+    expect((await staff.call("GET", "/api/office/clients?limit=2&offset=0")).status).toBe(200);
+  });
+
   it("lets the Owner read the audit log, which records denials too", async () => {
     const audit = await json(await owner.call("GET", "/api/office/audit?limit=200"));
     const entries = audit.items as Json[];
