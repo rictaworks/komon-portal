@@ -97,6 +97,20 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       await repo.users.transitionOffice({ ...second, officeStatus: "Revoked" }, "Active");
     });
 
+    it("claims the first Owner atomically and only while there is none", async () => {
+      const candidate = await seedUser("claim");
+      const pending = await seedUser("claim-pending", { officeRole: "Staff", officeStatus: "Pending" });
+      const before = await repo.users.countActiveOwners();
+      expect(await repo.users.claimOwnerIfNone(pending.id)).toBe(false);
+      expect(await repo.users.claimOwnerIfNone(id("nobody"))).toBe(false);
+      expect(await repo.users.claimOwnerIfNone(candidate.id)).toBe(before === 0);
+      if (before === 0) {
+        expect(await repo.users.findById(candidate.id)).toMatchObject({ officeRole: "Owner", officeStatus: "Active" });
+        expect(await repo.users.claimOwnerIfNone((await seedUser("claim-late")).id)).toBe(false);
+        await repo.users.transitionOffice({ ...candidate, officeRole: "Owner", officeStatus: "Revoked" }, "Active");
+      }
+    });
+
     it("keeps client codes unique, finds by code and number, filters and locks by version", async () => {
       const first = await seedClient("a", { corporateNumber: "7000012050002", corporateName: `Hinode ${tag}` });
       const second = await seedClient("b", { corporateNumber: "7000012050002", status: "Archived" });
@@ -106,6 +120,11 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect((await repo.clients.list({ query: first.code }, PAGE)).map((row) => row.id)).toEqual([first.id]);
       expect((await repo.clients.list({ query: `Hinode ${tag}` }, PAGE)).map((row) => row.id)).toEqual([first.id]);
       expect((await repo.clients.list({ query: "%" }, PAGE)).map((row) => row.id)).not.toContain(first.id);
+      expect(await repo.clients.list({ query: first.code.toLowerCase() }, PAGE)).toEqual([]);
+      expect(await repo.clients.list({ query: `hinode ${tag}` }, PAGE)).toEqual([]);
+      const longName = "\u682a\u5f0f\u4f1a\u793e".repeat(8) + tag;
+      const wide = await seedClient("w", { corporateName: longName });
+      expect((await repo.clients.list({ query: longName }, PAGE)).map((row) => row.id)).toEqual([wide.id]);
       expect((await repo.clients.list({ status: "Archived" }, { limit: 500, offset: 0 })).map((row) => row.id)).toContain(second.id);
       expect((await repo.clients.listAll()).map((row) => row.id)).toEqual(expect.arrayContaining([first.id, second.id]));
       expect(await repo.clients.update({ ...first, status: "Archived", version: 2 }, 9)).toBe(false);
@@ -181,6 +200,11 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.cases.findByArrivalNumber(arrival(9))).toBeNull();
       const other = { ...second, submittedOn: "2026-11-21", state: "Submitted" as const, version: 2 };
       expect(await repo.cases.updateWithArrivals(other, 7, [{ id: id("a2"), caseId: second.id, arrivalNumber: a2 }])).toBe("stale");
+      // The usual stale case: the stored version already equals the version the caller wants to write.
+      expect(await repo.cases.update({ ...second, version: 2 }, 1)).toBe(true);
+      expect(await repo.cases.updateWithArrivals(other, 1, [{ id: id("a2b"), caseId: second.id, arrivalNumber: a2 }])).toBe("stale");
+      expect(await repo.cases.listArrivals(second.id)).toEqual([]);
+      expect(await repo.cases.update({ ...second, version: 1 }, 2)).toBe(true);
       expect(await repo.cases.updateWithArrivals(other, 1, [
         { id: id("a3"), caseId: second.id, arrivalNumber: a3 },
         { id: id("a4"), caseId: second.id, arrivalNumber: a1 },
@@ -244,6 +268,11 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.files.nextDisplaySequence(company.id, "2026-11-25")).toBe(4);
       expect(await repo.files.nextDisplaySequence(company.id, "2026-11-26")).toBe(1);
       expect(await repo.files.nextDisplaySequence(null, "2031-01-01")).toBe(1);
+      // A code that is a prefix of another code must not see the other client's names.
+      const longer = await seedClient("c2", { code: `${company.code}0` });
+      await seedFile(longer.id, "f4", { displayName: `${longer.code}_SHAHO_20261124_40` });
+      expect(await repo.files.nextDisplaySequence(company.id, "2026-11-24")).toBe(8);
+      expect(await repo.files.nextDisplaySequence(longer.id, "2026-11-24")).toBe(41);
     });
 
     it("lists and counts files by filter and summarises them for a case", async () => {
@@ -281,10 +310,19 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       const due = (await repo.files.listTrashedBefore(new Date("2020-01-01T00:00:00.000Z"), { limit: 500, offset: 0 })).map((row) => row.id);
       expect(due).toContain(old.id);
       expect(due).not.toContain(recent.id);
-      await repo.files.purge(old.id);
+      const entry = (label: string, targetId: string) => ({
+        id: id(label), actorUserId: null, action: "file.purge", targetType: "file", targetId, result: "ok" as const, occurredAt: T0,
+      });
+      const threshold = new Date("2020-01-01T00:00:00.000Z");
+      expect(await repo.files.purge(recent.id, threshold, entry("pl1", recent.id))).toBe(false);
+      expect(await repo.files.purge(id("no-file"), threshold, entry("pl2", id("no-file")))).toBe(false);
+      expect(await repo.files.purge(old.id, threshold, entry("pl3", old.id))).toBe(true);
+      expect(await repo.files.purge(old.id, threshold, entry("pl4", old.id))).toBe(false);
       expect(await repo.files.findById(old.id)).toBeNull();
       expect(await repo.receipts.listByFile(old.id)).toEqual([]);
       expect(await repo.files.findById(recent.id)).not.toBeNull();
+      const purges = (await repo.audit.list({ limit: 500, offset: 0 })).filter((row) => row.action === "file.purge" && [old.id, recent.id, id("no-file")].includes(row.targetId));
+      expect(purges.map((row) => [row.id, row.targetId])).toEqual([[id("pl3"), old.id]]);
     });
 
     it("appends audit entries and metric events", async () => {

@@ -108,9 +108,9 @@ describe("core services on D1 and R2", () => {
     await expect(view.open(member, accepted.file.id, "download")).rejects.toThrow("not_found: file");
     expect((await repository.cases.findById(registered.id))?.state).toBe("Submitted");
 
-    expect(await trash.purgeExpired(systemActor())).toEqual({ purged: 0, failed: 0 });
+    expect(await trash.purgeExpired(systemActor())).toEqual({ purged: 0, skipped: 0, failed: 0 });
     clock.advanceDays(31);
-    expect(await trash.purgeExpired(systemActor())).toEqual({ purged: 1, failed: 0 });
+    expect(await trash.purgeExpired(systemActor())).toEqual({ purged: 1, skipped: 0, failed: 0 });
     expect(await repository.files.findById(accepted.file.id)).toBeNull();
     expect(await store.get(accepted.file.r2Key)).toBeNull();
     const purges = (await repository.audit.list({ limit: 100, offset: 0 })).filter((entry) => entry.action === "file.purge");

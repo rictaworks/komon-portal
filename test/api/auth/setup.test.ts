@@ -23,7 +23,8 @@ describe("first-time setup", () => {
 
     // A client member cannot become staff, even with the right token.
     const asMember = await first.call("POST", "/api/setup/claim", { body: { token: SETUP_TOKEN, turnstileToken: "ok" } });
-    expect(asMember.status).toBe(422);
+    expect(asMember.status).toBe(400);
+    expect(await asMember.json()).toEqual({ error: "invalid_input", detail: "setup_token" });
 
     kit.identity.identity = { sub: "setup-owner", displayName: "A. Mori" };
     const owner = kit.client(envWithToken);

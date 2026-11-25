@@ -6,7 +6,7 @@ import type {
   UserRepository,
 } from "../../../core/ports/repository";
 import {
-  changes, escapeLike, fromIso, fromIsoOrNull, isUniqueViolation, text, textOrNull, toIso, toIsoOrNull, whereSql, type Row,
+  changes, fromIso, fromIsoOrNull, isUniqueViolation, text, textOrNull, toIso, toIsoOrNull, whereSql, type Row,
   type Where,
 } from "./sql";
 
@@ -106,6 +106,18 @@ export class D1UserRepository implements UserRepository {
     return current !== null && current.officeStatus === "Active" ? "last_owner" : "not_active";
   }
 
+  async claimOwnerIfNone(id: Id): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `UPDATE users SET office_role = 'Owner', office_status = 'Active'
+         WHERE id = ? AND (office_status IS NULL OR office_status IN ('Revoked', 'Rejected'))
+           AND NOT EXISTS (SELECT 1 FROM users WHERE office_role = 'Owner' AND office_status = 'Active')`,
+      )
+      .bind(id)
+      .run();
+    return changes(result) === 1;
+  }
+
   async listOffice(): Promise<User[]> {
     const rows = await this.db.prepare("SELECT * FROM users WHERE office_role IS NOT NULL ORDER BY created_at, id").all<Row>();
     return rows.results.map(toUser);
@@ -155,9 +167,9 @@ export class D1ClientRepository implements ClientRepository {
       where.params.push(filter.status);
     }
     if (filter.query !== undefined && filter.query !== "") {
-      const escaped = escapeLike(filter.query);
-      where.clauses.push("(code LIKE ? ESCAPE '\\' OR corporate_name LIKE ? ESCAPE '\\')");
-      where.params.push(`${escaped}%`, `%${escaped}%`);
+      // Exact, case-sensitive matching without LIKE: no wildcard escaping and no pattern length limit.
+      where.clauses.push("(substr(code, 1, length(?)) = ? OR instr(corporate_name, ?) > 0)");
+      where.params.push(filter.query, filter.query, filter.query);
     }
     const rows = await this.db
       .prepare(`SELECT * FROM clients${whereSql(where)} ORDER BY code LIMIT ? OFFSET ?`)
@@ -244,7 +256,7 @@ export class D1MembershipRepository implements MembershipRepository {
         .run();
       return true;
     } catch (error) {
-      if (isUniqueViolation(error, "memberships")) {
+      if (isUniqueViolation(error, "memberships.user_id")) {
         return false;
       }
       throw error;

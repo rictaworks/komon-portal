@@ -1,7 +1,7 @@
 import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
 import type { Actor } from "../model/actor";
-import { invalidInput, invalidState, notFound } from "../model/errors";
-import type { Id, Invitation, Membership, OfficeRole, User } from "../model/types";
+import { DomainError, invalidInput, invalidState, notFound } from "../model/errors";
+import type { Id, Invitation, Membership, MembershipStatus, OfficeRole, User } from "../model/types";
 import { OFFICE_ROLES } from "../model/types";
 import type { Clock } from "../ports/clock";
 import type { IdGenerator } from "../ports/id-generator";
@@ -26,8 +26,12 @@ export interface MemberView {
   redeemedAt: Date | null;
 }
 
+/** An office member as shown to the Owner. The sign-in subject is never included. */
 export interface OfficeMemberView {
-  user: User;
+  userId: Id;
+  displayName: string;
+  officeRole: OfficeRole | null;
+  officeStatus: MembershipStatus | null;
   redeemedAt: Date | null;
 }
 
@@ -98,9 +102,14 @@ export class InvitationService {
   }
 
   async cancel(actor: Actor, invitationId: Id): Promise<void> {
+    await this.deps.guard.require(actor, "staff.operate", { type: INVITATION_TARGET, id: invitationId });
     const invitation = await this.deps.repository.invitations.findById(invitationId);
-    await this.requireManage(actor, invitation?.targetType ?? "Client", { type: INVITATION_TARGET, id: invitationId });
-    if (invitation === null) {
+    // Staff who are not Owner learn nothing about office invitations: they look like unknown IDs.
+    const hidden = invitation !== null && invitation.targetType === "Office" && !this.deps.guard.allows(actor, "office.staff.manage");
+    if (invitation === null || hidden) {
+      if (hidden) {
+        await this.deps.audit.record(actor, "invitation.cancel", INVITATION_TARGET, invitationId, "denied");
+      }
       throw notFound("invitation");
     }
     if (!(await this.deps.repository.invitations.transition({ ...invitation, status: "Cancelled" }, "Issued"))) {
@@ -123,16 +132,25 @@ export class InvitationService {
     }
     const alreadyMember =
       invitation.clientId !== null && (await this.deps.repository.memberships.findOngoing(user.id, invitation.clientId)) !== null;
+    // An account that may not join is refused with the same error as a dead code, and the code is
+    // left unused. Otherwise a leaked link could be confirmed as live by probing it.
     if (!this.deps.policy.canJoin(actor, invitation.targetType) || alreadyMember) {
       await this.deps.audit.record(actor, "invitation.redeem", INVITATION_TARGET, invitation.id, "denied");
-      throw invalidState("not_eligible");
+      throw invalidInput(INVALID_CODE);
     }
     const redeemed: Invitation = { ...invitation, status: "Redeemed", redeemedBy: user.id, redeemedAt: now };
     if (!(await this.deps.repository.invitations.transition(redeemed, "Issued"))) {
       await this.deps.audit.record(actor, "invitation.redeem", INVITATION_TARGET, invitation.id, "denied");
       throw invalidInput(INVALID_CODE);
     }
-    await this.createPending(user, redeemed, now);
+    try {
+      await this.createPending(user, redeemed, now);
+    } catch (error) {
+      // Nothing was created, so the invitation must not stay consumed.
+      await this.deps.repository.invitations.transition(invitation, "Redeemed");
+      await this.deps.audit.record(actor, "invitation.redeem", INVITATION_TARGET, invitation.id, "failed");
+      throw error instanceof DomainError ? invalidInput(INVALID_CODE) : error;
+    }
     await this.deps.audit.record(actor, "invitation.redeem", INVITATION_TARGET, invitation.id);
     await this.deps.metrics.record("invitation.redeemed", invitation.clientId, { target: invitation.targetType });
     return redeemed;
@@ -151,7 +169,8 @@ export class InvitationService {
     await this.deps.guard.require(actor, "staff.operate", { type: MEMBERSHIP_TARGET, id: membershipId });
     const membership = await this.requireMembership(membershipId);
     const revoked: Membership = { ...membership, status: "Revoked" };
-    if (!(await this.deps.repository.memberships.transition(revoked, "Active"))) {
+    // Repeating a revocation is allowed, so that sessions are ended even if an earlier attempt stopped halfway.
+    if (membership.status !== "Revoked" && !(await this.deps.repository.memberships.transition(revoked, "Active"))) {
       throw invalidState("membership_not_active");
     }
     await this.deps.repository.sessions.revokeAllForUser(membership.userId);
@@ -174,7 +193,7 @@ export class InvitationService {
     if (outcome === "last_owner") {
       throw invalidState("last_owner");
     }
-    if (outcome === "not_active") {
+    if (outcome === "not_active" && (await this.deps.repository.users.findById(userId))?.officeStatus !== "Revoked") {
       throw invalidState("office_not_active");
     }
     await this.deps.repository.sessions.revokeAllForUser(userId);
@@ -197,7 +216,13 @@ export class InvitationService {
     const views: OfficeMemberView[] = [];
     for (const user of await this.deps.repository.users.listOffice()) {
       const invitation = await this.deps.repository.invitations.findLatestRedeemedBy(user.id, null);
-      views.push({ user, redeemedAt: invitation?.redeemedAt ?? null });
+      views.push({
+        userId: user.id,
+        displayName: user.displayName,
+        officeRole: user.officeRole,
+        officeStatus: user.officeStatus,
+        redeemedAt: invitation?.redeemedAt ?? null,
+      });
     }
     return views;
   }
@@ -253,16 +278,16 @@ export class InvitationService {
     if (user === null) {
       throw notFound("user");
     }
+    // Staff and client roles never combine: someone with a pending or active client membership cannot be approved.
+    if (status === "Active" && (await this.actors.load(user)).memberships.some((membership) => membership.status === "Pending" || membership.status === "Active")) {
+      throw invalidState("not_eligible");
+    }
     const decided: User = { ...user, officeStatus: status };
     if (user.officeRole === null || !(await this.deps.repository.users.transitionOffice(decided, "Pending"))) {
       throw invalidState("office_not_pending");
     }
     await this.deps.audit.record(actor, action, USER_TARGET, userId);
     return decided;
-  }
-
-  private async requireManage(actor: Actor, targetType: Invitation["targetType"], target: { type: string; id: Id }): Promise<void> {
-    await this.deps.guard.require(actor, targetType === "Office" ? "office.staff.manage" : "staff.operate", target);
   }
 
   private async requireMembership(id: Id): Promise<Membership> {

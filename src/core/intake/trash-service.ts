@@ -1,10 +1,11 @@
 import type { Guard } from "../access/guard";
 import type { AuditRecorder, MetricRecorder } from "../audit/recorders";
 import type { CaseService } from "../cases/case-service";
-import type { Actor } from "../model/actor";
-import { invalidState, notFound } from "../model/errors";
+import { actorUserId, type Actor } from "../model/actor";
+import { conflict, invalidState, notFound } from "../model/errors";
 import type { FileRecord, Id } from "../model/types";
 import type { FileStore } from "../ports/file-store";
+import type { IdGenerator } from "../ports/id-generator";
 import type { Repository } from "../ports/repository";
 import type { FileWriter } from "./file-writer";
 
@@ -15,6 +16,8 @@ const PURGE_PAGE = { limit: 100, offset: 0 };
 
 export interface PurgeReport {
   purged: number;
+  /** Listed as due but restored or already gone when its turn came. */
+  skipped: number;
   failed: number;
 }
 
@@ -24,6 +27,7 @@ export interface TrashServiceDeps {
   guard: Guard;
   audit: AuditRecorder;
   metrics: MetricRecorder;
+  ids: IdGenerator;
   writer: FileWriter;
   cases: CaseService;
 }
@@ -47,6 +51,9 @@ export class TrashService {
     if (file === null) {
       throw notFound("file");
     }
+    if (file.version !== expectedVersion) {
+      throw conflict("stale");
+    }
     if (file.state !== "Trashed" || file.trashedAt === null || file.trashedFrom === null) {
       throw invalidState("not_trashed");
     }
@@ -67,33 +74,57 @@ export class TrashService {
   }
 
   /**
-   * Erases bodies and records of files trashed more than 30 days ago. Each erasure is written to
-   * the audit log. A failure on one file is recorded and the remaining files are still processed.
+   * Erases files trashed more than 30 days ago. The record goes first, together with its audit
+   * entry and only if the file is still due, so a file restored at the last moment is never
+   * erased; the body is removed afterwards. A failure on one file is recorded and the remaining
+   * files are still processed.
    */
   async purgeExpired(actor: Actor): Promise<PurgeReport> {
     await this.deps.guard.require(actor, "maintenance.run", { type: FILE_TARGET, id: "purge" });
-    const report: PurgeReport = { purged: 0, failed: 0 };
-    const attempted = new Set<Id>();
+    const report: PurgeReport = { purged: 0, skipped: 0, failed: 0 };
+    const threshold = this.purgeThreshold();
     for (;;) {
-      const due = (await this.deps.repository.files.listTrashedBefore(this.purgeThreshold(), PURGE_PAGE)).filter(
-        (file) => !attempted.has(file.id),
-      );
+      // Files that failed stay in the listing, so later pages are reached by skipping them.
+      const due = await this.deps.repository.files.listTrashedBefore(threshold, { limit: PURGE_PAGE.limit, offset: report.failed });
       if (due.length === 0) {
         return report;
       }
       for (const file of due) {
-        attempted.add(file.id);
-        try {
-          await this.deps.store.delete(file.r2Key);
-          await this.deps.repository.files.purge(file.id);
-          await this.deps.audit.record(actor, "file.purge", FILE_TARGET, file.id);
-          report.purged += 1;
-        } catch (error) {
-          await this.deps.audit.record(actor, "file.purge", FILE_TARGET, file.id, "failed");
-          await this.deps.metrics.record("purge.failed", file.clientId, { fileId: file.id, error: error instanceof Error ? error.name : "unknown" });
-          report.failed += 1;
-        }
+        report[await this.purgeOne(actor, file, threshold)] += 1;
       }
+    }
+  }
+
+  private async purgeOne(actor: Actor, file: FileRecord, threshold: Date): Promise<keyof PurgeReport> {
+    try {
+      const erased = await this.deps.repository.files.purge(file.id, threshold, {
+        id: this.deps.ids.newId(),
+        actorUserId: actorUserId(actor),
+        action: "file.purge",
+        targetType: FILE_TARGET,
+        targetId: file.id,
+        result: "ok",
+        occurredAt: this.deps.writer.now(),
+      });
+      if (!erased) {
+        // Restored or already gone in the meantime: nothing to do and nothing failed.
+        return "skipped";
+      }
+      await this.deps.store.delete(file.r2Key);
+      return "purged";
+    } catch (error) {
+      await this.recordFailure(actor, file, error);
+      return "failed";
+    }
+  }
+
+  /** Recording a failure must not abort the job. */
+  private async recordFailure(actor: Actor, file: FileRecord, error: unknown): Promise<void> {
+    try {
+      await this.deps.audit.record(actor, "file.purge", FILE_TARGET, file.id, "failed");
+      await this.deps.metrics.record("purge.failed", file.clientId, { fileId: file.id, error: error instanceof Error ? error.name : "unknown" });
+    } catch {
+      // The failure is still counted in the report returned to the caller.
     }
   }
 }
