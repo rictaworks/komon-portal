@@ -10,7 +10,7 @@ import { fileContentRoutes } from "./files/routes";
 import { handleError } from "./middleware/errors";
 import { securityHeaders } from "./middleware/security-headers";
 import { officeRoutes } from "./office";
-import { loadSession, protectStateChanges, withServices } from "./middleware/session";
+import { loadSession, protectStateChanges, recordActivity, withServices } from "./middleware/session";
 
 export type { AppBindings } from "./context";
 
@@ -58,7 +58,7 @@ export function createApp(overrides: AdapterOverrides = {}): Hono<AppBindings> {
   app.use("*", securityHeaders());
   app.get("/api/health", (c) => c.json({ status: API_CODES.ok }));
 
-  app.use("/api/*", withServices(overrides), loadSession(), protectStateChanges());
+  app.use("/api/*", withServices(overrides), loadSession(), protectStateChanges(), recordActivity());
   app.route("/api", authRoutes());
   app.route("/api/office", officeRoutes());
   app.route("/api/client", clientPortalRoutes());

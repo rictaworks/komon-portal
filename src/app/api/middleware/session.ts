@@ -33,6 +33,20 @@ export function loadSession(): MiddlewareHandler<AppBindings> {
 }
 
 /**
+ * Records the weekly activity of the signed-in user (once per client and ISO week, see MetricRecorder). Runs for requests
+ * that passed the state-change guard, so a refused request is not counted. Recording failures stop the request.
+ */
+export function recordActivity(): MiddlewareHandler<AppBindings> {
+  return async (c, next) => {
+    const auth = c.get("auth");
+    if (auth !== undefined) {
+      await c.get("services").metrics.recordWeeklyActivity(auth.actor);
+    }
+    await next();
+  };
+}
+
+/**
  * State-changing requests must come from this origin, and, once signed in, carry the session's
  * CSRF token. A request without an Origin header is refused. The error handler writes these
  * refusals to the audit log, also when nobody is signed in.

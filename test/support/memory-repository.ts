@@ -593,5 +593,15 @@ export class MemoryRepository implements Repository {
     },
     hasCaseEvent: async (name: string, caseId: Id, submittedOn: string): Promise<boolean> =>
       this.metricRows.some((row) => row.name === name && row.attributes.caseId === caseId && row.attributes.submittedOn === submittedOn),
+    appendUnlessSince: async (event: MetricEvent, since: Date): Promise<boolean> => {
+      const exists = this.metricRows.some(
+        (row) => row.name === event.name && row.actorUserId === event.actorUserId && row.clientId === event.clientId && row.occurredAt.getTime() >= since.getTime(),
+      );
+      if (exists) {
+        return false;
+      }
+      await this.metrics.append(event);
+      return true;
+    },
   };
 }
