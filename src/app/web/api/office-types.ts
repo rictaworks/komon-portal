@@ -71,6 +71,8 @@ export interface CaseView {
 /** The case list, with the active office users a case can be assigned to. */
 export interface CaseList {
   items: CaseView[];
+  /** True when more cases match than the requested page holds. */
+  truncated: boolean;
   assignees: { id: string; displayName: string }[];
 }
 

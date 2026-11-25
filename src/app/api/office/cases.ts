@@ -93,14 +93,16 @@ export function caseRoutes(): Hono<AppBindings> {
     const lookups = new Lookups(services);
     const items = [];
     const page = pageOf(c);
-    for (const record of unknownClient ? [] : await services.repository.cases.list(filter, page)) {
+    // One more than the page is read, so that the answer can say whether more cases match.
+    const records = unknownClient ? [] : await services.repository.cases.list(filter, { limit: page.limit + 1, offset: page.offset });
+    for (const record of records.slice(0, page.limit)) {
       items.push(await caseView(lookups, record, await deadlinesOf(services, lookups, record)));
     }
     // Active office users, so that staff can choose an assignee without the Owner-only staff list.
     const assignees = (await services.repository.users.listOffice())
       .filter((user) => user.officeStatus === "Active")
       .map((user) => ({ id: user.id, displayName: user.displayName }));
-    return c.json({ items, assignees });
+    return c.json({ items, truncated: records.length > page.limit, assignees });
   });
 
   routes.post("/cases", async (c) => {

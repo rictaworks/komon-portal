@@ -194,6 +194,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .step { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--radius-control); background: var(--gray-light); color: var(--slate); font-size: 13px; font-weight: 700; }
 .step--done { background: var(--navy-light); color: var(--white); }
 .step--current { background: var(--staged-bg); color: var(--staged-fg); box-shadow: inset 0 0 0 2px var(--blue); }
+.step--unconfirmed { background: var(--white); box-shadow: inset 0 0 0 1px var(--slate); }
 .step__number { font-size: 11px; }
 .step__note { font-size: 12px; font-weight: 400; }
 .facts { margin: 0; display: flex; flex-wrap: wrap; gap: 12px 32px; }

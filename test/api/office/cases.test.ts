@@ -77,6 +77,24 @@ describe("office cases API", () => {
     expect((await member.call("GET", "/api/office/cases?clientCode=C0701")).status).toBe(404);
   });
 
+  it("says whether more cases match than the page holds", async () => {
+    const all = await json(await staff.call("GET", "/api/office/cases"));
+    const total = (all.items as Json[]).length;
+    expect(total).toBeGreaterThan(1);
+    expect(all.truncated).toBe(false);
+    const exact = await json(await staff.call("GET", `/api/office/cases?limit=${total}`));
+    expect(exact.truncated).toBe(false);
+    const short = await json(await staff.call("GET", `/api/office/cases?limit=${total - 1}`));
+    expect((short.items as Json[]).length).toBe(total - 1);
+    expect(short.truncated).toBe(true);
+    expect(idsOf(short)).toEqual(idsOf(all).slice(0, total - 1));
+    const rest = await json(await staff.call("GET", `/api/office/cases?limit=${total - 1}&offset=${total - 1}`));
+    expect(idsOf(rest)).toEqual(idsOf(all).slice(total - 1));
+    expect(rest.truncated).toBe(false);
+    expect((await json(await staff.call("GET", "/api/office/cases?clientCode=C9999"))).truncated).toBe(false);
+    expect((await staff.call("GET", "/api/office/cases?limit=200")).status).toBe(200);
+  });
+
   it("closes a case without documents from Open and from Submitted", async () => {
     const open = await staff.call("POST", `/api/office/cases/${ids.assigned}/close`, { body: { version: 1 } });
     expect(await json(open)).toMatchObject({ state: "Closed", version: 2 });

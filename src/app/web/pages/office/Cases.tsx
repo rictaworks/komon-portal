@@ -3,13 +3,14 @@ import type { CaseList, CaseView } from "../../api/office-types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SelectField, TextField } from "../../components/Form";
 import { formatDay } from "../../components/format";
-import { ErrorNotice, Notice } from "../../components/Notice";
+import { ErrorNotice, errorText, Notice } from "../../components/Notice";
 import { CaseStateBadge, DeadlineBadge } from "../../components/StatusBadge";
 import { useAction, type Action } from "../../components/useAction";
 import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { caseSteps, freshestCase, parseArrivalNumbers } from "./case-progress";
 import { clientOptions, useClients, useSettings } from "./useMasterData";
 
 const CASE_KINDS = ["Procedure", "Payroll", "Other"] as const;
@@ -20,12 +21,13 @@ const TERMINAL_STATES: readonly string[] = ["Closed", "Cancelled"];
 const CANCELLABLE_STATES: readonly string[] = ["Open", "Submitted", "MaterialsReceived"];
 const OPEN_FILTER = "open";
 const ALL_FILTER = "all";
-/** The second step depends on the kind: only a payroll case waits for materials from the client. */
-const PAYROLL_STEPS = ["Open", "MaterialsReceived", "DocumentReceived", "Delivered", "Confirmed"] as const;
-const DEFAULT_STEPS = ["Open", "Submitted", "DocumentReceived", "Delivered", "Confirmed"] as const;
+/** The list grows by this many cases at a time, up to the most the API returns in one answer. */
+const LIST_STEP = 50;
+const LIST_MAX = 200;
 
-function listPath(clientCode: string, kind: string, stateFilter: string): string {
+function listPath(clientCode: string, kind: string, stateFilter: string, limit: number): string {
   const query = new URLSearchParams();
+  query.set("limit", String(limit));
   if (clientCode !== "") query.set("clientCode", clientCode);
   if (kind !== "") query.set("kind", kind);
   if (stateFilter === OPEN_FILTER) {
@@ -33,8 +35,7 @@ function listPath(clientCode: string, kind: string, stateFilter: string): string
   } else if (stateFilter !== ALL_FILTER) {
     query.set("states", stateFilter);
   }
-  const text = query.toString();
-  return text === "" ? "/api/office/cases" : `/api/office/cases?${text}`;
+  return `/api/office/cases?${query.toString()}`;
 }
 
 function caseName(record: CaseView): string {
@@ -60,16 +61,18 @@ function RetrievalCell({ record }: { record: CaseView }) {
 
 function Steps({ record }: { record: CaseView }) {
   const t = useT();
-  const steps: readonly string[] = record.caseType?.kind === "Payroll" ? PAYROLL_STEPS : DEFAULT_STEPS;
-  // A closed or cancelled case is on no step: its progress before the end is not recorded.
-  const current = steps.indexOf(record.state);
+  if (record.caseType === null) {
+    return null;
+  }
+  const steps = caseSteps(record.caseType.kind, record.state, record.submittedOn);
   return (
     <ol className="steps" aria-label={t("office.cases.steps")}>
       {steps.map((step, index) => (
-        <li key={step} className={`step${index < current ? " step--done" : ""}${index === current ? " step--current" : ""}`} aria-current={index === current ? "step" : undefined}>
+        <li key={step.state} className={`step${step.status === "pending" ? "" : ` step--${step.status}`}`} aria-current={step.status === "current" ? "step" : undefined}>
           <span className="step__number">{index + 1}</span>
-          <span>{t(`caseState.${step}`)}</span>
-          {step === "Submitted" && record.submittedOn !== null ? <span className="step__note">{formatDay(record.submittedOn)}</span> : null}
+          <span>{t(`caseState.${step.state}`)}</span>
+          {step.state === "Submitted" && record.submittedOn !== null ? <span className="step__note">{formatDay(record.submittedOn)}</span> : null}
+          {step.status === "unconfirmed" ? <span className="step__note">{t(step.state === "Submitted" ? "office.cases.notSubmitted" : "office.cases.stepNotRecorded")}</span> : null}
         </li>
       ))}
     </ol>
@@ -79,11 +82,16 @@ function Steps({ record }: { record: CaseView }) {
 interface CaseDetailProps {
   record: CaseView;
   action: Action;
-  onChanged(): void;
+  /** True while a request runs or the case is being re-read: the version on screen may be out of date. */
+  busy: boolean;
+  /** The case as the server answered after a change. */
+  onSaved(updated: CaseView): void;
+  /** A change was refused: the case on screen may be out of date. */
+  onRefused(): void;
 }
 
 /** The selected case: progress, submission data and the three manual steps (submit, close, cancel). */
-function CaseDetail({ record, action, onChanged }: CaseDetailProps) {
+function CaseDetail({ record, action, busy, onSaved, onRefused }: CaseDetailProps) {
   const t = useT();
   const { api } = useSession();
   const [submittedOn, setSubmittedOn] = useState(record.submittedOn ?? "");
@@ -92,26 +100,26 @@ function CaseDetail({ record, action, onChanged }: CaseDetailProps) {
   const terminal = TERMINAL_STATES.includes(record.state);
   const arrivalNumbers = record.arrivalNumbers ?? [];
 
+  // What was typed stays in the form when a request is refused; only a saved submission clears the numbers.
   const saveSubmission = (event: FormEvent) => {
     event.preventDefault();
-    const added = arrivalText
-      .split(/[\s,]+/)
-      .map((value) => value.trim())
-      .filter((value) => value !== "");
     void action
       .run(async () => {
-        await api.post<CaseView>(`/api/office/cases/${record.id}/submit`, { submittedOn, arrivalNumbers: added, version: record.version });
+        onSaved(await api.post<CaseView>(`/api/office/cases/${record.id}/submit`, { submittedOn, arrivalNumbers: parseArrivalNumbers(arrivalText), version: record.version }));
+        setArrivalText("");
       })
-      .then(onChanged);
+      .then((succeeded) => (succeeded ? undefined : onRefused()));
   };
 
   const transition = (verb: "close" | "cancel") => {
     setConfirming(null);
     void action
       .run(async () => {
-        await api.post<CaseView>(`/api/office/cases/${record.id}/${verb}`, { version: record.version });
+        const updated = await api.post<CaseView>(`/api/office/cases/${record.id}/${verb}`, { version: record.version });
+        // Closing or cancelling does not touch the arrival numbers, and its answer does not list them.
+        onSaved({ ...updated, arrivalNumbers });
       })
-      .then(onChanged);
+      .then((succeeded) => (succeeded ? undefined : onRefused()));
   };
 
   return (
@@ -172,7 +180,7 @@ function CaseDetail({ record, action, onChanged }: CaseDetailProps) {
               </div>
             </div>
             <div className="row">
-              <button type="submit" className="button button--primary" disabled={action.busy || submittedOn === ""}>
+              <button type="submit" className="button button--primary" disabled={busy || submittedOn === ""}>
                 {t("office.cases.saveSubmission")}
               </button>
             </div>
@@ -180,11 +188,11 @@ function CaseDetail({ record, action, onChanged }: CaseDetailProps) {
         ) : null}
         {terminal ? null : (
           <div className="row">
-            <button type="button" className="button" disabled={action.busy} onClick={() => setConfirming("close")}>
+            <button type="button" className="button" disabled={busy} onClick={() => setConfirming("close")}>
               {t("office.cases.close")}
             </button>
             {CANCELLABLE_STATES.includes(record.state) ? (
-              <button type="button" className="button button--danger" disabled={action.busy} onClick={() => setConfirming("cancel")}>
+              <button type="button" className="button button--danger" disabled={busy} onClick={() => setConfirming("cancel")}>
                 {t("office.cases.cancel")}
               </button>
             ) : null}
@@ -201,6 +209,42 @@ function CaseDetail({ record, action, onChanged }: CaseDetailProps) {
   );
 }
 
+export interface CaseDetailPanelProps {
+  selectedId: string | null;
+  record: CaseView | null;
+  loading: boolean;
+  error: unknown;
+  action: Action;
+  onSaved(updated: CaseView): void;
+  onRefused(): void;
+  onRetry(): void;
+}
+
+/** The detail card: the selected case, or why there is none to show (nothing chosen, loading, failed). */
+export function CaseDetailPanel({ selectedId, record, loading, error, action, onSaved, onRefused, onRetry }: CaseDetailPanelProps) {
+  const t = useT();
+  const failed = selectedId !== null && !loading && error !== null && error !== undefined;
+  return (
+    <section className="card" aria-label={t("office.cases.detail")}>
+      {selectedId === null ? <p className="empty">{t("office.cases.chooseCase")}</p> : null}
+      {selectedId !== null && record === null && loading ? <Loading /> : null}
+      {failed ? (
+        <div className="card--pad stack">
+          <Notice tone="danger">
+            {t("office.cases.detailFailed")} {errorText(t, error)}
+          </Notice>
+          <div className="row">
+            <button type="button" className="button" onClick={onRetry}>
+              {t("common.reload")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {record === null ? null : <CaseDetail key={record.id} record={record} action={action} busy={action.busy || loading} onSaved={onSaved} onRefused={onRefused} />}
+    </section>
+  );
+}
+
 /** Cases: search and narrow the list, register, record the submission, close or cancel. */
 export function Cases() {
   const t = useT();
@@ -209,8 +253,11 @@ export function Cases() {
   const [clientCode, setClientCode] = useState("");
   const [kindFilter, setKindFilter] = useState("");
   const [stateFilter, setStateFilter] = useState(OPEN_FILTER);
+  const [limit, setLimit] = useState(LIST_STEP);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const cases = useLoad<CaseList>(() => api.get<CaseList>(listPath(clientCode, kindFilter, stateFilter)), [clientCode, kindFilter, stateFilter]);
+  /** The answer of the last change, shown until a reload brings a copy that is at least as new. */
+  const [saved, setSaved] = useState<CaseView | null>(null);
+  const cases = useLoad<CaseList>(() => api.get<CaseList>(listPath(clientCode, kindFilter, stateFilter, limit)), [clientCode, kindFilter, stateFilter, limit]);
   const detail = useLoad<CaseView | null>(() => (selectedId === null ? Promise.resolve(null) : api.get<CaseView>(`/api/office/cases/${selectedId}`)), [selectedId]);
   const clients = useClients();
   const settings = useSettings();
@@ -225,6 +272,17 @@ export function Cases() {
   const search = (event: FormEvent) => {
     event.preventDefault();
     setClientCode(codeInput.trim());
+    setLimit(LIST_STEP);
+  };
+
+  // A new filter starts again from the first cases.
+  const chooseKind = (value: string) => {
+    setKindFilter(value);
+    setLimit(LIST_STEP);
+  };
+  const chooseState = (value: string) => {
+    setStateFilter(value);
+    setLimit(LIST_STEP);
   };
 
   const register = (event: FormEvent) => {
@@ -244,13 +302,18 @@ export function Cases() {
     });
   };
 
+  const showSaved = (updated: CaseView) => {
+    setSaved(updated);
+    cases.reload();
+  };
+
   const reloadAll = () => {
     cases.reload();
     detail.reload();
   };
 
   const items = cases.data?.items ?? [];
-  const selected = selectedId === null || detail.data === null || detail.data.id !== selectedId ? null : detail.data;
+  const selected = freshestCase(selectedId, detail.data, saved);
   const stateOptions = [
     { value: OPEN_FILTER, label: t("office.cases.openCases") },
     { value: ALL_FILTER, label: t("office.cases.allStates") },
@@ -260,7 +323,8 @@ export function Cases() {
   return (
     <div className="page">
       <h1 className="title">{t("office.cases.title")}</h1>
-      <ErrorNotice error={cases.error ?? detail.error ?? action.error} />
+      <ErrorNotice error={cases.error} />
+      <ErrorNotice error={action.error} />
       <div className="split">
         <div className="split__main stack">
           <section className="card" aria-label={t("office.cases.list")}>
@@ -269,11 +333,23 @@ export function Cases() {
               <button type="submit" className="button">
                 {t("office.cases.search")}
               </button>
-              <SelectField label={t("office.cases.kind")} value={kindFilter} options={[{ value: "", label: t("office.cases.allKinds") }, ...CASE_KINDS.map((value) => ({ value, label: t(`caseKind.${value}`) }))]} onChange={setKindFilter} />
-              <SelectField label={t("office.cases.state")} value={stateFilter} options={stateOptions} onChange={setStateFilter} />
+              <SelectField label={t("office.cases.kind")} value={kindFilter} options={[{ value: "", label: t("office.cases.allKinds") }, ...CASE_KINDS.map((value) => ({ value, label: t(`caseKind.${value}`) }))]} onChange={chooseKind} />
+              <SelectField label={t("office.cases.state")} value={stateFilter} options={stateOptions} onChange={chooseState} />
             </form>
             {cases.loading && cases.data === null ? <Loading /> : null}
             {cases.data !== null && items.length === 0 ? <p className="empty">{t("office.cases.empty")}</p> : null}
+            {cases.data?.truncated === true ? (
+              <div className="card--pad stack">
+                <Notice tone="review">{t(limit < LIST_MAX ? "office.cases.moreCases" : "office.cases.moreCasesMax", { count: items.length })}</Notice>
+                {limit < LIST_MAX ? (
+                  <div className="row">
+                    <button type="button" className="button" disabled={cases.loading} onClick={() => setLimit(Math.min(limit + LIST_STEP, LIST_MAX))}>
+                      {t("office.cases.showMore")}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="table-wrap">
               <table className="table table--wide">
                 <thead>
@@ -320,11 +396,7 @@ export function Cases() {
               </table>
             </div>
           </section>
-          <section className="card" aria-label={t("office.cases.detail")}>
-            {selectedId === null ? <p className="empty">{t("office.cases.chooseCase")}</p> : null}
-            {selectedId !== null && selected === null && detail.loading ? <Loading /> : null}
-            {selected === null ? null : <CaseDetail key={`${selected.id}:${selected.version}`} record={selected} action={action} onChanged={reloadAll} />}
-          </section>
+          <CaseDetailPanel selectedId={selectedId} record={selected} loading={detail.loading} error={detail.error} action={action} onSaved={showSaved} onRefused={reloadAll} onRetry={detail.reload} />
         </div>
         <form className="card card--pad split__side stack" onSubmit={register} aria-label={t("office.cases.register")}>
           <h2 className="subtitle">{t("office.cases.register")}</h2>
