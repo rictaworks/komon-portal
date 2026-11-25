@@ -124,12 +124,10 @@ test("a document goes from intake through review and publishing to the client, a
     await expect(sent.getByRole("article").filter({ hasText: INBOUND_TYPE.label })).toHaveCount(CLIENT_FILES.length);
   });
 
-  await test.step("the office sees the sent files on the dashboard and on the client's shelf", async () => {
-    await owner.goto("/office/dashboard");
-    const waiting = owner.locator("#submissions").getByRole("listitem").filter({ hasText: DEMO_LABEL });
-    await expect(waiting).toHaveCount(CLIENT_FILES.length);
-    await waiting.first().getByRole("link", { name: "Open shelf" }).click();
-    await owner.waitForURL(new RegExp(`/office/shelf/${DEMO_CLIENT.id}\\?`));
+  await test.step("the office sees the sent files on the client's shelf", async () => {
+    // The dashboard no longer lists client submissions; the shelf is where the office opens them.
+    await owner.goto(`/office/shelf/${DEMO_CLIENT.id}`);
+    await owner.getByRole("button", { name: "From client" }).click();
     await expect(owner.getByRole("button", { name: "From client" })).toHaveAttribute("aria-pressed", "true");
     const received = owner.getByRole("region", { name: "From client" }).getByRole("row").filter({ hasText: INBOUND_TYPE.label });
     await expect(received).toHaveCount(CLIENT_FILES.length);

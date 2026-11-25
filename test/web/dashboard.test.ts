@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import type { CaseView, Dashboard } from "../../src/app/web/api/office-types";
 import { englishTranslator, I18nContext } from "../../src/app/web/i18n";
 import { DashboardContent } from "../../src/app/web/pages/office/Dashboard";
+import { RETRIEVAL_CAUTION_DAYS } from "../../src/core/cases/deadline-calculator";
+import { UNREAD_AFTER_DAYS } from "../../src/core/office/dashboard-windows";
 
 function caseView(id: string): CaseView {
   return {
@@ -37,10 +39,28 @@ function cards(html: string): { href: string; value: string }[] {
 describe("Dashboard", () => {
   it("links every card to the list it summarises", () => {
     const html = render(dashboard());
-    expect(cards(html).map((card) => card.href)).toEqual(["/office/review", "/office/staged", "#retrieval", "#unread", "#submissions"]);
-    for (const anchor of ["retrieval", "due", "unread", "submissions"]) {
+    expect(cards(html).map((card) => card.href)).toEqual(["/office/review", "/office/staged", "#retrieval", "#unread"]);
+    for (const anchor of ["retrieval", "due", "unread"]) {
       expect(html).toContain(`<section class="card" id="${anchor}">`);
     }
+  });
+
+  it("has four cards and no Submitted card or list", () => {
+    const html = render(dashboard({ submitted: 2, submissions: [{ id: "s1", displayName: "C0031_SHAHO_20261117_03", receivedAt: "2026-11-17T00:00:00.000Z", client: null }] }));
+    expect(cards(html)).toHaveLength(4);
+    expect(html).not.toContain('id="submissions"');
+    expect(html).not.toContain("Submissions from clients");
+    expect(html).not.toContain("Submitted</span>");
+  });
+
+  it("uses the captions of the mock, with the day windows the core applies", () => {
+    const html = render(dashboard());
+    expect(html).toContain("documents waiting for a client decision");
+    expect(html).toContain("documents ready to publish");
+    expect(html).toContain(`cases within ${RETRIEVAL_CAUTION_DAYS} days or expired`);
+    expect(html).toContain(`published documents unread for ${UNREAD_AFTER_DAYS} days or more`);
+    expect(html).not.toContain("client reads pending");
+    expect(html).not.toContain("cases awaiting retrieval");
   });
 
   it("shows the number of listed items on a card when the list is complete", () => {
