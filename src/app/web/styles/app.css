@@ -40,7 +40,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* Layout: office */
 .office { display: flex; flex-wrap: wrap; min-height: 100vh; }
-.sidebar { flex: 1 1 220px; max-width: 240px; background: var(--navy); color: var(--white); padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
+.sidebar { flex: 1 1 220px; max-width: 240px; height: 100vh; position: sticky; top: 0; overflow-y: auto; background: var(--navy); color: var(--white); padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
 .sidebar__brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; font-family: var(--font-display); font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: var(--white); text-decoration: none; }
 .sidebar__brand svg { color: var(--sky); }
 .sidebar__nav { display: flex; flex-direction: column; gap: 4px; }
@@ -57,7 +57,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .content { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; }
 .page { padding: 32px 40px; display: flex; flex-direction: column; gap: 20px; }
 @media (max-width: 720px) {
-  .sidebar { max-width: none; }
+  .sidebar { max-width: none; height: auto; position: static; overflow: visible; }
   .page { padding: 20px 16px; }
 }
 
