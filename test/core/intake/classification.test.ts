@@ -64,8 +64,34 @@ describe("classifierTitle", () => {
     expect(classifierTitle("C0031_20261124_notice.pdf", withIdentifiers)).toBe("notice");
   });
 
-  it("limits the length", () => {
-    expect(classifierTitle(`${"notice ".repeat(100)}.pdf`, options).length).toBeLessThanOrEqual(120);
+  it("limits the length to whole words and keeps as many as fit", () => {
+    const title = classifierTitle(`${"notice ".repeat(100)}.pdf`, options);
+    expect(title).toBe(Array.from({ length: 17 }, () => "notice").join(" "));
+    expect(title).toHaveLength(118);
+  });
+
+  it("drops a word that would pass the length limit instead of cutting it", () => {
+    const longWord = "a".repeat(100);
+    const withLongWord = { ...options, vocabulary: [longWord, "notice", "kettei"] };
+    const title = classifierTitle(`${longWord}_notice_notice_kettei.pdf`, withLongWord);
+    expect(title).toBe(`${longWord} notice notice`);
+    expect(title).toHaveLength(114);
+  });
+
+  it("splits vocabulary phrases at any punctuation, so each word of a label can match", () => {
+    const japanese = { ...options, vocabulary: ["算定基礎届・月額変更届", "賞与支払届、資格喪失届", "「離職票」/【労働保険】"] };
+    expect(classifierTitle("算定基礎届.pdf", japanese)).toBe("算定基礎届");
+    expect(classifierTitle("月額変更届_山田.pdf", japanese)).toBe("月額変更届");
+    expect(classifierTitle("資格喪失届・賞与支払届.pdf", japanese)).toBe("資格喪失届 賞与支払届");
+    expect(classifierTitle("離職票_労働保険.pdf", japanese)).toBe("離職票 労働保険");
+    const latin = { ...options, vocabulary: ["Notice, decision", "Payroll/Bonus", "Tax & pension: summary"] };
+    expect(classifierTitle("notice.pdf", latin)).toBe("notice");
+    expect(classifierTitle("decision_bonus.pdf", latin)).toBe("decision bonus");
+    expect(classifierTitle("Taro Yamada payroll tax pension summary.pdf", latin)).toBe("payroll tax pension summary");
+  });
+
+  it("keeps a long vowel mark inside a vocabulary word", () => {
+    expect(classifierTitle("山田_タイムカード.pdf", { ...options, vocabulary: ["タイムカード"] })).toBe("タイムカード");
   });
 
   it("removes client codes in any letter case and inside a longer word", () => {

@@ -4,7 +4,11 @@ import { compileArrivalNumberPattern } from "./key-extractor";
 export const MAX_TITLE_LENGTH = 120;
 export const MAX_MODEL_NAME_LENGTH = 64;
 const LONG_DIGIT_RUN = /[0-9]{6,}/g;
-const SEPARATORS = /[\s_\-.()[\]]+/g;
+/**
+ * Anything that is not a letter, a digit or a combining mark separates the words of a vocabulary
+ * phrase: spaces and every kind of punctuation, such as a comma, a slash or the Japanese middle dot.
+ */
+const SEPARATORS = /[^\p{L}\p{N}\p{M}]+/gu;
 /** A fixed version such as jev-1.13.0. Aliases (jev-latest, jev-preview) and bare names do not match. */
 const MODEL_NAME = /^[a-z][a-z0-9]*-\d+(?:\.\d+)+$/;
 
