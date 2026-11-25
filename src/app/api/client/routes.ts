@@ -3,6 +3,7 @@ import { auditableId } from "../../../core/access/guard";
 import type { UserActor } from "../../../core/model/actor";
 import { invalidInput, notFound } from "../../../core/model/errors";
 import type { FileRecord, Id } from "../../../core/model/types";
+import type { FileFilter } from "../../../core/ports/repository";
 import type { Services } from "../composition";
 import { requireAuth, type AppBindings, type AppContext } from "../context";
 import { readJson, requireInteger } from "../input";
@@ -24,12 +25,22 @@ async function requireReach(c: AppContext, clientId: Id): Promise<{ actor: UserA
   return { actor, services };
 }
 
+/**
+ * One page of a client's files with whether rows exist beyond it. One row more than the page is read,
+ * so the flag comes from the same read as the rows and a screen can page to the end.
+ */
+async function filePage(services: Services, filter: FileFilter, c: AppContext): Promise<{ files: FileRecord[]; hasMore: boolean }> {
+  const page = pageOf(c);
+  const rows = await services.repository.files.list(filter, { limit: page.limit + 1, offset: page.offset });
+  return { files: rows.slice(0, page.limit), hasMore: rows.length > page.limit };
+}
+
 /** Published documents of one client that this member may read, with whether this member has opened each. */
 async function publishedDocuments(services: Services, actor: UserActor, clientId: Id, c: AppContext) {
-  const page = pageOf(c);
   const docTypeId = c.req.query("docTypeId");
   const targetMonth = c.req.query("targetMonth");
-  const files = await services.repository.files.list(
+  const { files, hasMore } = await filePage(
+    services,
     {
       clientId,
       direction: "Outbound",
@@ -37,7 +48,7 @@ async function publishedDocuments(services: Services, actor: UserActor, clientId
       ...(docTypeId === undefined || docTypeId === "" ? {} : { docTypeId }),
       ...(targetMonth === undefined || targetMonth === "" ? {} : { targetMonth }),
     },
-    page,
+    c,
   );
   const visible = files.filter((file) => services.policy.can(actor, "file.read", { file }));
   const receipts = await services.repository.receipts.listByFiles(visible.map((file) => file.id));
@@ -47,7 +58,7 @@ async function publishedDocuments(services: Services, actor: UserActor, clientId
   for (const file of visible) {
     items.push({ ...(await documentView(lookups, file)), opened: opened.has(file.id) });
   }
-  return items;
+  return { items, hasMore };
 }
 
 /** What a client member sees of a file. No review data, routing method or internal notes. */
@@ -97,7 +108,7 @@ export function clientPortalRoutes(): Hono<AppBindings> {
 
   routes.get("/:clientId/documents", async (c) => {
     const { actor, services } = await requireReach(c, c.req.param("clientId"));
-    return c.json({ items: await publishedDocuments(services, actor, c.req.param("clientId"), c) });
+    return c.json(await publishedDocuments(services, actor, c.req.param("clientId"), c));
   });
 
   routes.get("/:clientId/doc-types", async (c) => {
@@ -111,10 +122,7 @@ export function clientPortalRoutes(): Hono<AppBindings> {
 
   routes.get("/:clientId/submissions", async (c) => {
     const { actor, services } = await requireReach(c, c.req.param("clientId"));
-    const files = await services.repository.files.list(
-      { clientId: c.req.param("clientId"), direction: "Inbound", states: ["Submitted", "Acknowledged"] },
-      pageOf(c),
-    );
+    const { files, hasMore } = await filePage(services, { clientId: c.req.param("clientId"), direction: "Inbound", states: ["Submitted", "Acknowledged"] }, c);
     const lookups = new Lookups(services);
     const items = [];
     for (const file of files.filter((candidate) => services.policy.can(actor, "file.read", { file: candidate }))) {
@@ -128,7 +136,7 @@ export function clientPortalRoutes(): Hono<AppBindings> {
         version: file.version,
       });
     }
-    return c.json({ items });
+    return c.json({ items, hasMore });
   });
 
   routes.post("/:clientId/submissions", async (c) => {

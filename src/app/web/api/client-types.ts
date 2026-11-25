@@ -27,6 +27,8 @@ export interface ClientCase {
 
 export interface ClientHome {
   unread: ClientDocument[];
+  /** Unread documents over the whole shelf, of which `unread` holds the newest. */
+  unreadTotal: number;
   cases: ClientCase[];
   truncated: { documents: boolean; cases: boolean };
 }
@@ -43,6 +45,12 @@ export interface Submission {
   acknowledgedAt: string | null;
   canCancel: boolean;
   version: number;
+}
+
+/** One page of a client list. `hasMore` tells whether rows exist beyond it. */
+export interface ListPage<T> {
+  items: T[];
+  hasMore: boolean;
 }
 
 export interface DocTypes {

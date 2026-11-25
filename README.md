@@ -79,9 +79,9 @@ npm run build
 | `/office/cases` | active staff | Cases: register, submit with arrival numbers, close or cancel |
 | `/office/settings` | active staff | Office settings, document and case types, staff, the Jev key (browser only) |
 | `/office/audit` | Owner | The audit log and incidents |
-| `/client/:clientId/home` | active member | New documents and cases |
-| `/client/:clientId/documents` | active member | Published documents, filtered by type and month |
-| `/client/:clientId/send` | active member | Send one file to the office; see what was confirmed |
+| `/client/:clientId/home` | active member | New documents first, with their count, then the cases |
+| `/client/:clientId/documents` | active member | Published documents, filtered by type and month, a page at a time |
+| `/client/:clientId/send` | active member | Send one or several files to the office, each with its own result; see what was sent and confirmed, a page at a time |
 | `/client/:clientId/notifications` | active member | Browser notifications for this device |
 
 Any other path shows the not-found page.
@@ -96,12 +96,12 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | GET | `/api/auth/login` | Starts Google sign-in (OpenID Connect with PKCE). Redirects to Google. | none |
 | POST | `/api/auth/logout` | Ends the current session. | session |
 | GET | `/api/client/{clientId}/doc-types` | Document types the company may send and receive. | member |
-| GET | `/api/client/{clientId}/documents` | Published documents of the company, filtered by type and month. | member |
+| GET | `/api/client/{clientId}/documents` | Published documents of the company, filtered by type and month, paged with `limit` and `offset`; `hasMore` tells whether more exist. | member |
 | GET | `/api/client/{clientId}/home` | The company's unread documents and cases (up to 100 each, with truncation flags). | member |
 | GET | `/api/client/{clientId}/notifications` | Whether notifications are available, the VAPID public key and the account's subscription count. | member |
 | DELETE | `/api/client/{clientId}/notifications/subscriptions` | Removes this browser's push subscription by endpoint. | member |
 | POST | `/api/client/{clientId}/notifications/subscriptions` | Stores this browser's push subscription for the member. | member |
-| GET | `/api/client/{clientId}/submissions` | Files the company has sent, with their confirmation state. | member |
+| GET | `/api/client/{clientId}/submissions` | Files the company has sent, with their confirmation state, paged with `limit` and `offset`; `hasMore` tells whether more exist. | member |
 | POST | `/api/client/{clientId}/submissions` | Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome. | member |
 | POST | `/api/client/{clientId}/submissions/{id}/cancel` | Cancels a submission the office has not confirmed (version required). | member |
 | GET | `/api/config` | Public configuration: environment, Turnstile key, sign-in availability, setup state. | none |

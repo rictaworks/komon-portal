@@ -1,35 +1,41 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { followDownload, openFile, type OpenMode } from "../../api/client";
-import type { ClientDocument, DocTypes } from "../../api/client-types";
+import type { ClientDocument, DocTypes, ListPage } from "../../api/client-types";
 import { SelectField, TextField } from "../../components/Form";
-import { formatDateTime, formatSize } from "../../components/format";
 import { ErrorNotice } from "../../components/Notice";
+import { Pager } from "../../components/Pager";
 import { useAction } from "../../components/useAction";
 import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { documentsPath } from "./client-lists";
+import { DocumentCard } from "./ClientRows";
 
-/** Published documents of the company, filtered by type and month. Opening one records the first view. */
+/** Published documents of the company, filtered by type and month, a page at a time. Opening one records the first view. */
 export function ClientDocuments() {
   const t = useT();
   const { clientId = "" } = useParams();
   const { api } = useSession();
   const [docTypeId, setDocTypeId] = useState("");
   const [targetMonth, setTargetMonth] = useState("");
+  const [page, setPage] = useState(0);
   const types = useLoad<DocTypes>(() => api.get<DocTypes>(`/api/client/${clientId}/doc-types`), [clientId]);
-  const documents = useLoad<{ items: ClientDocument[] }>(() => {
-    const query = new URLSearchParams();
-    if (docTypeId !== "") query.set("docTypeId", docTypeId);
-    if (targetMonth !== "") query.set("targetMonth", targetMonth);
-    const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
-    return api.get<{ items: ClientDocument[] }>(`/api/client/${clientId}/documents${suffix}`);
-  }, [clientId, docTypeId, targetMonth]);
+  const documents = useLoad<ListPage<ClientDocument>>(
+    () => api.get<ListPage<ClientDocument>>(documentsPath(clientId, { docTypeId, targetMonth, page })),
+    [clientId, docTypeId, targetMonth, page],
+  );
   const action = useAction();
 
+  // A new filter is a new list, so it starts again at its first page.
+  const filterBy = (apply: (value: string) => void) => (value: string) => {
+    apply(value);
+    setPage(0);
+  };
+
   // The open is recorded by the server before the download starts, so the list can show it at once.
-  const open = (document: ClientDocument, mode: OpenMode) => () => {
+  const open = (document: ClientDocument, mode: OpenMode): void => {
     void action.run(() => openFile(api, document.id, mode, followDownload)).then((ok) => {
       if (ok) {
         documents.reload();
@@ -46,31 +52,28 @@ export function ClientDocuments() {
           label={t("client.documents.type")}
           value={docTypeId}
           options={[{ value: "", label: t("client.documents.allTypes") }, ...(types.data?.outbound ?? []).map((type) => ({ value: type.id, label: type.label }))]}
-          onChange={setDocTypeId}
+          onChange={filterBy(setDocTypeId)}
         />
-        <TextField label={t("client.documents.month")} type="month" value={targetMonth} onChange={setTargetMonth} />
+        <TextField label={t("client.documents.month")} type="month" value={targetMonth} onChange={filterBy(setTargetMonth)} />
       </div>
-      {documents.data === null ? <Loading /> : null}
-      {documents.data !== null && documents.data.items.length === 0 ? <p className="empty">{t("client.documents.empty")}</p> : null}
-      <ul className="stack">
-        {(documents.data?.items ?? []).map((document) => (
-          <li key={document.id} className="card card--pad stack">
-            <strong>{document.displayName}</strong>
-            <span className="muted">
-              {document.docType?.label ?? t("client.home.unknownType")} · {formatSize(document.sizeBytes)} · {formatDateTime(document.publishedAt)}
-            </span>
-            <span className="muted">{document.opened ? t("client.documents.opened") : t("client.documents.new")}</span>
-            <div className="row">
-              <button type="button" className="button" disabled={action.busy} onClick={open(document, "view")}>
-                {t("client.documents.view")}
-              </button>
-              <button type="button" className="button button--primary" disabled={action.busy} onClick={open(document, "download")}>
-                {t("client.documents.download")}
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {documents.data === null ? (
+        documents.error === null ? <Loading /> : null
+      ) : (
+        <>
+          {documents.data.items.length === 0 ? (
+            <p className="empty">{t("client.documents.empty")}</p>
+          ) : (
+            <ul className="list stack">
+              {documents.data.items.map((document) => (
+                <li key={document.id}>
+                  <DocumentCard document={document} busy={action.busy} onOpen={open} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <Pager page={page} hasMore={documents.data.hasMore} busy={documents.loading} onPage={setPage} />
+        </>
+      )}
     </div>
   );
 }
