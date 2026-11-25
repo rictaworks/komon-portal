@@ -35,7 +35,7 @@ describe("POST /api/office/classify", () => {
 
   it("reports a provider error as it is and leaves the file unclassified", async () => {
     respond = () => new Response("", { status: 401 });
-    const response = await staff.call("POST", "/api/office/classify", { body: { model: "jev-1.13.0", items: [{ fileId, fileName: "hyojun kettei.pdf" }] }, headers: { "X-Jev-Key": KEY } });
+    const response = await staff.call("POST", "/api/office/classify", { body: { model: "jev-1.13.0", items: [{ fileId, fileName: "Taro Yamada_social insurance notice.pdf" }] }, headers: { "X-Jev-Key": KEY } });
     expect(response.status).toBe(502);
     const text = await response.text();
     expect(JSON.parse(text)).toEqual({ error: "classifier_failed", detail: "authentication_failed" });
@@ -57,7 +57,7 @@ describe("POST /api/office/classify", () => {
 
   it("classifies with the user's key, which reaches only the provider and is stored nowhere", async () => {
     respond = () => new Response(JSON.stringify({ model: "jev-1.13.0", answers: { q0: { choice: "t0", confidence: 0.96 } } }));
-    const response = await staff.call("POST", "/api/office/classify", { body: { model: "jev-1.13.0", items: [{ fileId, fileName: "hyojun kettei.pdf" }] }, headers: { "X-Jev-Key": KEY } });
+    const response = await staff.call("POST", "/api/office/classify", { body: { model: "jev-1.13.0", items: [{ fileId, fileName: "Taro Yamada_social insurance notice.pdf" }] }, headers: { "X-Jev-Key": KEY } });
     expect(response.status).toBe(200);
     const text = await response.text();
     expect(JSON.parse(text)).toMatchObject({ model: "jev-1.13.0", results: [{ fileId, outcome: "classified", confidence: 0.96 }] });
