@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useT } from "../i18n";
 
 export interface ConfirmDialogProps {
@@ -16,6 +16,8 @@ export interface ConfirmDialogProps {
 export function ConfirmDialog(props: ConfirmDialogProps) {
   const t = useT();
   const ref = useRef<HTMLDialogElement>(null);
+  // One ID per dialog: a page may hold several, and each must be announced by its own title.
+  const titleId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -31,9 +33,9 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   }, [props.open]);
 
   return (
-    <dialog ref={ref} className="dialog" aria-labelledby="confirm-dialog-title" onCancel={props.onCancel} onClose={props.onCancel}>
+    <dialog ref={ref} className="dialog" aria-labelledby={titleId} onCancel={props.onCancel} onClose={props.onCancel}>
       <div className="dialog__body">
-        <h2 id="confirm-dialog-title" className="heading">
+        <h2 id={titleId} className="heading">
           {props.title}
         </h2>
         {props.children}

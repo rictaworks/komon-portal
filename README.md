@@ -117,7 +117,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | POST | `/api/office/batches/{batchId}/files` | Uploads one file into a batch and returns its result (stored, duplicate or rejected). | staff |
 | POST | `/api/office/case-types` | Adds a case type. | staff |
 | PUT | `/api/office/case-types/{id}` | Updates a case type. | staff |
-| GET | `/api/office/cases` | Cases, optionally for one client. | staff |
+| GET | `/api/office/cases` | Cases, optionally for one client; `truncated` tells whether more match than the page holds. | staff |
 | POST | `/api/office/cases` | Registers a case for a client, case type and target month. | staff |
 | GET | `/api/office/cases/{id}` | One case with its arrival numbers and deadlines. | staff |
 | POST | `/api/office/cases/{id}/cancel` | Cancels a case (version required). | staff |
