@@ -685,7 +685,7 @@
     },
     "/api/office/settings": {
       "get": {
-        "summary": "Office settings, document and case types, and rules.",
+        "summary": "Office settings (including the Jev confidence threshold), document and case types, rules, and whether Web Push is configured.",
         "tags": [
           "office"
         ],
@@ -1693,7 +1693,7 @@
     },
     "/api/office/settings/office": {
       "put": {
-        "summary": "Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing).",
+        "summary": "Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing, Jev confidence threshold).",
         "tags": [
           "office"
         ],

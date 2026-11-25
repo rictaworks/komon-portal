@@ -18,7 +18,6 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 - The Owner dashboard shows a count of mis-deliveries; the spec asks for the readers and times, which are in the incidents list.
 - The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).
 - The weekly count of staff using the portal is not measured: events do not record the acting staff member.
-- The Settings page fetches the staff list for Staff as well; the server still refuses the Owner-only actions.
 - The client pickers and the document list load a first page only (200 clients; documents are not paged in the screen yet).
 - Browser checks are manual in this version: there is no automated end-to-end run in CI yet.
 
@@ -150,8 +149,8 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | POST | `/api/office/memberships/{id}/reject` | Rejects a client member. | staff |
 | POST | `/api/office/memberships/{id}/revoke` | Revokes a client member's access. | staff |
 | POST | `/api/office/publish` | Publishes staged files, one result per file. | staff |
-| GET | `/api/office/settings` | Office settings, document and case types, and rules. | staff |
-| PUT | `/api/office/settings/office` | Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing). | owner |
+| GET | `/api/office/settings` | Office settings (including the Jev confidence threshold), document and case types, rules, and whether Web Push is configured. | staff |
+| PUT | `/api/office/settings/office` | Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing, Jev confidence threshold). | owner |
 | GET | `/api/office/staff` | Staff members and open staff invitations. | owner |
 | POST | `/api/office/staff/invitations` | Issues a staff invitation for the Staff or Owner role. | owner |
 | POST | `/api/office/staff/{userId}/approve` | Approves a staff member. | owner |

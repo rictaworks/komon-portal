@@ -10,14 +10,12 @@ import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import { isFixedModelName, loadJevSettings, removeJevSettings, saveJevSettings } from "./jev-settings";
+import { JEV_THRESHOLD_MAX, JEV_THRESHOLD_MIN, JEV_THRESHOLD_STEP, copyText, parseJevThreshold } from "./settings-input";
 
 const DIRECTIONS = ["Outbound", "Inbound", "Both"] as const;
 const CASE_KINDS = ["Procedure", "Payroll", "Other"] as const;
 const JEV_PRICING_URL = "https://docs.typesafe.ai/models";
 const JEV_LIMITS_URL = "https://docs.typesafe.ai/model-jaggedness/jev-1.13";
-const JEV_THRESHOLD_MIN = "0.80";
-const JEV_THRESHOLD_MAX = "1";
-const JEV_THRESHOLD_STEP = "0.01";
 
 function staffInviteLink(code: string): string {
   return `${window.location.origin}/redeem#${code}`;
@@ -34,9 +32,15 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
   const [days, setDays] = useState(String(view.office.retrievalDeadlineDays));
   const [autoPublish, setAutoPublish] = useState(view.office.autoPublishEnabled);
   const [threshold, setThreshold] = useState(String(view.office.jevThreshold));
+  const [thresholdInvalid, setThresholdInvalid] = useState(false);
 
   const save = (event: FormEvent) => {
     event.preventDefault();
+    const jevThreshold = parseJevThreshold(threshold);
+    setThresholdInvalid(jevThreshold === null);
+    if (jevThreshold === null) {
+      return;
+    }
     void action
       .run(() =>
         api.put("/api/office/settings/office", {
@@ -44,8 +48,7 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
           arrivalNumberPattern: pattern,
           retrievalDeadlineDays: Number(days),
           autoPublishEnabled: autoPublish,
-          // An empty or non-numeric entry becomes NaN, which JSON sends as null and the server refuses.
-          jevThreshold: Number.parseFloat(threshold),
+          jevThreshold,
           version: view.office.version,
         }),
       )
@@ -57,23 +60,25 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
       <h2 className="subtitle">{t("office.settings.office")}</h2>
       <ErrorNotice error={action.error} />
       {canEdit ? (
-        <form className="stack" onSubmit={save}>
+        // Native validation is off: its step check would block every save while the stored threshold is off the
+        // 0.01 grid, and its messages are not ours. The threshold is checked in save and again by the server.
+        <form className="stack" noValidate onSubmit={save}>
           <TextField label={t("office.settings.timezone")} value={timezone} onChange={setTimezone} />
           <TextField label={t("office.settings.arrivalPattern")} value={pattern} onChange={setPattern} mono hint={t("office.settings.arrivalHint")} />
           <TextField label={t("office.settings.retrievalDays")} type="number" value={days} onChange={setDays} />
           <CheckField checked={autoPublish} onChange={setAutoPublish}>
             {t("office.settings.autoPublish")}
           </CheckField>
-          <Field label={t("office.settings.jevThreshold")} hint={t("office.settings.jevThresholdHint")}>
+          <Field label={t("office.settings.jevThreshold")} hint={t("office.settings.jevThresholdHint")} error={thresholdInvalid ? t("errors.invalid_input.jev_threshold") : null}>
             {(id) => (
               <input
                 id={id}
-                className="input input--narrow"
+                className={thresholdInvalid ? "input input--narrow input--invalid" : "input input--narrow"}
                 type="number"
                 min={JEV_THRESHOLD_MIN}
                 max={JEV_THRESHOLD_MAX}
                 step={JEV_THRESHOLD_STEP}
-                required
+                aria-invalid={thresholdInvalid ? true : undefined}
                 value={threshold}
                 onChange={(event) => setThreshold(event.target.value)}
               />
@@ -111,10 +116,9 @@ function StaffSection() {
   };
 
   const copyLink = (link: string) => () => {
-    navigator.clipboard.writeText(link).then(
-      () => setCopyState("copied"),
-      () => setCopyState("failed"),
-    );
+    // navigator.clipboard is undefined outside a secure context, whatever its DOM type says.
+    const clipboard = navigator.clipboard as Clipboard | undefined;
+    void copyText(clipboard, link).then((copied) => setCopyState(copied ? "copied" : "failed"));
   };
 
   const staffAction = (userId: string, verb: "approve" | "reject" | "revoke") => () => {
