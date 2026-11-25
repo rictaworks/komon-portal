@@ -4,13 +4,13 @@ export interface MetricsSummary {
   windowDays: number;
   /** Event counts by name, for the whole window. */
   events: { name: string; count: number }[];
-  /** Distinct clients with at least one event, per ISO week (YYYY-WW). */
+  /** Distinct clients with at least one event, per ISO week (YYYY-Www). */
   activeClientsByWeek: { week: string; clients: number }[];
   /** Accepted documents by the way they were matched to a client. */
   acceptedByMethod: { method: string; count: number }[];
   /** Withdrawals by reason, and how many were incidents (mis-deliveries). */
   withdrawalsByReason: { reason: string; count: number; incidents: number }[];
-  /** Hours from publication to the first view by a client member. */
+  /** Documents published in the window: how many were viewed, and the average hours from publication to a member's first view of each. */
   publishToFirstViewHours: { count: number; averageHours: number | null };
 }
 
@@ -24,7 +24,7 @@ export async function metricsSummary(db: D1Database, now: Date): Promise<Metrics
     .all<{ name: string; count: number }>();
   const weekly = await db
     .prepare(
-      "SELECT strftime('%Y-%W', occurred_at) AS week, COUNT(DISTINCT client_id) AS clients FROM metric_events WHERE occurred_at >= ? AND client_id IS NOT NULL GROUP BY week ORDER BY week",
+      "SELECT strftime('%G-W%V', occurred_at) AS week, COUNT(DISTINCT client_id) AS clients FROM metric_events WHERE occurred_at >= ? AND client_id IS NOT NULL GROUP BY week ORDER BY week",
     )
     .bind(since)
     .all<{ week: string; clients: number }>();
@@ -42,7 +42,8 @@ export async function metricsSummary(db: D1Database, now: Date): Promise<Metrics
     .all<{ reason: string; count: number; incidents: number }>();
   const firstView = await db
     .prepare(
-      "SELECT COUNT(*) AS count, AVG((julianday(r.first_viewed_at) - julianday(f.published_at)) * 24) AS averageHours FROM file_receipts r JOIN file_records f ON f.id = r.file_id WHERE f.published_at IS NOT NULL AND r.first_viewed_at >= ?",
+      // One row per document: its earliest view, so a document opened by many members counts once.
+      "SELECT COUNT(*) AS count, AVG(hours) AS averageHours FROM (SELECT (julianday(MIN(r.first_viewed_at)) - julianday(f.published_at)) * 24 AS hours FROM file_records f JOIN file_receipts r ON r.file_id = f.id WHERE f.published_at IS NOT NULL AND f.published_at >= ? GROUP BY f.id)",
     )
     .bind(since)
     .first<{ count: number; averageHours: number | null }>();

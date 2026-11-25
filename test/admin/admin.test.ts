@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
+import { createLocalJWKSet, errors, exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createAdminApp } from "../../src/admin/index";
 import { migrate } from "../support/d1";
@@ -71,6 +71,44 @@ describe("admin Worker", () => {
     expect(response.headers.get("Content-Security-Policy")).toBe("default-src 'none'; frame-ancestors 'none'");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(await response.text()).toContain("intake.accepted");
+  });
+
+  it("reports an unreachable key set as an outage, not as a refused visitor", async () => {
+    const outage = createAdminApp({ keys: () => Promise.reject(new errors.JWKSTimeout()) });
+    const response = await outage.request("/api/summary", { headers: { "Cf-Access-Jwt-Assertion": await assertion() } }, config);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "access_unavailable" });
+  });
+
+  it("leaves out events older than the window and labels weeks in ISO numbering", async () => {
+    const old = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    await env.DB.prepare("INSERT INTO metric_events (id, name, client_id, attributes, occurred_at) VALUES (?, 'window.old', 'client-old', '{}', ?)")
+      .bind("metric-window-old", old).run();
+    // 1 January 2027 is a Friday in ISO week 2026-W53.
+    await env.DB.prepare("INSERT INTO metric_events (id, name, client_id, attributes, occurred_at) VALUES (?, 'week.probe', 'client-week', '{}', ?)")
+      .bind("metric-week-probe", "2027-01-01T12:00:00.000Z").run();
+    const response = await app.request("/api/summary", { headers: { "Cf-Access-Jwt-Assertion": await assertion() } }, config);
+    const summary = (await response.json()) as { events: { name: string }[]; activeClientsByWeek: { week: string; clients: number }[] };
+    expect(summary.events.map((event) => event.name)).not.toContain("window.old");
+    expect(summary.activeClientsByWeek).toContainEqual({ week: "2026-W53", clients: 1 });
+  });
+
+  it("counts a document once, from its earliest view, however many members open it", async () => {
+    const base = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    const published = new Date(base).toISOString();
+    await env.DB.prepare("INSERT INTO users (id, google_sub, display_name, created_at) VALUES ('u-view-a', 'sub-view-a', 'A', ?), ('u-view-b', 'sub-view-b', 'B', ?)")
+      .bind(published, published).run();
+    await env.DB.prepare("INSERT INTO clients (id, code, corporate_name, status, version) VALUES ('client-view', 'VIEW01', 'View Probe Co', 'Active', 1)").run();
+    await env.DB.prepare("INSERT INTO upload_batches (id, uploaded_by, created_at) VALUES ('b-view', 'u-view-a', ?)").bind(published).run();
+    await env.DB.prepare(
+      "INSERT INTO file_records (id, batch_id, direction, client_id, display_name, format, sha256, size_bytes, r2_key, state, received_at, published_at, version) VALUES ('f-view', 'b-view', 'Outbound', 'client-view', 'view-probe-1', 'pdf', ?, 10, 'files/f-view', 'Published', ?, ?, 1)",
+    ).bind("a".repeat(64), published, published).run();
+    await env.DB.prepare("INSERT INTO file_receipts (id, file_id, user_id, first_viewed_at) VALUES ('r-a', 'f-view', 'u-view-a', ?), ('r-b', 'f-view', 'u-view-b', ?)")
+      .bind(new Date(base + 60 * 60 * 1000).toISOString(), new Date(base + 6 * 60 * 60 * 1000).toISOString()).run();
+    const response = await app.request("/api/summary", { headers: { "Cf-Access-Jwt-Assertion": await assertion() } }, config);
+    const summary = (await response.json()) as { publishToFirstViewHours: { count: number; averageHours: number | null } };
+    expect(summary.publishToFirstViewHours.count).toBe(1);
+    expect(summary.publishToFirstViewHours.averageHours).toBeCloseTo(1, 1);
   });
 
   it("refuses to run without the Access settings instead of guessing them", async () => {

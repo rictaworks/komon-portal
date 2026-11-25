@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTVerifyGetKey } from "jose";
 
 /** The request header that Cloudflare Access sets on every request it lets through. */
 export const ACCESS_HEADER = "Cf-Access-Jwt-Assertion";
@@ -26,7 +26,7 @@ export async function verifyAccess(token: string, config: AccessConfig, keys: JW
     algorithms: ["RS256", "ES256"],
   });
   if (typeof payload.sub !== "string" || payload.sub === "") {
-    throw new Error("access_subject_missing");
+    throw new errors.JWTClaimValidationFailed("the assertion has no subject", payload, "sub", "check_failed");
   }
   return payload.sub;
 }
