@@ -94,7 +94,9 @@ export class SettingsService {
 
   async removeRule(actor: Actor, ruleId: Id): Promise<void> {
     await this.requireStaff(actor, ruleId);
-    await this.deps.repository.docTypes.deleteRule(ruleId);
+    if (!(await this.deps.repository.docTypes.deleteRule(ruleId))) {
+      throw notFound("doc_rule");
+    }
     await this.deps.audit.record(actor, "doc_rule.remove", MASTER_TARGET, ruleId);
   }
 

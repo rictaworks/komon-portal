@@ -113,6 +113,7 @@ describe("SettingsService", () => {
     await expect(service.addRule(staff, { docTypeId: "missing", keyword: "x" })).rejects.toThrow("not_found: doc_type");
     await service.removeRule(staff, rule.id);
     expect(repo.ruleRows).toEqual([]);
+    await expect(service.removeRule(staff, rule.id)).rejects.toThrow("not_found: doc_rule");
     await expect(service.addDocType(memberActor(), { label: "X", shortCode: "X", direction: "Both" })).rejects.toThrow("forbidden");
   });
 

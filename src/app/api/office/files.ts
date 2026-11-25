@@ -6,7 +6,7 @@ import {
 } from "../../../core/model/types";
 import type { FileFilter } from "../../../core/ports/repository";
 import { AFTER_WITHDRAW } from "../../../core/publish/publish-service";
-import { HttpError, requireAuth, type AppBindings, type AppContext } from "../context";
+import { requireAuth, type AppBindings, type AppContext } from "../context";
 import { optionalBoolean, optionalString, readJson, requireArray, requireEnum, requireInteger, requireString, type JsonObject } from "../input";
 import { fileView, Lookups, pageOf } from "./views";
 
@@ -54,15 +54,39 @@ function fileFilter(c: AppContext): FileFilter {
 
 /** Reads the single uploaded file of a request. The name is used in memory only and never stored. */
 async function uploadedFile(c: AppContext): Promise<{ fileName: string; bytes: Uint8Array }> {
-  const declared = Number(c.req.header("Content-Length") ?? 0);
-  if (declared > MAX_FILE_BYTES + UPLOAD_OVERHEAD_BYTES) {
-    throw new HttpError(400, "invalid_input", "file_too_large");
+  const limit = MAX_FILE_BYTES + UPLOAD_OVERHEAD_BYTES;
+  const declaredText = c.req.header("Content-Length");
+  if (declaredText !== undefined) {
+    const declared = Number(declaredText);
+    if (!Number.isFinite(declared) || declared < 0) {
+      throw invalidInput("content_length");
+    }
+    if (declared > limit) {
+      throw invalidInput("file_too_large");
+    }
   }
+  // The body is counted while it streams, so a request without Content-Length is also stopped at the limit.
+  let tooLarge = false;
+  let seen = 0;
+  const body = c.req.raw.body;
+  const counted = body === null ? null : body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > limit) {
+          tooLarge = true;
+          controller.error(new Error("body too large"));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
   let form: FormData;
   try {
-    form = await c.req.raw.formData();
+    form = await new Response(counted, { headers: c.req.raw.headers }).formData();
   } catch {
-    throw invalidInput("body");
+    throw invalidInput(tooLarge ? "file_too_large" : "body");
   }
   const file = form.get("file");
   if (!(file instanceof File)) {
