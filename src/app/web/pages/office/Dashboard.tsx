@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { CaseView, Dashboard as DashboardData, IncidentList } from "../../api/office-types";
-import { formatDateTime, formatDay, formatMonth } from "../../components/format";
+import { formatDateTime, formatDay, formatDayWithWeekday, formatMonth } from "../../components/format";
 import { ErrorNotice, Notice } from "../../components/Notice";
 import { Badge, DeadlineBadge } from "../../components/StatusBadge";
 import { useLoad } from "../../components/useLoad";
@@ -123,46 +123,12 @@ export function DashboardContent({ data }: { data: DashboardData }) {
           <span className="stat__value">{listed(data.unread.length, data.truncated.unread)}</span>
           <span className="muted">{t("office.dashboard.unread")}</span>
         </a>
-        <a href="#submissions" className="stat">
-          <Badge tone="staged" label={t("office.dashboard.submittedBadge")} />
-          <span className="stat__value">{data.submitted}</span>
-          <span className="muted">{t("office.dashboard.submitted")}</span>
-        </a>
       </section>
       {data.incidents !== null && data.incidents.total > 0 ? <Incidents incidents={data.incidents} /> : null}
       <div className="grid2">
         <CaseTable title={t("office.dashboard.retrievalTitle")} cases={data.retrieval} kind="retrieval" emptyKey="office.dashboard.retrievalEmpty" truncated={data.truncated.retrieval} />
         <CaseTable title={t("office.dashboard.dueTitle")} cases={data.due} kind="due" emptyKey="office.dashboard.dueEmpty" truncated={data.truncated.due} />
       </div>
-      <section className="card" id="submissions">
-        <div className="card__head">
-          <h2 className="subtitle grow">{t("office.dashboard.submittedTitle")}</h2>
-          {data.truncated.submissions ? <span className="muted">{t("office.dashboard.moreNotShown", { shown: data.submissions.length })}</span> : null}
-        </div>
-        {data.submissions.length === 0 ? (
-          <p className="empty">{t("office.dashboard.submittedEmpty")}</p>
-        ) : (
-          <ul className="list">
-            {data.submissions.map((file) => (
-              <li key={file.id} className="list__item">
-                <span className="grow">
-                  <strong>{file.displayName}</strong>
-                  <br />
-                  <span className="muted">
-                    {file.client?.code} {file.client?.corporateName}
-                  </span>
-                </span>
-                <span className="muted">{t("office.dashboard.submittedAt", { at: formatDateTime(file.receivedAt) })}</span>
-                {file.client === null ? null : (
-                  <Link className="button button--small" to={shelfPath(file.client.id, "Inbound")}>
-                    {t("office.actions.openShelf")}
-                  </Link>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
       <section className="card" id="unread">
         <div className="card__head">
           <h2 className="subtitle grow">{t("office.dashboard.unreadTitle")}</h2>
@@ -208,7 +174,7 @@ export function Dashboard() {
     <div className="page">
       <div className="row">
         <h1 className="title grow">{t("office.dashboard.title")}</h1>
-        <span className="muted">{data === null ? "" : t("office.dashboard.today", { day: formatDay(data.today), timezone: data.timezone })}</span>
+        <span className="muted">{data === null ? "" : t("office.dashboard.today", { day: formatDayWithWeekday(data.today), timezone: data.timezone })}</span>
       </div>
       <ErrorNotice error={error} />
       {data === null ? null : <DashboardContent data={data} />}

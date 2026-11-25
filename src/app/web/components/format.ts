@@ -22,6 +22,14 @@ export function formatDay(day: string | null): string {
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
 }
 
+/** A calendar day (YYYY-MM-DD) with its weekday, as the dashboard date line shows it: Tuesday, 24 November 2026. */
+export function formatDayWithWeekday(day: string | null): string {
+  if (day === null) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
+}
+
 /** A month (YYYY-MM) as November 2026. */
 export function formatMonth(month: string | null): string {
   if (month === null) {
