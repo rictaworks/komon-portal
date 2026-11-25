@@ -4,7 +4,7 @@ import type {
   PendingPurge, ResolutionMethod, ReviewReason, TypeSource, UploadBatch, WithdrawReason,
 } from "../../../core/model/types";
 import type {
-  AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository,
+  AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository, UnreadPublished,
 } from "../../../core/ports/repository";
 import {
   changes, chunk, fromIso, fromIsoOrNull, IN_CHUNK, isUniqueViolation, numberOrNull, placeholders, text, textOrNull,
@@ -102,6 +102,9 @@ function uniqueConflict(error: unknown): FileWriteResult | null {
 
 /** A file being purged is hidden from every read except the purge job's own listing. */
 const NOT_PURGING = "purging_at IS NULL";
+/** Published outbound files of one client (first parameter) without a receipt of one user (second parameter). */
+const UNREAD_PUBLISHED = `client_id = ? AND direction = 'Outbound' AND state = 'Published' AND ${NOT_PURGING}
+  AND NOT EXISTS (SELECT 1 FROM file_receipts r WHERE r.file_id = file_records.id AND r.user_id = ?)`;
 
 function fileWhere(filter: FileFilter): Where | null {
   const where: Where = { clauses: [NOT_PURGING], params: [] };
@@ -162,6 +165,22 @@ export class D1FileRepository implements FileRepository {
     }
     const row = await this.db.prepare(`SELECT COUNT(*) AS n FROM file_records${whereSql(where)}`).bind(...where.params).first<{ n: number }>();
     return row?.n ?? 0;
+  }
+
+  async unreadPublished(clientId: Id, userId: Id, page: Page): Promise<UnreadPublished> {
+    // One batch is one transaction: the page and the total describe the same moment.
+    const results = await this.db.batch<Record<string, unknown>>([
+      this.db
+        .prepare(`SELECT * FROM file_records WHERE ${UNREAD_PUBLISHED} ORDER BY published_at DESC, id LIMIT ? OFFSET ?`)
+        .bind(clientId, userId, page.limit, page.offset),
+      this.db.prepare(`SELECT COUNT(*) AS n FROM file_records WHERE ${UNREAD_PUBLISHED}`).bind(clientId, userId),
+    ]);
+    const rows = results[0];
+    const total = results[1]?.results[0]?.["n"];
+    if (rows === undefined || typeof total !== "number") {
+      throw new Error("the unread query returned no page or no count");
+    }
+    return { files: (rows.results as Row[]).map(toFile), total };
   }
 
   async nextDisplaySequence(clientId: Id | null, receivedOn: LocalDate): Promise<number> {

@@ -173,6 +173,12 @@ export interface FileFilter {
   incidentOnly?: boolean;
 }
 
+/** One page of the published files a user has not opened, with the number of such files in all. */
+export interface UnreadPublished {
+  files: FileRecord[];
+  total: number;
+}
+
 /** Counts of the files linked to a case, used to derive the case state. */
 export interface CaseFileSummary {
   outbound: number;
@@ -195,6 +201,13 @@ export interface FileRepository {
   findActiveBySha256(sha256: string): Promise<FileRecord[]>;
   list(filter: FileFilter, page: Page): Promise<FileRecord[]>;
   count(filter: FileFilter): Promise<number>;
+  /**
+   * Published outbound files of the client that this user has not opened, the most recently
+   * published first, and how many there are without paging. Another user's receipt does not make
+   * a file read for this user. The page and the total are read as one snapshot, so they never
+   * contradict each other.
+   */
+  unreadPublished(clientId: Id, userId: Id, page: Page): Promise<UnreadPublished>;
   /** Next number for display names of this client (or of unassigned files) on the given day. */
   nextDisplaySequence(clientId: Id | null, receivedOn: LocalDate): Promise<number>;
   insert(file: FileRecord): Promise<FileWriteResult>;
