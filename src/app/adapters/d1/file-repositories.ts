@@ -236,8 +236,22 @@ export class D1FileRepository implements FileRepository {
     return rows.results.map(toFile);
   }
 
-  async purge(id: Id): Promise<void> {
-    await this.db.prepare("DELETE FROM file_records WHERE id = ? AND state = 'Trashed'").bind(id).run();
+  async purge(id: Id, trashedBefore: Date, audit: AuditEntry): Promise<boolean> {
+    // One transaction. The audit row is written only while the file is still due, and the same
+    // condition guards the delete, so either both happen or neither does.
+    const due = "id = ? AND state = 'Trashed' AND trashed_at <= ?";
+    const threshold = toIso(trashedBefore);
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO audit_log (id, actor_user_id, action, target_type, target_id, result, occurred_at)
+           SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM file_records WHERE ${due})`,
+        )
+        .bind(audit.id, audit.actorUserId, audit.action, audit.targetType, audit.targetId, audit.result, toIso(audit.occurredAt), id, threshold),
+      this.db.prepare(`DELETE FROM file_records WHERE ${due}`).bind(id, threshold),
+    ]);
+    const recorded = results[0];
+    return recorded !== undefined && changes(recorded) === 1;
   }
 
   async insertBatch(batch: UploadBatch): Promise<void> {

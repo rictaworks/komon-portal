@@ -106,6 +106,18 @@ export class D1UserRepository implements UserRepository {
     return current !== null && current.officeStatus === "Active" ? "last_owner" : "not_active";
   }
 
+  async claimOwnerIfNone(id: Id): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `UPDATE users SET office_role = 'Owner', office_status = 'Active'
+         WHERE id = ? AND (office_status IS NULL OR office_status IN ('Revoked', 'Rejected'))
+           AND NOT EXISTS (SELECT 1 FROM users WHERE office_role = 'Owner' AND office_status = 'Active')`,
+      )
+      .bind(id)
+      .run();
+    return changes(result) === 1;
+  }
+
   async listOffice(): Promise<User[]> {
     const rows = await this.db.prepare("SELECT * FROM users WHERE office_role IS NOT NULL ORDER BY created_at, id").all<Row>();
     return rows.results.map(toUser);
