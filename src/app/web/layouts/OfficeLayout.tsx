@@ -1,5 +1,5 @@
 import {
-  faBriefcase, faBuilding, faClipboardList, faClock, faFolderOpen, faGauge, faSliders, faTriangleExclamation, faUpload,
+  faBoxArchive, faBriefcase, faBuilding, faClipboardList, faClock, faFolderOpen, faGauge, faSliders, faTriangleExclamation, faUpload,
   type IconDefinition,
 } from "@fortawesome/free-solid-svg-icons";
 import { NavLink, Outlet } from "react-router-dom";
@@ -22,6 +22,7 @@ const MENU: readonly MenuItem[] = [
   { to: "/office/review", labelKey: "office.menu.review", icon: faTriangleExclamation, count: "needsReview" },
   { to: "/office/staged", labelKey: "office.menu.staged", icon: faClock, count: "staged" },
   { to: "/office/clients", labelKey: "office.menu.clients", icon: faBuilding },
+  { to: "/office/shelf", labelKey: "office.menu.shelf", icon: faBoxArchive },
   { to: "/office/cases", labelKey: "office.menu.cases", icon: faBriefcase },
   { to: "/office/settings", labelKey: "office.menu.settings", icon: faSliders },
   { to: "/office/audit", labelKey: "office.menu.audit", icon: faClipboardList, ownerOnly: true },
