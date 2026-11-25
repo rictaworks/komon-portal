@@ -444,6 +444,56 @@
       "documents": "Documents",
       "send": "Send Files",
       "notifications": "Notifications"
+    },
+    "documents": {
+      "allTypes": "All types",
+      "download": "Download",
+      "empty": "No documents match.",
+      "month": "Month",
+      "new": "New",
+      "opened": "Opened",
+      "title": "Documents",
+      "type": "Type",
+      "view": "View"
+    },
+    "home": {
+      "cases": "Your cases",
+      "moreCases": "More cases exist than are shown.",
+      "moreDocuments": "More new documents exist than are shown.",
+      "newDocuments": "New documents",
+      "noCases": "No cases yet.",
+      "noNew": "No new documents.",
+      "title": "Home",
+      "unknownType": "Document"
+    },
+    "notifications": {
+      "disable": "Turn off on this device",
+      "enable": "Turn on for this device",
+      "lead": "A notice appears on this device when a new document is published. It never shows the content.",
+      "notConfigured": "Notifications are not set up for this portal yet.",
+      "offThisDevice": "Notifications are off on this device.",
+      "onThisDevice": "Notifications are on for this device.",
+      "title": "Notifications",
+      "unsupported": "This browser does not support notifications.",
+      "denied": "Notifications are blocked by your browser. Allow them in the browser settings, then try again."
+    },
+    "send": {
+      "cancel": "Cancel this submission",
+      "chooseType": "Choose a document type",
+      "confirmed": "Confirmed by the office on {date}",
+      "file": "File",
+      "form": "Send a file to the office",
+      "formats": "PDF, ZIP, XML, CSV, XLSX, DOCX, TXT, PNG and JPEG, up to 50 MB.",
+      "month": "Target month",
+      "none": "Nothing sent yet.",
+      "sent": "Sent files",
+      "submit": "Send to office",
+      "title": "Send Files",
+      "type": "Document type",
+      "waiting": "Waiting for the office to confirm",
+      "duplicate": "This content is already held for your company, so it was not sent again.",
+      "rejected": "The file was not sent: {reason}.",
+      "sentNotice": "The file was sent to the office."
     }
   },
   "notices": {
