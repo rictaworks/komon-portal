@@ -1,0 +1,120 @@
+import { AccessPolicy } from "../../core/access/access-policy";
+import { ActorLoader } from "../../core/access/actor-loader";
+import { Guard } from "../../core/access/guard";
+import { InvitationService } from "../../core/access/invitation-service";
+import { SetupService } from "../../core/access/setup-service";
+import { AuditRecorder, MetricRecorder } from "../../core/audit/recorders";
+import { CaseService } from "../../core/cases/case-service";
+import { DeadlineCalculator } from "../../core/cases/deadline-calculator";
+import { FileWriter } from "../../core/intake/file-writer";
+import { IntakeService } from "../../core/intake/intake-service";
+import { ReviewService } from "../../core/intake/review-service";
+import { SubmissionService } from "../../core/intake/submission-service";
+import { TrashService } from "../../core/intake/trash-service";
+import type { Clock } from "../../core/ports/clock";
+import type { FileStore } from "../../core/ports/file-store";
+import type { IdGenerator } from "../../core/ports/id-generator";
+import type { Notifier } from "../../core/ports/notifier";
+import { PublishService } from "../../core/publish/publish-service";
+import { ViewService } from "../../core/publish/view-service";
+import { D1Repository } from "../adapters/d1/d1-repository";
+import { GoogleOidc } from "../adapters/google-oidc";
+import type { HumanVerifier, IdentityProvider } from "../adapters/identity-provider";
+import { R2FileStore } from "../adapters/r2-file-store";
+import { SessionStore } from "../adapters/session-store";
+import { CryptoIdGenerator, SystemClock } from "../adapters/system-clock";
+import { TurnstileVerifier } from "../adapters/turnstile";
+import { loadConfig, type AppConfig } from "../config/app-config";
+import type { AppEnv } from "../env";
+
+/** Adapters that tests and later issues can replace. */
+export interface AdapterOverrides {
+  clock?: Clock | undefined;
+  ids?: IdGenerator | undefined;
+  identity?: IdentityProvider | undefined;
+  humans?: HumanVerifier | undefined;
+  notifier?: Notifier | undefined;
+  store?: FileStore | undefined;
+  fetcher?: typeof fetch | undefined;
+}
+
+export interface Services {
+  config: AppConfig;
+  repository: D1Repository;
+  store: FileStore;
+  clock: Clock;
+  ids: IdGenerator;
+  policy: AccessPolicy;
+  guard: Guard;
+  audit: AuditRecorder;
+  metrics: MetricRecorder;
+  actors: ActorLoader;
+  sessions: SessionStore;
+  /** Null when Google sign-in is not configured. */
+  identity: IdentityProvider | null;
+  /** Null when Turnstile is not configured. */
+  humans: HumanVerifier | null;
+  deadlines: DeadlineCalculator;
+  cases: CaseService;
+  intake: IntakeService;
+  review: ReviewService;
+  publish: PublishService;
+  view: ViewService;
+  submissions: SubmissionService;
+  trash: TrashService;
+  invitations: InvitationService;
+  setup: SetupService;
+}
+
+/** Used until Web Push is wired in: publishing must work without any notification channel. */
+class SilentNotifier implements Notifier {
+  async notifyNewDocument(): Promise<void> {
+    return undefined;
+  }
+}
+
+function identityProvider(config: AppConfig, fetcher: typeof fetch): IdentityProvider | null {
+  if (config.googleClientId === undefined || config.googleClientSecret === undefined) {
+    return null;
+  }
+  return new GoogleOidc({ clientId: config.googleClientId, clientSecret: config.googleClientSecret, fetcher });
+}
+
+function humanVerifier(config: AppConfig, fetcher: typeof fetch): HumanVerifier | null {
+  return config.turnstileSecretKey === undefined ? null : new TurnstileVerifier({ secretKey: config.turnstileSecretKey, fetcher });
+}
+
+/** Wires adapters to the Domain Core for one request. */
+export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Services {
+  const config = loadConfig(env);
+  const fetcher = overrides.fetcher ?? ((input, init) => fetch(input, init));
+  const clock = overrides.clock ?? new SystemClock();
+  const ids = overrides.ids ?? new CryptoIdGenerator();
+  const repository = new D1Repository(env.DB);
+  const store = overrides.store ?? new R2FileStore(env.FILES);
+  const policy = new AccessPolicy();
+  const audit = new AuditRecorder(repository.audit, clock, ids);
+  const metrics = new MetricRecorder(repository.metrics, clock, ids);
+  const guard = new Guard(policy, audit);
+  const writer = new FileWriter(repository, clock);
+  const shared = { repository, store, guard, audit, metrics, ids, clock, writer, policy };
+  const cases = new CaseService(shared);
+  const publish = new PublishService({ ...shared, cases, notifier: overrides.notifier ?? new SilentNotifier() });
+  return {
+    config, repository, store, clock, ids, policy, guard, audit, metrics,
+    actors: new ActorLoader(repository),
+    sessions: new SessionStore(env.DB, clock, ids),
+    identity: overrides.identity ?? identityProvider(config, fetcher),
+    humans: overrides.humans ?? humanVerifier(config, fetcher),
+    deadlines: new DeadlineCalculator(clock),
+    cases,
+    publish,
+    intake: new IntakeService({ ...shared, cases, autoPublisher: publish }),
+    review: new ReviewService({ ...shared, cases }),
+    view: new ViewService({ ...shared, cases }),
+    submissions: new SubmissionService({ ...shared, cases }),
+    trash: new TrashService({ ...shared, cases }),
+    invitations: new InvitationService(shared),
+    setup: new SetupService({ repository, policy, audit, setupToken: config.setupToken }),
+  };
+}
