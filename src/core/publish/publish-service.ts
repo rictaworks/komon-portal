@@ -4,7 +4,7 @@ import type { CaseService } from "../cases/case-service";
 import type { AutoPublisher } from "../intake/intake-service";
 import type { FileWriter } from "../intake/file-writer";
 import { systemActor, type Actor } from "../model/actor";
-import { DomainError, invalidInput, invalidState, notFound } from "../model/errors";
+import { conflict, DomainError, invalidInput, invalidState, notFound } from "../model/errors";
 import {
   INCIDENT_WITHDRAW_REASONS, WITHDRAW_REASONS, type FileReceipt, type FileRecord, type Id, type WithdrawReason,
 } from "../model/types";
@@ -21,7 +21,8 @@ export const PUBLISH_SKIP_REASONS = ["not_found", "not_staged", "client_not_acti
 export type PublishSkipReason = (typeof PUBLISH_SKIP_REASONS)[number];
 
 export type PublishResult =
-  | { fileId: Id; outcome: "published"; clientId: Id }
+  /** `warning` is set when the file is published but recording it (audit, metric, case update) failed. */
+  | { fileId: Id; outcome: "published"; clientId: Id; warning?: "followup_failed" }
   | { fileId: Id; outcome: "skipped"; reason: PublishSkipReason };
 
 export const AFTER_WITHDRAW = ["NeedsReview", "Trashed"] as const;
@@ -81,7 +82,12 @@ export class PublishService implements AutoPublisher {
     return result.outcome === "published";
   }
 
-  /** Withdraws a published file. From this moment clients can neither see nor download it. */
+  /**
+   * Withdraws a published file. From this moment clients can neither see nor download it.
+   * The file is hidden first and receipts are read afterwards, so a member who opens it at the
+   * same moment is either refused or counted. Calling it again for a file left in `Withdrawn`
+   * finishes the move to review or trash.
+   */
   async withdraw(actor: Actor, fileId: Id, input: WithdrawInput, expectedVersion: number): Promise<FileRecord> {
     await this.deps.guard.require(actor, "staff.operate", { type: FILE_TARGET, id: fileId });
     if (!WITHDRAW_REASONS.includes(input.reason) || !AFTER_WITHDRAW.includes(input.next)) {
@@ -91,18 +97,24 @@ export class PublishService implements AutoPublisher {
     if (file === null) {
       throw notFound("file");
     }
-    if (file.direction !== "Outbound" || file.state !== "Published") {
+    if (file.direction !== "Outbound" || (file.state !== "Published" && file.state !== "Withdrawn")) {
       throw invalidState("not_published");
     }
+    const hidden =
+      file.state === "Withdrawn"
+        ? file
+        : await this.deps.writer.update({ ...file, state: "Withdrawn", withdrawReason: input.reason }, expectedVersion);
+    if (hidden.version !== (file.state === "Withdrawn" ? expectedVersion : expectedVersion + 1)) {
+      throw conflict("stale");
+    }
+    const reason = hidden.withdrawReason ?? input.reason;
     const receipts = await this.deps.repository.receipts.listByFile(fileId);
-    const incident = receipts.length > 0 && INCIDENT_WITHDRAW_REASONS.includes(input.reason);
-    const withdrawn = await this.deps.writer.update(
-      { ...file, state: "Withdrawn", withdrawReason: input.reason, incidentFlag: file.incidentFlag || incident },
-      expectedVersion,
-    );
-    await this.deps.audit.record(actor, "file.withdraw", FILE_TARGET, fileId);
-    await this.deps.metrics.record("file.withdrawn", file.clientId, { fileId, reason: input.reason, incident, opened: receipts.length });
-    const settled = await this.settleWithdrawn(withdrawn, input.next);
+    const incident = receipts.length > 0 && INCIDENT_WITHDRAW_REASONS.includes(reason);
+    const settled = await this.settleWithdrawn({ ...hidden, incidentFlag: hidden.incidentFlag || incident }, input.next);
+    await this.bestEffort(async () => {
+      await this.deps.audit.record(actor, "file.withdraw", FILE_TARGET, fileId);
+      await this.deps.metrics.record("file.withdrawn", file.clientId, { fileId, reason, incident, opened: receipts.length });
+    });
     if (file.caseId !== null) {
       await this.deps.cases.onFileEvent(file.caseId);
     }
@@ -145,22 +157,38 @@ export class PublishService implements AutoPublisher {
     try {
       await this.deps.writer.update({ ...file, state: "Published", publishedAt }, request.version);
     } catch (error) {
-      if (error instanceof DomainError && error.code === "conflict") {
+      if (error instanceof DomainError && error.detail === "stale") {
         return skip("stale");
       }
       throw error;
     }
-    await this.deps.audit.record(actor, action, FILE_TARGET, file.id);
-    await this.deps.metrics.record("file.published", file.clientId, {
-      fileId: file.id,
-      method: file.resolutionMethod,
-      automatic: actor.kind === "system",
-      secondsSinceReceived: Math.round((publishedAt.getTime() - file.receivedAt.getTime()) / 1000),
+    // The file is published from here on. A failure while recording it must not report the
+    // file as failed or stop the remaining files; it is returned as a warning instead.
+    const recorded = await this.bestEffort(async () => {
+      await this.deps.audit.record(actor, action, FILE_TARGET, file.id);
+      await this.deps.metrics.record("file.published", file.clientId, {
+        fileId: file.id,
+        method: file.resolutionMethod,
+        automatic: actor.kind === "system",
+        secondsSinceReceived: Math.round((publishedAt.getTime() - file.receivedAt.getTime()) / 1000),
+      });
+      if (file.caseId !== null) {
+        await this.deps.cases.onFileEvent(file.caseId);
+      }
     });
-    if (file.caseId !== null) {
-      await this.deps.cases.onFileEvent(file.caseId);
+    return recorded
+      ? { fileId: file.id, outcome: "published", clientId: file.clientId }
+      : { fileId: file.id, outcome: "published", clientId: file.clientId, warning: "followup_failed" };
+  }
+
+  /** Runs follow-up work whose failure must not change the outcome. Returns whether it succeeded. */
+  private async bestEffort(work: () => Promise<void>): Promise<boolean> {
+    try {
+      await work();
+      return true;
+    } catch {
+      return false;
     }
-    return { fileId: file.id, outcome: "published", clientId: file.clientId };
   }
 
   /** One notification per client. A notification failure is recorded and never undoes or blocks publishing. */
@@ -170,7 +198,7 @@ export class PublishService implements AutoPublisher {
       try {
         await this.deps.notifier.notifyNewDocument(clientId);
       } catch (error) {
-        await this.deps.metrics.record("notify.failed", clientId, { error: error instanceof Error ? error.name : "unknown" });
+        await this.bestEffort(() => this.deps.metrics.record("notify.failed", clientId, { error: error instanceof Error ? error.name : "unknown" }));
       }
     }
   }

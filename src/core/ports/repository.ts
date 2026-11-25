@@ -53,6 +53,11 @@ export interface UserRepository {
    * active Owner or is not an Active office member.
    */
   revokeOfficeUnlessLastOwner(id: Id): Promise<"ok" | "last_owner" | "not_active">;
+  /**
+   * Makes the user an Active Owner in one atomic step, only while no active Owner exists and the
+   * user holds no ongoing office membership. Returns false otherwise.
+   */
+  claimOwnerIfNone(id: Id): Promise<boolean>;
   listOffice(): Promise<User[]>;
   countActiveOwners(): Promise<number>;
 }
@@ -186,8 +191,12 @@ export interface FileRepository {
   update(file: FileRecord, expectedVersion: number): Promise<FileWriteResult>;
   summarizeForCase(caseId: Id): Promise<CaseFileSummary>;
   listTrashedBefore(threshold: Date, page: Page): Promise<FileRecord[]>;
-  /** Permanently removes the record and its receipts. */
-  purge(id: Id): Promise<void>;
+  /**
+   * Permanently removes the record and its receipts and appends the audit entry, as one atomic
+   * step, only while the file is still trashed and was trashed at or before `trashedBefore`.
+   * Returns false, writing nothing, when the file was restored or erased in the meantime.
+   */
+  purge(id: Id, trashedBefore: Date, audit: AuditEntry): Promise<boolean>;
   insertBatch(batch: UploadBatch): Promise<void>;
   findBatch(id: Id): Promise<UploadBatch | null>;
 }
