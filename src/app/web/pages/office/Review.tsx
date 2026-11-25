@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fileContentUrl } from "../../api/client";
+import { followDownload, openFile } from "../../api/client";
 import type { CaseView, FileView } from "../../api/office-types";
 import { CheckField, SelectField } from "../../components/Form";
 import { formatDateTime, formatMonth, formatSize } from "../../components/format";
@@ -49,6 +49,10 @@ function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
     void action.run(() => api.post(`/api/office/files/${file.id}/trash`, { version: file.version })).then(() => onDone());
   };
 
+  const open = (): void => {
+    void action.run(() => openFile(api, file.id, "view", followDownload));
+  };
+
   return (
     <section className="card" aria-label={t("office.review.decision")}>
       <div className="banner">
@@ -95,9 +99,9 @@ function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
           <button type="button" className="button button--primary" disabled={action.busy || clientId === "" || (needsConfirmation(file) && !confirmed)} onClick={assign}>
             {t("office.review.stage")}
           </button>
-          <a className="button" href={fileContentUrl(file.id, "view")}>
+          <button type="button" className="button" disabled={action.busy} onClick={open}>
             {t("office.actions.open")}
-          </a>
+          </button>
           <span className="grow" />
           <button type="button" className="button button--danger" disabled={action.busy} onClick={trash}>
             {t("office.actions.trash")}

@@ -9,7 +9,7 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<number[]> {
   return [...new Uint8Array(await new Response(stream).arrayBuffer())];
 }
 
-describe("ViewService.open", () => {
+describe("ViewService", () => {
   let kit: IntakeKit;
 
   beforeEach(async () => {
@@ -25,8 +25,9 @@ describe("ViewService.open", () => {
     }
   });
 
-  it("returns the body with a generated download name", async () => {
-    const opened = await kit.view.open(member, "f1", "download");
+  it("returns the body of an opened file with a generated download name", async () => {
+    await kit.view.open(member, "f1", "download");
+    const opened = await kit.view.download(member, "f1");
     expect(opened.downloadName).toBe("C0031_SHAHO_20261124_01.jpg");
     expect(opened.body.sizeBytes).toBe(3);
     expect(await readAll(opened.body.body)).toEqual([1, 2, 3]);
@@ -41,6 +42,29 @@ describe("ViewService.open", () => {
     expect(kit.repo.caseRows[0]?.state).toBe("Confirmed");
     expect(kit.repo.metricRows.filter((row) => row.name === "file.first_viewed")).toHaveLength(2);
     expect(kit.repo.metricRows.find((row) => row.name === "file.first_viewed")?.attributes.secondsSincePublished).toBe(3600);
+  });
+
+  it("hands out no body, and writes nothing, before the open is on record", async () => {
+    await expect(kit.view.download(member, "f1")).rejects.toThrow("invalid_state: not_opened");
+    expect(kit.repo.receiptRows).toEqual([]);
+    expect(kit.repo.auditRows).toEqual([]);
+    expect(kit.repo.metricRows).toEqual([]);
+    expect(kit.repo.caseRows[0]?.state).toBe("Delivered");
+    await kit.view.open(memberActor(["c1"], "u-second"), "f1", "view");
+    await expect(kit.view.download(member, "f1")).rejects.toThrow("invalid_state: not_opened");
+  });
+
+  it("writes nothing when an opened file is downloaded, however often", async () => {
+    await kit.view.open(member, "f1", "view");
+    const before = [kit.repo.receiptRows.length, kit.repo.auditRows.length, kit.repo.metricRows.length, kit.repo.fileRows[0]?.version];
+    await (await kit.view.download(member, "f1")).body.body.cancel();
+    await (await kit.view.download(member, "f1")).body.body.cancel();
+    expect([kit.repo.receiptRows.length, kit.repo.auditRows.length, kit.repo.metricRows.length, kit.repo.fileRows[0]?.version]).toEqual(before);
+  });
+
+  it("answers not found for a download of another client's file and audits the denial", async () => {
+    await expect(kit.view.download(member, "f2")).rejects.toThrow("not_found: file");
+    expect(kit.repo.auditRows).toEqual([expect.objectContaining({ action: "file.download", targetId: "f2", result: "denied" })]);
   });
 
   it("does not count a staff view as a receipt", async () => {
@@ -71,9 +95,10 @@ describe("ViewService.open", () => {
     await kit.view.open(member, "f1", "view");
     await kit.publish.withdraw(staff, "f1", { reason: "WrongFile", next: "NeedsReview" }, 1);
     await expect(kit.view.open(member, "f1", "download")).rejects.toThrow("not_found: file");
+    await expect(kit.view.download(member, "f1")).rejects.toThrow("not_found: file");
   });
 
-  it("refuses the body when the file is withdrawn while it is being opened", async () => {
+  it("refuses the open when the file is withdrawn while it is being opened", async () => {
     const original = kit.repo.receipts.insertIfAbsent;
     kit.repo.receipts.insertIfAbsent = async (receipt) => {
       const inserted = await original(receipt);
@@ -111,8 +136,9 @@ describe("ViewService.open", () => {
   });
 
   it("lets staff open files in any state", async () => {
-    expect((await kit.view.open(staff, "f3", "view")).file.id).toBe("f3");
-    expect((await kit.view.open(staff, "f2", "view")).file.id).toBe("f2");
+    expect((await kit.view.open(staff, "f3", "view")).id).toBe("f3");
+    expect((await kit.view.open(staff, "f2", "view")).id).toBe("f2");
+    expect((await kit.view.download(staff, "f3")).file.id).toBe("f3");
   });
 
   it("reports a missing body as a failure, not as not found", async () => {
@@ -120,16 +146,20 @@ describe("ViewService.open", () => {
     await expect(kit.view.open(member, "f1", "view")).rejects.toThrow("invalid_state: body_missing");
     expect(kit.repo.auditRows.at(-1)).toMatchObject({ result: "failed" });
     expect(kit.repo.receiptRows).toEqual([]);
+    await expect(kit.view.download(staff, "f1")).rejects.toThrow("invalid_state: body_missing");
   });
 
   it("acknowledges a submission on the first staff open only", async () => {
     kit.repo.fileRows.push(fileRecord({ id: "f4", direction: "Inbound", state: "Submitted", sha256: "d".repeat(64) }));
     await kit.store.put("files/f4", new Uint8Array([9]));
     await kit.view.open(member, "f4", "view");
+    expect((await kit.view.download(member, "f4")).body.sizeBytes).toBe(1);
+    await expect(kit.view.download(staff, "f4")).rejects.toThrow("invalid_state: not_opened");
     expect(kit.repo.fileRows[3]?.state).toBe("Submitted");
     const opened = await kit.view.open(staff, "f4", "view");
-    expect(opened.file).toMatchObject({ state: "Acknowledged", version: 2 });
-    expect(opened.file.acknowledgedAt).toEqual(kit.clock.now());
+    expect(opened).toMatchObject({ state: "Acknowledged", version: 2 });
+    expect(opened.acknowledgedAt).toEqual(kit.clock.now());
+    expect((await kit.view.download(staff, "f4")).file.state).toBe("Acknowledged");
     await kit.view.open(staffActor("Staff", "u-other"), "f4", "view");
     expect(kit.repo.fileRows[3]?.version).toBe(2);
     expect(kit.repo.receiptRows).toEqual([]);

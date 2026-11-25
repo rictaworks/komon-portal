@@ -23,6 +23,7 @@ const EXTENSIONS: Readonly<Record<FileFormat, string>> = {
   pdf: "pdf", zip: "zip", xml: "xml", csv: "csv", xlsx: "xlsx", docx: "docx", txt: "txt", png: "png", jpeg: "jpg",
 };
 const FILE_TARGET = "file";
+const DOWNLOAD_ACTION = "file.download";
 
 export interface ViewServiceDeps {
   repository: Repository;
@@ -35,31 +36,64 @@ export interface ViewServiceDeps {
   cases: CaseService;
 }
 
-/** Opens file bodies. Permission is checked on every call and a denial looks exactly like a missing file. */
+/**
+ * Opens file bodies in two steps. `open` records the view (a receipt or an acknowledgement) and
+ * `download` only reads. Permission is checked on every call and a denial looks exactly like a missing file.
+ */
 export class ViewService {
   constructor(private readonly deps: ViewServiceDeps) {}
 
-  async open(actor: UserActor, fileId: Id, mode: OpenMode): Promise<OpenedFile> {
-    const found = await this.deps.repository.files.findById(fileId);
-    if (found === null || !this.deps.guard.allows(actor, "file.read", { file: found })) {
-      await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, auditableId(fileId), "denied");
-      throw notFound("file");
-    }
+  /** Records that the actor opens the file. The only step that changes anything; the body is not returned. */
+  async open(actor: UserActor, fileId: Id, mode: OpenMode): Promise<FileRecord> {
+    const found = await this.readable(actor, fileId, `file.${mode}`);
     const body = await this.deps.store.get(found.r2Key);
     if (body === null) {
       await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, fileId, "failed");
       throw invalidState("body_missing");
     }
+    await body.body.cancel();
     const file = this.deps.guard.allows(actor, "staff.operate") ? await this.acknowledge(actor, found) : await this.receive(actor, found);
-    // The file may have been withdrawn while the receipt was being written: check again before handing out the body.
+    // The file may have been withdrawn while the receipt was being written: check again before confirming the open.
     const current = await this.deps.repository.files.findById(fileId);
     if (current === null || !this.deps.guard.allows(actor, "file.read", { file: current })) {
-      await body.body.cancel();
       await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, auditableId(fileId), "denied");
       throw notFound("file");
     }
     await this.deps.audit.record(actor, `file.${mode}`, FILE_TARGET, fileId);
+    return file;
+  }
+
+  /**
+   * Hands out the body of a file the actor has opened. Writes nothing on success: a file whose
+   * open is not on record yet is refused, so a body never leaves without its receipt or acknowledgement.
+   */
+  async download(actor: UserActor, fileId: Id): Promise<OpenedFile> {
+    const file = await this.readable(actor, fileId, DOWNLOAD_ACTION);
+    if (!(await this.openRecorded(actor, file))) {
+      throw invalidState("not_opened");
+    }
+    const body = await this.deps.store.get(file.r2Key);
+    if (body === null) {
+      throw invalidState("body_missing");
+    }
     return { file, body, downloadName: `${file.displayName}.${EXTENSIONS[file.format]}` };
+  }
+
+  private async readable(actor: UserActor, fileId: Id, action: string): Promise<FileRecord> {
+    const found = await this.deps.repository.files.findById(fileId);
+    if (found === null || !this.deps.guard.allows(actor, "file.read", { file: found })) {
+      await this.deps.audit.record(actor, action, FILE_TARGET, auditableId(fileId), "denied");
+      throw notFound("file");
+    }
+    return found;
+  }
+
+  /** Whether `open` has left its record: staff must have acknowledged a submission, a member must hold a receipt. */
+  private async openRecorded(actor: UserActor, file: FileRecord): Promise<boolean> {
+    if (this.deps.guard.allows(actor, "staff.operate")) {
+      return !(file.direction === "Inbound" && file.state === "Submitted");
+    }
+    return file.direction !== "Outbound" || (await this.deps.repository.receipts.hasOpened(file.id, actor.userId));
   }
 
   /** Records the first time this client member opened a published file. Staff views are never receipts. */

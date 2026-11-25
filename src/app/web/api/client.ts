@@ -86,7 +86,23 @@ export class ApiClient {
   }
 }
 
-/** URL of a file body. The Worker checks permission on every request to it. */
-export function fileContentUrl(fileId: string, mode: "view" | "download"): string {
-  return `/api/files/${encodeURIComponent(fileId)}/content?mode=${mode}`;
+export type OpenMode = "view" | "download";
+
+/** URL of a file body. The Worker checks permission on every request to it, and it only reads. */
+export function fileContentUrl(fileId: string): string {
+  return `/api/files/${encodeURIComponent(fileId)}/content`;
+}
+
+/**
+ * Opens a file: first the protected request that records the view, then the download itself.
+ * The body is an attachment, so following its URL leaves the screen in place.
+ */
+export async function openFile(api: ApiClient, fileId: string, mode: OpenMode, follow: (url: string) => void): Promise<void> {
+  await api.post(`/api/files/${encodeURIComponent(fileId)}/open`, { mode });
+  follow(fileContentUrl(fileId));
+}
+
+/** Follows a download URL in this window. */
+export function followDownload(url: string): void {
+  window.location.assign(url);
 }

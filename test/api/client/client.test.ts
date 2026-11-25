@@ -77,29 +77,49 @@ describe("client API and file delivery", () => {
     expect((await kit.client().call("GET", `/api/client/${OWN}/documents`)).status).toBe(401);
   });
 
-  it("delivers a body as an attachment with a generated name and no caching", async () => {
-    const response = await member.call("GET", `/api/files/${ids.published}/content?mode=download`);
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Disposition")).toBe('attachment; filename="DEMO01_SHAHO_20261124_01.pdf"');
-    expect(response.headers.get("Content-Type")).toBe("application/pdf");
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
-    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
-    expect(await response.text()).toBe("%PDF-1.7 published");
+  it("changes nothing on a download request for a file that was not opened first", async () => {
+    for (const headers of [{}, { "Sec-Fetch-Site": "same-origin" }, { "Sec-Fetch-Site": "same-site" }]) {
+      const response = await member.call("GET", `/api/files/${ids.published}/content`, { headers });
+      expect(response.status).toBe(422);
+      expect(await json(response)).toEqual({ error: "invalid_state", detail: "not_opened" });
+    }
+    expect(await repository.receipts.listByFile(ids.published ?? "")).toEqual([]);
+    expect(((await json(await member.call("GET", `/api/client/${OWN}/documents`))).items as Json[])[0]).toMatchObject({ opened: false });
+    expect((await json(await staff.call("GET", `/api/office/cases/${ids.payroll}`))).state).toBe("Open");
   });
 
-  it("refuses a cross-site navigation to a file, which would otherwise record an open", async () => {
-    const response = await member.call("GET", `/api/files/${ids.published}/content`, { headers: { "Sec-Fetch-Site": "cross-site" } });
-    expect(response.status).toBe(403);
-    expect(await json(response)).toEqual({ error: "bad_origin" });
-    const same = await member.call("GET", `/api/files/${ids.published}/content`, { headers: { "Sec-Fetch-Site": "same-origin" } });
-    expect(same.status).toBe(200);
+  it("records an open only for a request from this origin that carries the CSRF token", async () => {
+    const path = `/api/files/${ids.published}/open`;
+    for (const [options, code] of [
+      [{ origin: null }, "bad_origin"],
+      [{ origin: "https://portal.example.net" }, "bad_origin"],
+      [{ csrf: null }, "bad_csrf"],
+      [{ csrf: "guessed" }, "bad_csrf"],
+    ] as const) {
+      const response = await member.call("POST", path, { body: { mode: "view" }, ...options });
+      expect([options, response.status]).toEqual([options, 403]);
+      expect(await json(response)).toEqual({ error: code });
+    }
+    expect((await member.call("GET", path)).status).toBe(404);
+    expect(await repository.receipts.listByFile(ids.published ?? "")).toEqual([]);
+    expect((await member.call("GET", `/api/files/${ids.published}/content`)).status).toBe(422);
+    expect((await member.call("POST", path, { body: { mode: "peek" } })).status).toBe(400);
+    expect((await member.call("POST", path, { body: {} })).status).toBe(400);
+    expect((await kit.client().call("POST", path, { body: { mode: "view" } })).status).toBe(401);
+    expect(await repository.receipts.listByFile(ids.published ?? "")).toEqual([]);
   });
 
   it("records the first open of a member once and never a staff view", async () => {
+    const opened = await member.call("POST", `/api/files/${ids.published}/open`, { body: { mode: "view" } });
+    expect(opened.status).toBe(200);
+    expect(await json(opened)).toEqual({ id: ids.published });
+    const first = await repository.receipts.listByFile(ids.published ?? "");
+    expect(first).toHaveLength(1);
+    await member.call("POST", `/api/files/${ids.published}/open`, { body: { mode: "download" } });
     await member.call("GET", `/api/files/${ids.published}/content`);
+    await staff.call("POST", `/api/files/${ids.published}/open`, { body: { mode: "view" } });
     await staff.call("GET", `/api/files/${ids.published}/content`);
-    const receipts = await repository.receipts.listByFile(ids.published ?? "");
-    expect(receipts).toHaveLength(1);
+    expect(await repository.receipts.listByFile(ids.published ?? "")).toEqual(first);
     const documents = await json(await member.call("GET", `/api/client/${OWN}/documents`));
     expect((documents.items as Json[])[0]).toMatchObject({ opened: true });
     expect(((await json(await member.call("GET", `/api/client/${OWN}/home`))).unread as Json[])).toEqual([]);
@@ -107,13 +127,28 @@ describe("client API and file delivery", () => {
     expect(shelf.readers).toEqual([expect.objectContaining({ displayName: "Dev member" })]);
   });
 
+  it("delivers the body of an opened file as an attachment with a generated name and no caching", async () => {
+    const audited = (await repository.audit.list({ limit: 1000, offset: 0 })).length;
+    const response = await member.call("GET", `/api/files/${ids.published}/content`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Disposition")).toBe('attachment; filename="DEMO01_SHAHO_20261124_01.pdf"');
+    expect(response.headers.get("Content-Type")).toBe("application/pdf");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(await response.text()).toBe("%PDF-1.7 published");
+    expect(await repository.audit.list({ limit: 1000, offset: 0 })).toHaveLength(audited);
+  });
+
   it("refuses files that are not published, belong to another client or do not exist, all alike", async () => {
     for (const fileId of [ids.staged, ids.foreign, "missing"]) {
-      const response = await member.call("GET", `/api/files/${fileId}/content`);
-      expect([fileId, response.status]).toEqual([fileId, 404]);
-      expect(await response.json()).toEqual({ error: "not_found", detail: "file" });
+      for (const response of [
+        await member.call("GET", `/api/files/${fileId}/content`),
+        await member.call("POST", `/api/files/${fileId}/open`, { body: { mode: "view" } }),
+      ]) {
+        expect([fileId, response.status]).toEqual([fileId, 404]);
+        expect(await response.json()).toEqual({ error: "not_found", detail: "file" });
+      }
     }
-    expect((await member.call("GET", `/api/files/${ids.published}/content?mode=peek`)).status).toBe(400);
     expect((await kit.client().call("GET", `/api/files/${ids.published}/content`)).status).toBe(401);
     expect((await staff.call("GET", `/api/files/${ids.staged}/content`)).status).toBe(200);
   });
@@ -121,6 +156,7 @@ describe("client API and file delivery", () => {
   it("serves text formats as opaque bytes so they cannot run in the browser", async () => {
     const file = await intake(OWN, "note.xml", "<script>alert(1)</script>");
     await staff.call("POST", "/api/office/publish", { body: { items: [{ fileId: file.id, version: 1 }] } });
+    await member.call("POST", `/api/files/${String(file.id)}/open`, { body: { mode: "download" } });
     const response = await member.call("GET", `/api/files/${String(file.id)}/content`);
     expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
     expect(response.headers.get("Content-Disposition")).toMatch(/^attachment; filename="DEMO01_UNCLASSIFIED_20261124_\d+\.xml"$/);
@@ -154,7 +190,10 @@ describe("client API and file delivery", () => {
     const before = (await json(await member.call("GET", `/api/client/${OWN}/submissions`))).items as Json[];
     expect(before.map((item) => [item.id, item.state, item.canCancel])).toEqual(expect.arrayContaining([[ids.submission, "Submitted", true], [secondId, "Submitted", true]]));
 
-    await staff.call("GET", `/api/files/${ids.submission}/content?mode=view`);
+    expect((await staff.call("GET", `/api/files/${ids.submission}/content`)).status).toBe(422);
+    expect(((await json(await member.call("GET", `/api/client/${OWN}/submissions`))).items as Json[]).find((item) => item.id === ids.submission)).toMatchObject({ state: "Submitted" });
+    expect((await staff.call("POST", `/api/files/${ids.submission}/open`, { body: { mode: "view" } })).status).toBe(200);
+    expect(await (await staff.call("GET", `/api/files/${ids.submission}/content`)).text()).toBe("a,b\n1,2\n");
     const after = (await json(await member.call("GET", `/api/client/${OWN}/submissions`))).items as Json[];
     expect(after.find((item) => item.id === ids.submission)).toMatchObject({ state: "Acknowledged", canCancel: false });
     const late = await member.call("POST", `/api/client/${OWN}/submissions/${ids.submission}/cancel`, { body: { version: 2 } });

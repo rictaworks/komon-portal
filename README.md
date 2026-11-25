@@ -107,7 +107,8 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | POST | `/api/client/{clientId}/submissions/{id}/cancel` | Cancels a submission the office has not confirmed (version required). | member |
 | GET | `/api/config` | Public configuration: environment, Turnstile key, sign-in availability, setup state. | none |
 | POST | `/api/dev/login` | Development only: signs in as a test user (owner, staff or member). | development |
-| GET | `/api/files/{id}/content` | Opens a file as an attachment (mode=view or download). Records the first view or acknowledgement. | session |
+| GET | `/api/files/{id}/content` | Sends the body of a file as an attachment. Changes nothing; refused until the file was opened with the request below. | session |
+| POST | `/api/files/{id}/open` | Records that the user opens a file (mode=view or download): the first view or the acknowledgement. | session |
 | GET | `/api/health` | Liveness check. | none |
 | POST | `/api/invitations/redeem` | Uses an invitation code. Requires a Turnstile token and a signed-in user. | session |
 | GET | `/api/me` | The signed-in user with memberships and CSRF token. 401 when signed out. | session |

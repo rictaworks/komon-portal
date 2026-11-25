@@ -95,7 +95,8 @@ describe("core services on D1 and R2", () => {
     expect(await publish.publish(staff, [{ fileId: accepted.file.id, version: 1 }])).toEqual([{ fileId: accepted.file.id, outcome: "published", clientId: "flow-c1" }]);
     expect(notifier.notified).toEqual(["flow-c1"]);
 
-    const opened = await view.open(member, accepted.file.id, "download");
+    await view.open(member, accepted.file.id, "download");
+    const opened = await view.download(member, accepted.file.id);
     expect(opened.downloadName).toBe("F0031_FSHAHO_20261124_01.pdf");
     expect(new Uint8Array(await new Response(opened.body.body).arrayBuffer())).toEqual(PDF_BYTES);
     await view.open(member, accepted.file.id, "view");
@@ -125,7 +126,7 @@ describe("core services on D1 and R2", () => {
     expect(result.outcome === "stored" && result.file).toMatchObject({ state: "Submitted", caseId: payroll.id, format: "csv" });
     expect((await repository.cases.findById(payroll.id))?.state).toBe("MaterialsReceived");
     if (result.outcome !== "stored") return;
-    expect((await view.open(staff, result.file.id, "view")).file.state).toBe("Acknowledged");
+    expect((await view.open(staff, result.file.id, "view")).state).toBe("Acknowledged");
   });
 });
 

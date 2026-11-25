@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { fileContentUrl } from "../../api/client";
+import { followDownload, openFile, type OpenMode } from "../../api/client";
 import type { ClientDocument, DocTypes } from "../../api/client-types";
 import { SelectField, TextField } from "../../components/Form";
 import { formatDateTime, formatSize } from "../../components/format";
 import { ErrorNotice } from "../../components/Notice";
+import { useAction } from "../../components/useAction";
 import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
@@ -25,11 +26,21 @@ export function ClientDocuments() {
     const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
     return api.get<{ items: ClientDocument[] }>(`/api/client/${clientId}/documents${suffix}`);
   }, [clientId, docTypeId, targetMonth]);
+  const action = useAction();
+
+  // The open is recorded by the server before the download starts, so the list can show it at once.
+  const open = (document: ClientDocument, mode: OpenMode) => () => {
+    void action.run(() => openFile(api, document.id, mode, followDownload)).then((ok) => {
+      if (ok) {
+        documents.reload();
+      }
+    });
+  };
 
   return (
     <div className="page">
       <h1 className="title">{t("client.documents.title")}</h1>
-      <ErrorNotice error={documents.error} />
+      <ErrorNotice error={documents.error ?? action.error} />
       <div className="grid2">
         <SelectField
           label={t("client.documents.type")}
@@ -50,12 +61,12 @@ export function ClientDocuments() {
             </span>
             <span className="muted">{document.opened ? t("client.documents.opened") : t("client.documents.new")}</span>
             <div className="row">
-              <a className="button" href={fileContentUrl(document.id, "view")}>
+              <button type="button" className="button" disabled={action.busy} onClick={open(document, "view")}>
                 {t("client.documents.view")}
-              </a>
-              <a className="button button--primary" href={fileContentUrl(document.id, "download")}>
+              </button>
+              <button type="button" className="button button--primary" disabled={action.busy} onClick={open(document, "download")}>
                 {t("client.documents.download")}
-              </a>
+              </button>
             </div>
           </li>
         ))}
