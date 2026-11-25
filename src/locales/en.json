@@ -584,21 +584,29 @@
       "allTypes": "All types",
       "download": "Download",
       "empty": "No documents match.",
-      "month": "Month",
+      "month": "Target month",
+      "meta": "{month}, published {date}",
+      "noMonth": "No target month",
       "new": "New",
       "opened": "Opened",
       "title": "Documents",
       "type": "Type",
       "view": "View"
     },
+    "paging": {
+      "label": "Pages",
+      "previous": "Previous",
+      "page": "Page {page}",
+      "next": "Next"
+    },
     "home": {
       "cases": "Your cases",
       "moreCases": "More cases exist than are shown.",
       "moreDocuments": "More new documents exist than are shown.",
+      "caseMeta": "{kind}, {month}",
       "newDocuments": "New documents",
       "noCases": "No cases yet.",
       "noNew": "No new documents.",
-      "title": "Home",
       "unknownType": "Document"
     },
     "notifications": {
@@ -616,19 +624,27 @@
       "cancel": "Cancel this submission",
       "chooseType": "Choose a document type",
       "confirmed": "Confirmed by the office on {date}",
-      "file": "File",
-      "form": "Send a file to the office",
-      "formats": "PDF, ZIP, XML, CSV, XLSX, DOCX, TXT, PNG and JPEG, up to 50 MB.",
+      "form": "Send files to the office",
+      "formats": "Sent to your office only. PDF, ZIP, XML, CSV, XLSX, DOCX, TXT, PNG, JPEG, up to 50 MB each.",
       "month": "Target month",
+      "chooseFiles": "Choose files",
+      "chosen": "Chosen files",
+      "meta": "{month}, sent {date}",
+      "progress": "Sending {done} of {total} file(s)...",
+      "remove": "Remove",
+      "result": {
+        "stored": "Sent",
+        "notSent": "Not sent"
+      },
+      "results": "Results",
+      "storedReason": "The file was sent to the office.",
       "none": "Nothing sent yet.",
       "sent": "Sent files",
       "submit": "Send to office",
       "title": "Send Files",
-      "type": "Document type",
-      "waiting": "Waiting for the office to confirm",
+      "type": "Type",
       "duplicate": "This content is already held for your company, so it was not sent again.",
-      "rejected": "The file was not sent: {reason}.",
-      "sentNotice": "The file was sent to the office."
+      "rejected": "The file was not sent. {reason}"
     }
   },
   "notices": {

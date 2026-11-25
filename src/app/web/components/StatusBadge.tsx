@@ -1,5 +1,5 @@
 import {
-  faBan, faCircleCheck, faCircleInfo, faClock, faTriangleExclamation, type IconDefinition,
+  faBan, faCircleCheck, faCircleInfo, faClock, faEnvelope, faEnvelopeOpen, faTriangleExclamation, type IconDefinition,
 } from "@fortawesome/free-solid-svg-icons";
 import { useT } from "../i18n";
 import { Icon } from "./Icon";
@@ -15,11 +15,11 @@ const TONE_ICON: Readonly<Record<BadgeTone, IconDefinition>> = {
   solid: faCircleInfo,
 };
 
-/** A state shown with colour, word and icon together, never by colour alone. */
-export function Badge({ tone, label }: { tone: BadgeTone; label: string }) {
+/** A state shown with colour, word and icon together, never by colour alone. The icon is the tone's unless one is given. */
+export function Badge({ tone, label, icon }: { tone: BadgeTone; label: string; icon?: IconDefinition }) {
   return (
     <span className={`badge badge--${tone}`}>
-      <Icon icon={TONE_ICON[tone]} />
+      <Icon icon={icon ?? TONE_ICON[tone]} />
       {label}
     </span>
   );
@@ -38,6 +38,14 @@ const FILE_TONE: Readonly<Record<string, BadgeTone>> = {
 export function FileStateBadge({ state }: { state: string }) {
   const t = useT();
   return <Badge tone={FILE_TONE[state] ?? "neutral"} label={t(`fileState.${state}`)} />;
+}
+
+/** Whether the signed-in member has opened a published document. */
+export function ReadBadge({ opened }: { opened: boolean }) {
+  const t = useT();
+  return opened
+    ? <Badge tone="neutral" icon={faEnvelopeOpen} label={t("client.documents.opened")} />
+    : <Badge tone="staged" icon={faEnvelope} label={t("client.documents.new")} />;
 }
 
 const CASE_TONE: Readonly<Record<string, BadgeTone>> = {
