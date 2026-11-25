@@ -295,10 +295,19 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       const due = (await repo.files.listTrashedBefore(new Date("2020-01-01T00:00:00.000Z"), { limit: 500, offset: 0 })).map((row) => row.id);
       expect(due).toContain(old.id);
       expect(due).not.toContain(recent.id);
-      await repo.files.purge(old.id);
+      const entry = (label: string, targetId: string) => ({
+        id: id(label), actorUserId: null, action: "file.purge", targetType: "file", targetId, result: "ok" as const, occurredAt: T0,
+      });
+      const threshold = new Date("2020-01-01T00:00:00.000Z");
+      expect(await repo.files.purge(recent.id, threshold, entry("pl1", recent.id))).toBe(false);
+      expect(await repo.files.purge(id("no-file"), threshold, entry("pl2", id("no-file")))).toBe(false);
+      expect(await repo.files.purge(old.id, threshold, entry("pl3", old.id))).toBe(true);
+      expect(await repo.files.purge(old.id, threshold, entry("pl4", old.id))).toBe(false);
       expect(await repo.files.findById(old.id)).toBeNull();
       expect(await repo.receipts.listByFile(old.id)).toEqual([]);
       expect(await repo.files.findById(recent.id)).not.toBeNull();
+      const purges = (await repo.audit.list({ limit: 500, offset: 0 })).filter((row) => row.action === "file.purge" && [old.id, recent.id, id("no-file")].includes(row.targetId));
+      expect(purges.map((row) => [row.id, row.targetId])).toEqual([[id("pl3"), old.id]]);
     });
 
     it("appends audit entries and metric events", async () => {
