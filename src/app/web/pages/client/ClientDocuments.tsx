@@ -12,6 +12,7 @@ import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import { documentsPath } from "./client-lists";
 import { DocumentCard } from "./ClientRows";
+import { usePagedList } from "./usePagedList";
 
 /** Published documents of the company, filtered by type and month, a page at a time. Opening one records the first view. */
 export function ClientDocuments() {
@@ -20,19 +21,12 @@ export function ClientDocuments() {
   const { api } = useSession();
   const [docTypeId, setDocTypeId] = useState("");
   const [targetMonth, setTargetMonth] = useState("");
-  const [page, setPage] = useState(0);
   const types = useLoad<DocTypes>(() => api.get<DocTypes>(`/api/client/${clientId}/doc-types`), [clientId]);
-  const documents = useLoad<ListPage<ClientDocument>>(
-    () => api.get<ListPage<ClientDocument>>(documentsPath(clientId, { docTypeId, targetMonth, page })),
-    [clientId, docTypeId, targetMonth, page],
+  // The company and the filter name the list: a new filter is a new list, which starts again at its first page.
+  const documents = usePagedList<ClientDocument>(JSON.stringify([clientId, docTypeId, targetMonth]), (page) =>
+    api.get<ListPage<ClientDocument>>(documentsPath(clientId, { docTypeId, targetMonth, page })),
   );
   const action = useAction();
-
-  // A new filter is a new list, so it starts again at its first page.
-  const filterBy = (apply: (value: string) => void) => (value: string) => {
-    apply(value);
-    setPage(0);
-  };
 
   // The open is recorded by the server before the download starts, so the list can show it at once.
   const open = (document: ClientDocument, mode: OpenMode): void => {
@@ -46,32 +40,34 @@ export function ClientDocuments() {
   return (
     <div className="page">
       <h1 className="title">{t("client.documents.title")}</h1>
-      <ErrorNotice error={documents.error ?? action.error} />
+      <ErrorNotice error={action.error} />
       <div className="grid2">
         <SelectField
           label={t("client.documents.type")}
           value={docTypeId}
           options={[{ value: "", label: t("client.documents.allTypes") }, ...(types.data?.outbound ?? []).map((type) => ({ value: type.id, label: type.label }))]}
-          onChange={filterBy(setDocTypeId)}
+          onChange={setDocTypeId}
         />
-        <TextField label={t("client.documents.month")} type="month" value={targetMonth} onChange={filterBy(setTargetMonth)} />
+        <TextField label={t("client.documents.month")} type="month" value={targetMonth} onChange={setTargetMonth} />
       </div>
-      {documents.data === null ? (
-        documents.error === null ? <Loading /> : null
+      {documents.shown === null ? (
+        documents.error === null ? <Loading /> : <ErrorNotice error={documents.error} />
       ) : (
         <>
-          {documents.data.items.length === 0 ? (
+          {documents.shown.items.length === 0 ? (
             <p className="empty">{t("client.documents.empty")}</p>
           ) : (
             <ul className="list stack">
-              {documents.data.items.map((document) => (
+              {documents.shown.items.map((document) => (
                 <li key={document.id}>
                   <DocumentCard document={document} busy={action.busy} onOpen={open} />
                 </li>
               ))}
             </ul>
           )}
-          <Pager page={page} hasMore={documents.data.hasMore} busy={documents.loading} onPage={setPage} />
+          {/* A page that failed to load is reported beside the pager that asked for it; the rows above are still those of the page named here. */}
+          <ErrorNotice error={documents.error} />
+          <Pager page={documents.shown.page} hasMore={documents.shown.hasMore} busy={documents.loading} onPage={documents.goTo} />
         </>
       )}
     </div>
