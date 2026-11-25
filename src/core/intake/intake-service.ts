@@ -73,7 +73,7 @@ export class IntakeService {
     }
     const validation = validateFile(incoming);
     if (!validation.ok) {
-      await this.deps.metrics.record("intake.rejected", null, { reason: validation.reason });
+      await this.deps.metrics.record(actor, "intake.rejected", null, { reason: validation.reason });
       await this.deps.audit.record(actor, "file.reject", BATCH_TARGET, batch.id, "failed");
       return { outcome: "rejected", reason: validation.reason };
     }
@@ -189,7 +189,7 @@ export class IntakeService {
 
   private async afterStored(actor: Actor, file: FileRecord): Promise<IntakeResult> {
     await this.deps.audit.record(actor, "file.accept", FILE_TARGET, file.id);
-    await this.deps.metrics.record("intake.accepted", file.clientId, {
+    await this.deps.metrics.record(actor, "intake.accepted", file.clientId, {
       fileId: file.id,
       state: file.state,
       method: file.resolutionMethod,
@@ -209,7 +209,7 @@ export class IntakeService {
       throw notFound("file");
     }
     await this.deps.audit.record(actor, "file.duplicate", FILE_TARGET, existing.id);
-    await this.deps.metrics.record("intake.duplicate", existing.clientId, { fileId: existing.id });
+    await this.deps.metrics.record(actor, "intake.duplicate", existing.clientId, { fileId: existing.id });
     return { outcome: "duplicate", existingFileId: existing.id, existingDisplayName: existing.displayName, clientId: existing.clientId };
   }
 }

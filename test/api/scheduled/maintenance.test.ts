@@ -7,7 +7,7 @@ import { CryptoIdGenerator } from "../../../src/app/adapters/system-clock";
 import type { AppEnv } from "../../../src/app/env";
 import { runDailyMaintenance } from "../../../src/app/scheduled";
 import type { FileStore } from "../../../src/core/ports/file-store";
-import { client, fileRecord, FixedClock, NOW, user } from "../../support/builders";
+import { caseRecord, caseType, client, fileRecord, FixedClock, NOW, user } from "../../support/builders";
 import { migrate } from "../../support/d1";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -43,7 +43,23 @@ describe("daily maintenance", () => {
     await repository.invitations.insert(invitation("job-i-old", new Date(NOW.getTime() - 1000), "Issued"));
     await repository.invitations.insert(invitation("job-i-live", new Date(NOW.getTime() + DAY), "Issued"));
     await repository.invitations.insert(invitation("job-i-used", new Date(NOW.getTime() - 1000), "Redeemed"));
+
+    // NOW is 24 November 2026 in the office time zone and the retrieval deadline is 90 days after submission.
+    await repository.caseTypes.insert(caseType({ id: "job-t1" }));
+    const submitted = (id: string, sequence: number, submittedOn: string | null, state: "Submitted" | "Open" | "DocumentReceived" = "Submitted") =>
+      caseRecord({ id, clientId: "job-c1", caseTypeId: "job-t1", sequence, referenceCode: `JOB-${sequence}`, submittedOn, state });
+    await repository.cases.insert(submitted("job-k-warn", 1, "2026-09-05")); // deadline 4 December: 10 days left
+    await repository.cases.insert(submitted("job-k-late", 2, "2026-08-01")); // deadline passed
+    await repository.cases.insert(submitted("job-k-far", 3, "2026-09-06")); // 11 days left: caution only
+    await repository.cases.insert(submitted("job-k-open", 4, null, "Open"));
+    await repository.cases.insert(submitted("job-k-done", 5, "2026-08-01", "DocumentReceived"));
   });
+
+  async function events(name: string): Promise<{ client_id: string | null; actor_kind: string | null; actor_user_id: string | null; attributes: string; occurred_at: string }[]> {
+    const rows = await env.DB.prepare("SELECT client_id, actor_kind, actor_user_id, attributes, occurred_at FROM metric_events WHERE name = ? ORDER BY occurred_at, id")
+      .bind(name).all<{ client_id: string | null; actor_kind: string | null; actor_user_id: string | null; attributes: string; occurred_at: string }>();
+    return rows.results;
+  }
 
   it("erases files trashed 30 days ago or more, expires invitations and removes ended sessions", async () => {
     const sessions = new SessionStore(env.DB, new FixedClock(new Date(NOW.getTime() - 13 * 60 * 60 * 1000)), new CryptoIdGenerator());
@@ -51,7 +67,7 @@ describe("daily maintenance", () => {
     const live = await new SessionStore(env.DB, clock, new CryptoIdGenerator()).create("job-u1");
 
     const report = await runDailyMaintenance(appEnv, { clock });
-    expect(report).toEqual({ purge: { purged: 2, skipped: 0, failed: 0 }, expiredInvitations: 1, removedSessions: 1 });
+    expect(report).toEqual({ purge: { purged: 2, skipped: 0, failed: 0 }, expiredInvitations: 1, removedSessions: 1, retrievalWarnings: 2 });
 
     expect(await repository.files.findById("job-old")).toBeNull();
     expect(await repository.files.findById("job-edge")).toBeNull();
@@ -70,8 +86,30 @@ describe("daily maintenance", () => {
     expect(purges.every((entry) => entry.occurredAt.getTime() === clock.now().getTime())).toBe(true);
   });
 
-  it("does nothing on a second run", async () => {
-    expect(await runDailyMaintenance(appEnv, { clock })).toEqual({ purge: { purged: 0, skipped: 0, failed: 0 }, expiredInvitations: 0, removedSessions: 0 });
+  it("records once, as the system, each case whose retrieval deadline is 10 days away or less", async () => {
+    const warned = await events("case.retrieval_warned");
+    expect(warned.map((row) => row.attributes).sort()).toEqual([
+      JSON.stringify({ caseId: "job-k-late", submittedOn: "2026-08-01", level: "expired" }),
+      JSON.stringify({ caseId: "job-k-warn", submittedOn: "2026-09-05", level: "warning" }),
+    ]);
+    expect(warned.map((row) => [row.client_id, row.actor_kind, row.actor_user_id])).toEqual([["job-c1", "system", null], ["job-c1", "system", null]]);
+  });
+
+  it("records what the run did, as counts only", async () => {
+    const finished = await events("maintenance.finished");
+    expect(finished).toHaveLength(1);
+    expect(finished[0]).toMatchObject({ client_id: null, actor_kind: "system", actor_user_id: null, occurred_at: clock.now().toISOString() });
+    expect(JSON.parse(finished[0]?.attributes ?? "")).toEqual({
+      result: "ok", failedSteps: "", purged: 2, purgeSkipped: 0, purgeFailed: 0, expiredInvitations: 1, removedSessions: 1, retrievalWarnings: 2,
+    });
+  });
+
+  it("does nothing on a second run, and does not record a warned case again", async () => {
+    expect(await runDailyMaintenance(appEnv, { clock })).toEqual({
+      purge: { purged: 0, skipped: 0, failed: 0 }, expiredInvitations: 0, removedSessions: 0, retrievalWarnings: 0,
+    });
+    expect(await events("case.retrieval_warned")).toHaveLength(2);
+    expect(await events("maintenance.finished")).toHaveLength(2);
   });
 
   it("keeps going when a file cannot be erased and reports the failure", async () => {
@@ -91,5 +129,49 @@ describe("daily maintenance", () => {
     expect((await repository.invitations.findById("job-i-2"))?.status).toBe("Expired");
     const failed = (await repository.audit.list({ limit: 100, offset: 0 })).filter((entry) => entry.action === "file.purge" && entry.result === "failed");
     expect(failed.map((entry) => entry.targetId)).toEqual(["job-new"]);
+    // The failed run is recorded too, with the step that failed.
+    const last = (await events("maintenance.finished")).at(-1);
+    expect(last?.occurred_at).toBe(later.now().toISOString());
+    expect(JSON.parse(last?.attributes ?? "")).toMatchObject({ result: "failed", failedSteps: "purge_files", purgeFailed: 1, expiredInvitations: 2, retrievalWarnings: 1 });
+    // Two days on, the third case has 9 days left: it entered the warning period and is recorded once.
+    expect((await events("case.retrieval_warned")).map((row) => (JSON.parse(row.attributes) as { caseId: string }).caseId).sort()).toEqual(["job-k-far", "job-k-late", "job-k-warn"]);
+  });
+
+  it("records a case again when it was submitted again on another date and that deadline comes near", async () => {
+    const later = new FixedClock(new Date(NOW.getTime() + 2 * DAY));
+    await env.DB.prepare("UPDATE case_records SET submitted_on = '2026-08-20' WHERE id = 'job-k-late'").run();
+    expect((await runDailyMaintenance(appEnv, { clock: later })).retrievalWarnings).toBe(1);
+    const again = (await events("case.retrieval_warned")).map((row) => JSON.parse(row.attributes) as { caseId: string; submittedOn: string }).filter((entry) => entry.caseId === "job-k-late");
+    expect(again.map((entry) => entry.submittedOn).sort()).toEqual(["2026-08-01", "2026-08-20"]);
+    expect((await runDailyMaintenance(appEnv, { clock: later })).retrievalWarnings).toBe(0);
+  });
+
+  it("reports the warnings it did record when recording fails part-way", async () => {
+    // A time of its own, so that the run of this test is the last one recorded.
+    const later = new FixedClock(new Date(NOW.getTime() + 3 * DAY));
+    for (const sequence of [1, 2, 3]) {
+      await repository.cases.insert(
+        caseRecord({ id: `job-p-${sequence}`, clientId: "job-c1", caseTypeId: "job-t1", sequence: 10 + sequence, referenceCode: `JOB-P${sequence}`, submittedOn: "2026-08-01", state: "Submitted" }),
+      );
+    }
+    const before = (await events("case.retrieval_warned")).length;
+    // The database refuses the event of one case; the cases are read in the order of their IDs.
+    await env.DB.prepare(
+      "CREATE TRIGGER job_refuse_warning BEFORE INSERT ON metric_events WHEN NEW.name = 'case.retrieval_warned' AND json_extract(NEW.attributes, '$.caseId') = 'job-p-2' BEGIN SELECT RAISE(ABORT, 'refused'); END",
+    ).run();
+    try {
+      await expect(runDailyMaintenance(appEnv, { clock: later })).rejects.toThrow("maintenance finished with failures: retrieval_warnings");
+    } finally {
+      await env.DB.prepare("DROP TRIGGER job_refuse_warning").run();
+    }
+    const written = (await events("case.retrieval_warned")).length - before;
+    expect(written).toBe(1);
+    const failedRun = (await events("maintenance.finished")).at(-1);
+    expect(failedRun?.occurred_at).toBe(later.now().toISOString());
+    expect(JSON.parse(failedRun?.attributes ?? "")).toMatchObject({ result: "failed", failedSteps: "retrieval_warnings", retrievalWarnings: written });
+
+    // The next run records the rest, so the counts of the runs add up to the cases recorded.
+    expect((await runDailyMaintenance(appEnv, { clock: later })).retrievalWarnings).toBe(2);
+    expect((await events("case.retrieval_warned")).length - before).toBe(3);
   });
 });
