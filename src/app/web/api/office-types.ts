@@ -141,7 +141,7 @@ export interface ClientMembers {
 }
 
 export interface StaffList {
-  members: { userId: string; displayName: string; officeRole: "Owner" | "Staff" | null; officeStatus: string | null; redeemedAt: string | null }[];
+  members: { userId: string; displayName: string; officeRole: "Owner" | "Staff" | null; officeStatus: string | null; redeemedAt: string | null; approvedAt: string | null }[];
   invitations: InvitationView[];
 }
 

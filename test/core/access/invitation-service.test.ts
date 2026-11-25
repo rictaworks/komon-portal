@@ -232,10 +232,20 @@ describe("InvitationService", () => {
       await expect(service.approveOffice(staff, "u-new")).rejects.toThrow("forbidden: office.staff.manage");
       await expect(service.listOfficeMembers(staff)).rejects.toThrow("forbidden");
       const listed = await service.listOfficeMembers(owner);
-      expect(listed.find((view) => view.userId === "u-new")).toEqual({ userId: "u-new", displayName: "K. Tanabe", officeRole: "Staff", officeStatus: "Pending", redeemedAt: kit.clock.now() });
+      expect(listed.find((view) => view.userId === "u-new")).toEqual({ userId: "u-new", displayName: "K. Tanabe", officeRole: "Staff", officeStatus: "Pending", redeemedAt: kit.clock.now(), approvedAt: null });
       expect(JSON.stringify(listed)).not.toContain("s-new");
       expect(await service.approveOffice(owner, "u-new")).toMatchObject({ officeRole: "Staff", officeStatus: "Active" });
       await expect(service.rejectOffice(owner, "u-new")).rejects.toThrow("invalid_state: office_not_pending");
+    });
+
+    it("shows when each active office member was approved, and nothing before that", async () => {
+      await pendingStaff();
+      const redeemedAt = kit.clock.now();
+      const newStaff = async () => (await service.listOfficeMembers(owner)).find((view) => view.userId === "u-new");
+      expect(await newStaff()).toMatchObject({ officeStatus: "Pending", approvedAt: null });
+      kit.clock.advanceDays(1);
+      await service.approveOffice(owner, "u-new");
+      expect(await newStaff()).toMatchObject({ officeStatus: "Active", redeemedAt: redeemedAt, approvedAt: kit.clock.now() });
     });
 
     it("does not approve someone who also has a client membership", async () => {
