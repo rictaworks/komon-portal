@@ -54,7 +54,7 @@ export function securityHeaders(): MiddlewareHandler<AppBindings> {
     if (invalid === undefined) {
       await next();
     } else {
-      c.res = handleError(invalid, c);
+      c.res = await handleError(invalid, c);
     }
     c.res.headers.set("Content-Security-Policy", contentSecurityPolicy(webAnalyticsToken));
     for (const [name, value] of Object.entries(FIXED_SECURITY_HEADERS)) {
