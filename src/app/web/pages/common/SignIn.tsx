@@ -1,4 +1,4 @@
-import { faRightToBracket } from "@fortawesome/free-solid-svg-icons";
+import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
@@ -34,12 +34,16 @@ export function SignIn() {
       <ErrorNotice error={error} />
       {config.signInAvailable ? (
         <a className="button button--block" href={`/api/auth/login?return=${encodeURIComponent(returnTo)}`}>
-          <Icon icon={faRightToBracket} />
+          <Icon icon={faGoogle} />
           {t("signIn.google")}
         </a>
       ) : (
         <Notice tone="review">{t("signIn.notConfigured")}</Notice>
       )}
+      <div className="divider">
+        <span className="divider__label">{t("signIn.firstTime")}</span>
+      </div>
+      <p className="muted">{t("signIn.firstTimeGuide")}</p>
       <Link className="button button--primary button--block" to="/redeem">
         {t("signIn.haveInvitation")}
       </Link>

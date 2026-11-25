@@ -111,6 +111,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .grow { flex-grow: 1; min-width: 0; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack--tight { gap: 4px; }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--slate); font-size: 12px; }
+.divider::before, .divider::after { content: ""; flex-grow: 1; height: 1px; background: rgba(10, 22, 40, 0.15); }
 .split { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 .split__main { flex: 2 1 480px; min-width: 0; }
 .split__side { flex: 1 1 340px; min-width: 0; }
