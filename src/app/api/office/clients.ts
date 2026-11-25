@@ -159,6 +159,7 @@ export function clientRoutes(): Hono<AppBindings> {
         officeRole: view.officeRole,
         officeStatus: view.officeStatus,
         redeemedAt: view.redeemedAt,
+        approvedAt: view.approvedAt,
       })),
       invitations: invitations.map(invitationView),
     });

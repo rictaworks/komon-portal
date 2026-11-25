@@ -413,16 +413,34 @@ export class D1AuditRepository implements AuditRepository {
 
   async list(page: Page): Promise<AuditEntry[]> {
     const rows = await this.db.prepare("SELECT * FROM audit_log ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?").bind(page.limit, page.offset).all<Row>();
-    return rows.results.map((row) => ({
-      id: text(row.id),
-      actorUserId: textOrNull(row.actor_user_id),
-      action: text(row.action),
-      targetType: text(row.target_type),
-      targetId: text(row.target_id),
-      result: text(row.result) as AuditEntry["result"],
-      occurredAt: fromIso(row.occurred_at),
-    }));
+    return rows.results.map(toAuditEntry);
   }
+
+  async latestOk(targetType: string, targetId: string, actions: readonly string[]): Promise<AuditEntry | null> {
+    if (actions.length === 0) {
+      return null;
+    }
+    const row = await this.db
+      .prepare(
+        `SELECT * FROM audit_log WHERE target_type = ? AND target_id = ? AND result = 'ok' AND action IN (${placeholders(actions.length)})
+         ORDER BY occurred_at DESC, id DESC LIMIT 1`,
+      )
+      .bind(targetType, targetId, ...actions)
+      .first<Row>();
+    return row === null ? null : toAuditEntry(row);
+  }
+}
+
+function toAuditEntry(row: Row): AuditEntry {
+  return {
+    id: text(row.id),
+    actorUserId: textOrNull(row.actor_user_id),
+    action: text(row.action),
+    targetType: text(row.target_type),
+    targetId: text(row.target_id),
+    result: text(row.result) as AuditEntry["result"],
+    occurredAt: fromIso(row.occurred_at),
+  };
 }
 
 export class D1MetricRepository implements MetricRepository {

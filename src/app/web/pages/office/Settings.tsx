@@ -9,8 +9,10 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { formatDateTime } from "../../components/format";
 import { isFixedModelName, loadJevSettings, removeJevSettings, saveJevSettings } from "./jev-settings";
 import { JEV_THRESHOLD_MAX, JEV_THRESHOLD_MIN, JEV_THRESHOLD_STEP, copyText, docTypeUpdate, parseJevThreshold, submissionCaseTypeOptions, takesSubmissions } from "./settings-input";
+import { outstandingInvitations } from "./staff-invitations";
 
 const DIRECTIONS = ["Outbound", "Inbound", "Both"] as const;
 const CASE_KINDS = ["Procedure", "Payroll", "Other"] as const;
@@ -125,6 +127,12 @@ function StaffSection() {
     void action.run(() => api.post(`/api/office/staff/${userId}/${verb}`, {})).then((ok) => ok && staff.reload());
   };
 
+  const cancelInvitation = (id: string) => () => {
+    void action.run(() => api.post(`/api/office/invitations/${id}/cancel`, {})).then((ok) => ok && staff.reload());
+  };
+
+  const open = outstandingInvitations(staff.data?.invitations ?? [], new Date());
+
   return (
     <section className="card card--pad stack" aria-label={t("office.settings.staff")}>
       <h2 className="subtitle">{t("office.settings.staff")}</h2>
@@ -132,7 +140,17 @@ function StaffSection() {
       <ul className="list">
         {(staff.data?.members ?? []).map((member) => (
           <li key={member.userId} className="list__item">
-            <span className="grow">{member.displayName}</span>
+            <span className="grow stack stack--tight">
+              <span>{member.displayName}</span>
+              {member.officeStatus === "Pending" ? (
+                <span className="muted">
+                  {member.redeemedAt === null ? t("office.settings.staffUseTimeUnknown") : t("office.settings.staffUsedInvitation", { when: formatDateTime(member.redeemedAt) })}
+                </span>
+              ) : null}
+              {member.officeStatus === "Active" && member.approvedAt !== null ? (
+                <span className="muted">{t("office.settings.staffActiveSince", { when: formatDateTime(member.approvedAt) })}</span>
+              ) : null}
+            </span>
             <span className="muted">{member.officeRole === null ? "" : t(`role.${member.officeRole}`)}</span>
             {member.officeStatus === "Pending" ? (
               <>
@@ -152,6 +170,22 @@ function StaffSection() {
           </li>
         ))}
       </ul>
+      {open.length === 0 ? null : (
+        <>
+          <h3 className="heading">{t("office.settings.outstandingInvitations")}</h3>
+          <ul className="list">
+            {open.map((invitation) => (
+              <li key={invitation.id} className="list__item">
+                <span className="grow muted">{t("office.settings.invitationExpires", { when: formatDateTime(invitation.expiresAt) })}</span>
+                <span className="muted">{invitation.officeRole === null ? "" : t(`role.${invitation.officeRole}`)}</span>
+                <button type="button" className="button button--danger" disabled={action.busy} onClick={cancelInvitation(invitation.id)}>
+                  {t("office.settings.cancelInvitation")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <div className="grid2">
         <SelectField label={t("office.settings.staffRole")} value={staffRole} options={[{ value: "Staff", label: t("role.Staff") }, { value: "Owner", label: t("role.Owner") }]} onChange={setStaffRole} />
       </div>
