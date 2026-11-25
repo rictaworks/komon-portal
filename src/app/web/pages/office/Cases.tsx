@@ -11,7 +11,7 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
-import { caseSteps, freshestCase, parseArrivalNumbers } from "./case-progress";
+import { caseSteps, freshestCase, parseArrivalNumbers, stepNoteKey } from "./case-progress";
 import { useSettings } from "./useMasterData";
 
 const CASE_KINDS = ["Procedure", "Payroll", "Other"] as const;
@@ -66,16 +66,23 @@ function Steps({ record }: { record: CaseView }) {
     return null;
   }
   const steps = caseSteps(record.caseType.kind, record.state, record.submittedOn);
+  // A closed or cancelled case is on no step, so its steps get no state note.
+  const terminal = TERMINAL_STATES.includes(record.state);
   return (
     <ol className="steps" aria-label={t("office.cases.steps")}>
-      {steps.map((step, index) => (
-        <li key={step.state} className={`step${step.status === "pending" ? "" : ` step--${step.status}`}`} aria-current={step.status === "current" ? "step" : undefined}>
-          <span className="step__number">{index + 1}</span>
-          <span>{t(`caseState.${step.state}`)}</span>
-          {step.state === "Submitted" && record.submittedOn !== null ? <span className="step__note">{formatDay(record.submittedOn)}</span> : null}
-          {step.status === "unconfirmed" ? <span className="step__note">{t(step.state === "Submitted" ? "office.cases.notSubmitted" : "office.cases.stepNotRecorded")}</span> : null}
-        </li>
-      ))}
+      {steps.map((step, index) => {
+        const dated = step.state === "Submitted" && record.submittedOn !== null;
+        const noteKey = terminal ? null : stepNoteKey(step);
+        return (
+          <li key={step.state} className={`step${step.status === "pending" ? "" : ` step--${step.status}`}`} aria-current={step.status === "current" ? "step" : undefined}>
+            <span className="step__number">{index + 1}</span>
+            <span>{t(`caseState.${step.state}`)}</span>
+            {dated ? <span className="step__note">{formatDay(record.submittedOn)}</span> : null}
+            {step.status === "unconfirmed" ? <span className="step__note">{t(step.state === "Submitted" ? "office.cases.notSubmitted" : "office.cases.stepNotRecorded")}</span> : null}
+            {noteKey !== null && !dated ? <span className="step__note">{t(noteKey)}</span> : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }

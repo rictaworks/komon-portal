@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CaseView } from "../../src/app/web/api/office-types";
-import { caseSteps, freshestCase, parseArrivalNumbers } from "../../src/app/web/pages/office/case-progress";
+import { caseSteps, freshestCase, parseArrivalNumbers, stepNoteKey, type CaseStep } from "../../src/app/web/pages/office/case-progress";
 
 function statuses(kind: "Procedure" | "Payroll" | "Other", state: string, submittedOn: string | null): string[] {
   return caseSteps(kind, state, submittedOn).map((step) => `${step.state}:${step.status}`);
@@ -45,6 +45,34 @@ describe("caseSteps", () => {
 
   it("puts a closed or cancelled case on no step", () => {
     expect(statuses("Other", "Closed", null)).toEqual(["Open:pending", "DocumentReceived:pending", "Delivered:pending", "Confirmed:pending"]);
+  });
+});
+
+describe("stepNoteKey", () => {
+  const step = (state: string, status: CaseStep["status"]): CaseStep => ({ state, status });
+
+  it("gives a current step its note, one per state", () => {
+    expect(stepNoteKey(step("Open", "current"))).toBe("caseStepNote.Open");
+    expect(stepNoteKey(step("Submitted", "current"))).toBe("caseStepNote.Submitted");
+    expect(stepNoteKey(step("MaterialsReceived", "current"))).toBe("caseStepNote.MaterialsReceived");
+    expect(stepNoteKey(step("DocumentReceived", "current"))).toBe("caseStepNote.DocumentReceived");
+    expect(stepNoteKey(step("Delivered", "current"))).toBe("caseStepNote.Delivered");
+    expect(stepNoteKey(step("Confirmed", "current"))).toBe("caseStepNote.Confirmed");
+  });
+
+  it("gives a pending step its note, one per state", () => {
+    expect(stepNoteKey(step("Submitted", "pending"))).toBe("caseStepNote.Submitted");
+    expect(stepNoteKey(step("MaterialsReceived", "pending"))).toBe("caseStepNote.MaterialsReceived");
+    expect(stepNoteKey(step("DocumentReceived", "pending"))).toBe("caseStepNote.DocumentReceived");
+    expect(stepNoteKey(step("Delivered", "pending"))).toBe("caseStepNote.Delivered");
+    expect(stepNoteKey(step("Confirmed", "pending"))).toBe("caseStepNote.Confirmed");
+  });
+
+  it("gives no state note to a done step or to an unconfirmed step, which carry their own notes", () => {
+    expect(stepNoteKey(step("Open", "done"))).toBeNull();
+    expect(stepNoteKey(step("Submitted", "done"))).toBeNull();
+    expect(stepNoteKey(step("Submitted", "unconfirmed"))).toBeNull();
+    expect(stepNoteKey(step("MaterialsReceived", "unconfirmed"))).toBeNull();
   });
 });
 
