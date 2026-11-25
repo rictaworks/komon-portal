@@ -13,6 +13,7 @@ import { fileView, Lookups, pageOf } from "./views";
 const MAX_PUBLISH_ITEMS = 200;
 /** Multipart overhead allowed on top of the largest file. */
 const UPLOAD_OVERHEAD_BYTES = 1024 * 1024;
+const TARGET_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function queryEnum<T extends string>(c: AppContext, key: string, allowed: readonly T[]): T | undefined {
   const value = c.req.query(key);
@@ -48,7 +49,12 @@ function fileFilter(c: AppContext): FileFilter {
   assign("clientId", c.req.query("clientId"));
   assign("caseId", c.req.query("caseId"));
   assign("docTypeId", c.req.query("docTypeId"));
-  assign("targetMonth", c.req.query("targetMonth"));
+  const targetMonth = c.req.query("targetMonth");
+  // A month written another way matches nothing; it is refused so it cannot pass for an empty shelf.
+  if (targetMonth !== undefined && targetMonth !== "" && !TARGET_MONTH.test(targetMonth)) {
+    throw invalidInput("targetMonth");
+  }
+  assign("targetMonth", targetMonth);
   return filter;
 }
 

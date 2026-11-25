@@ -41,6 +41,8 @@ export interface FileView {
   publishedAt: string | null;
   acknowledgedAt: string | null;
   trashedAt: string | null;
+  /** The state the file had when it went to the trash. */
+  trashedFrom: string | null;
   readers: Reader[];
   version: number;
 }

@@ -54,12 +54,21 @@ export function shelfListPath(query: ShelfQuery): string {
 }
 
 /**
+ * A submission the client took back before the office opened it. The office can only trash a
+ * submission it has opened, so a trashed submission that was still "Submitted" was cancelled by the client.
+ */
+export function cancelledByClient(file: Pick<FileView, "direction" | "state" | "trashedFrom">): boolean {
+  return file.direction === "Inbound" && file.state === "Trashed" && file.trashedFrom === "Submitted";
+}
+
+/**
  * Actions offered on a row, in display order. Linking to a case exists for submissions only: the
  * server refuses it on anything the office sent. A submission can be trashed once the office has opened it.
+ * A submission the client cancelled is not offered for restoring: that would undo the client's decision.
  */
-export function shelfActions(file: Pick<FileView, "direction" | "state">): ShelfAction[] {
+export function shelfActions(file: Pick<FileView, "direction" | "state" | "trashedFrom">): ShelfAction[] {
   if (file.state === "Trashed") {
-    return ["restore"];
+    return cancelledByClient(file) ? [] : ["restore"];
   }
   if (file.direction === "Inbound") {
     return file.state === "Acknowledged" ? ["linkCase", "trash"] : ["linkCase"];
@@ -68,6 +77,53 @@ export function shelfActions(file: Pick<FileView, "direction" | "state">): Shelf
     return ["withdraw"];
   }
   return file.state === "Withdrawn" ? ["trash"] : [];
+}
+
+/**
+ * The row the Link case panel works on, read from the list as it is now: after a reload the panel
+ * carries the current version, and it is gone when the row left the list or can no longer be linked.
+ */
+export function linkTarget(items: readonly FileView[], fileId: string | null): FileView | null {
+  const file = fileId === null ? undefined : items.find((item) => item.id === fileId);
+  return file !== undefined && shelfActions(file).includes("linkCase") ? file : null;
+}
+
+export interface ShelfList {
+  items: FileView[];
+  total: number;
+}
+
+/**
+ * The list to show: only the answer to the question on screen, and nothing after a failed load.
+ * Rows of the previous direction, view or filter are never shown under the new one.
+ */
+export function shownList(loaded: { path: string; list: ShelfList } | null, path: string, error: unknown): ShelfList | null {
+  return loaded !== null && loaded.path === path && error === null ? loaded.list : null;
+}
+
+const MONTH_TEXT = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * The month filter as typed. Browsers without a month picker show a text box, so the text is
+ * checked here: only a complete YYYY-MM narrows the list, anything else is reported and not sent.
+ */
+export function monthFilter(text: string): { valid: boolean; value: string } {
+  if (text === "") {
+    return { valid: true, value: "" };
+  }
+  return MONTH_TEXT.test(text) ? { valid: true, value: text } : { valid: false, value: "" };
+}
+
+/** Reads a paged list to its end, so a long list is never cut off at the page size. */
+export async function loadAllPages<T>(loadPage: (offset: number) => Promise<T[]>, pageSize: number): Promise<T[]> {
+  const all: T[] = [];
+  for (;;) {
+    const page = await loadPage(all.length);
+    all.push(...page);
+    if (page.length < pageSize) {
+      return all;
+    }
+  }
 }
 
 /** Readers ordered by the time of their first view, earliest first. */

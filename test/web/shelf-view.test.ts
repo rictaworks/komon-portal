@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CaseView, DocTypeRecord, FileView } from "../../src/app/web/api/office-types";
 import {
-  caseLabel, docTypesFor, firstView, SHELF_VIEWS, shelfActions, shelfListPath, sortedReaders,
+  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_VIEWS, shelfActions, shelfListPath, shownList,
+  sortedReaders,
 } from "../../src/app/web/pages/office/shelf-view";
 
 function file(overrides: Partial<FileView>): FileView {
@@ -9,7 +10,7 @@ function file(overrides: Partial<FileView>): FileView {
     id: "f1", direction: "Outbound", displayName: "C0031_SHAHO_20261117_03", format: "pdf", sizeBytes: 10, state: "Published",
     client: null, caseId: null, docType: null, targetMonth: null, resolutionMethod: null, reviewReason: null, evidence: [],
     unmatchedArrivalNumber: null, typeSource: null, jev: null, withdrawReason: null, incident: false,
-    receivedAt: "2026-11-17T00:00:00.000Z", publishedAt: "2026-11-17T01:00:00.000Z", acknowledgedAt: null, trashedAt: null, readers: [], version: 1,
+    receivedAt: "2026-11-17T00:00:00.000Z", publishedAt: "2026-11-17T01:00:00.000Z", acknowledgedAt: null, trashedAt: null, trashedFrom: null, readers: [], version: 1,
     ...overrides,
   };
 }
@@ -57,7 +58,86 @@ describe("shelfActions", () => {
   it("offers link case on a submission, and the trash only once the office has opened it", () => {
     expect(shelfActions(file({ direction: "Inbound", state: "Submitted" }))).toEqual(["linkCase"]);
     expect(shelfActions(file({ direction: "Inbound", state: "Acknowledged" }))).toEqual(["linkCase", "trash"]);
-    expect(shelfActions(file({ direction: "Inbound", state: "Trashed" }))).toEqual(["restore"]);
+    expect(shelfActions(file({ direction: "Inbound", state: "Trashed", trashedFrom: "Acknowledged" }))).toEqual(["restore"]);
+  });
+
+  it("does not offer to restore a submission the client cancelled", () => {
+    const cancelled = file({ direction: "Inbound", state: "Trashed", trashedFrom: "Submitted" });
+    expect(cancelledByClient(cancelled)).toBe(true);
+    expect(shelfActions(cancelled)).toEqual([]);
+    expect(cancelledByClient(file({ direction: "Inbound", state: "Trashed", trashedFrom: "Acknowledged" }))).toBe(false);
+    expect(cancelledByClient(file({ direction: "Outbound", state: "Trashed", trashedFrom: "Withdrawn" }))).toBe(false);
+    expect(cancelledByClient(file({ direction: "Inbound", state: "Submitted" }))).toBe(false);
+  });
+});
+
+describe("linkTarget", () => {
+  it("follows the listed row, so a retry after a conflict sends the current version", () => {
+    const before = [file({ id: "s1", direction: "Inbound", state: "Submitted", version: 1 })];
+    const after = [file({ id: "s1", direction: "Inbound", state: "Acknowledged", version: 2 })];
+    expect(linkTarget(before, "s1")?.version).toBe(1);
+    expect(linkTarget(after, "s1")?.version).toBe(2);
+  });
+
+  it("is gone when the row is no longer listed or can no longer be linked", () => {
+    expect(linkTarget([], "s1")).toBeNull();
+    expect(linkTarget([file({ id: "s1", direction: "Inbound", state: "Trashed", trashedFrom: "Acknowledged" })], "s1")).toBeNull();
+    expect(linkTarget([file({ id: "s1", direction: "Inbound", state: "Submitted" })], null)).toBeNull();
+  });
+});
+
+describe("shownList", () => {
+  const list = { items: [file({})], total: 1 };
+
+  it("shows the list only when it answers the question on screen", () => {
+    expect(shownList({ path: "/a", list }, "/a", null)).toBe(list);
+    expect(shownList({ path: "/a", list }, "/b", null)).toBeNull();
+    expect(shownList(null, "/a", null)).toBeNull();
+  });
+
+  it("shows nothing after a failed load instead of the rows of the previous view", () => {
+    expect(shownList({ path: "/a", list }, "/b", new Error("offline"))).toBeNull();
+    expect(shownList({ path: "/a", list }, "/a", new Error("offline"))).toBeNull();
+  });
+});
+
+describe("monthFilter", () => {
+  it("accepts an empty text as no filter and a complete month as the filter", () => {
+    expect(monthFilter("")).toEqual({ valid: true, value: "" });
+    expect(monthFilter("2026-11")).toEqual({ valid: true, value: "2026-11" });
+  });
+
+  it("refuses partial or differently written months, and never sends them", () => {
+    for (const text of ["2", "2026-1", "11/2026", "2026/11", "2026-13", "2026-00", " 2026-11", "2026-11-01"]) {
+      expect([text, monthFilter(text)]).toEqual([text, { valid: false, value: "" }]);
+    }
+  });
+});
+
+describe("loadAllPages", () => {
+  it("reads page after page until one is not full, so nothing is cut off", async () => {
+    const all = Array.from({ length: 5 }, (_, index) => index);
+    const offsets: number[] = [];
+    const loaded = await loadAllPages(async (offset) => {
+      offsets.push(offset);
+      return all.slice(offset, offset + 2);
+    }, 2);
+    expect(loaded).toEqual(all);
+    expect(offsets).toEqual([0, 2, 4]);
+  });
+
+  it("asks once more when the last page is exactly full", async () => {
+    const offsets: number[] = [];
+    const loaded = await loadAllPages(async (offset) => {
+      offsets.push(offset);
+      return offset === 0 ? ["a", "b"] : [];
+    }, 2);
+    expect(loaded).toEqual(["a", "b"]);
+    expect(offsets).toEqual([0, 2]);
+  });
+
+  it("passes a failure on instead of returning a part of the list", async () => {
+    await expect(loadAllPages(async (offset) => (offset === 0 ? [1, 2] : Promise.reject(new Error("offline"))), 2)).rejects.toThrow("offline");
   });
 });
 

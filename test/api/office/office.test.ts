@@ -178,9 +178,9 @@ describe("office API", () => {
     const noReason = await staff.call("POST", `/api/office/files/${ids.f1}/withdraw`, { body: { next: "NeedsReview", version: 2 } });
     expect(noReason.status).toBe(400);
     const withdrawn = await json(await staff.call("POST", `/api/office/files/${ids.f1}/withdraw`, { body: { reason: "Superseded", next: "Trashed", version: 2 } }));
-    expect(withdrawn).toMatchObject({ state: "Trashed", withdrawReason: "Superseded", incident: false });
+    expect(withdrawn).toMatchObject({ state: "Trashed", trashedFrom: "Withdrawn", withdrawReason: "Superseded", incident: false });
     const restored = await json(await staff.call("POST", `/api/office/files/${ids.f1}/restore`, { body: { version: Number(withdrawn.version) } }));
-    expect(restored).toMatchObject({ state: "NeedsReview", reviewReason: "Restored" });
+    expect(restored).toMatchObject({ state: "NeedsReview", trashedFrom: null, reviewReason: "Restored" });
     expect((await json(await owner.call("GET", "/api/office/incidents"))).items).toEqual([]);
   });
 
@@ -230,6 +230,15 @@ describe("office API", () => {
     expect(await json(await owner.call("PATCH", `/api/office/clients/${ids.c2}`, { body: { ...base, status: "Closed", version: 2 } }))).toMatchObject({ status: "Closed" });
     const skipped = await staff.call("POST", "/api/office/publish", { body: { items: [{ fileId: ids.f2, version: 2 }] } });
     expect((await json(skipped)).results).toEqual([{ fileId: ids.f2, outcome: "skipped", reason: "client_not_active" }]);
+  });
+
+  it("refuses a target month filter that is not a month instead of answering with an empty list", async () => {
+    for (const month of ["11/2026", "2026/11", "2026-1", "2026-13"]) {
+      const response = await staff.call("GET", `/api/office/files?targetMonth=${encodeURIComponent(month)}`);
+      expect([month, response.status]).toEqual([month, 400]);
+      expect(await json(response)).toEqual({ error: "invalid_input", detail: "targetMonth" });
+    }
+    expect((await staff.call("GET", "/api/office/files?targetMonth=2026-11")).status).toBe(200);
   });
 
   it("refuses malformed or out-of-range paging instead of replacing it with defaults", async () => {

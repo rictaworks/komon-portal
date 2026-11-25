@@ -13,8 +13,9 @@ import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import {
-  caseLabel, docTypesFor, firstView, SHELF_DIRECTIONS, SHELF_VIEWS, shelfActions, shelfListPath, sortedReaders,
-  type ShelfDirection, type ShelfView,
+  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_DIRECTIONS, SHELF_VIEWS, shelfActions,
+  shelfListPath, shownList, sortedReaders,
+  type ShelfDirection, type ShelfList, type ShelfView,
 } from "./shelf-view";
 import { useSettings } from "./useMasterData";
 
@@ -22,7 +23,8 @@ const WITHDRAW_REASONS = ["WrongClient", "WrongFile", "Superseded", "Other"] as 
 const WITHDRAW_NEXT = ["NeedsReview", "Trashed"] as const;
 /** Cases that can no longer receive documents. */
 const TERMINAL_STATES: readonly string[] = ["Closed", "Cancelled"];
-const CLIENT_LIMIT = 200;
+/** Clients are read page by page to the end; this is the largest page the server gives. */
+const CLIENT_PAGE = 200;
 const CASE_LIMIT = 200;
 /** Opening a submission acknowledges it on the server; the list is read again after this delay to show it. */
 const ACKNOWLEDGE_RELOAD_MS = 1500;
@@ -31,10 +33,14 @@ const ACKNOWLEDGE_RELOAD_MS = 1500;
 export function ShelfChooser() {
   const t = useT();
   const { api } = useSession();
-  const list = useLoad<{ items: ClientRecord[] }>(() => api.get<{ items: ClientRecord[] }>(`/api/office/clients?limit=${CLIENT_LIMIT}`), []);
+  // Every client is loaded, so the search below never misses one that sits beyond the first page.
+  const list = useLoad<ClientRecord[]>(
+    () => loadAllPages(async (offset) => (await api.get<{ items: ClientRecord[] }>(`/api/office/clients?limit=${CLIENT_PAGE}&offset=${offset}`)).items, CLIENT_PAGE),
+    [],
+  );
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
-  const visible = (list.data?.items ?? []).filter((client) => needle === "" || `${client.code} ${client.corporateName}`.toLowerCase().includes(needle));
+  const visible = (list.data ?? []).filter((client) => needle === "" || `${client.code} ${client.corporateName}`.toLowerCase().includes(needle));
 
   return (
     <div className="page">
@@ -88,13 +94,14 @@ export function Shelf() {
   const [direction, setDirection] = useState<ShelfDirection>("Outbound");
   const [view, setView] = useState<ShelfView>(SHELF_VIEWS.Outbound[0] ?? "Published");
   const [docTypeId, setDocTypeId] = useState("");
-  const [targetMonth, setTargetMonth] = useState("");
+  const [monthText, setMonthText] = useState("");
   const [filterCaseId, setFilterCaseId] = useState("");
   const client = useLoad<ClientRecord>(() => api.get<ClientRecord>(`/api/office/clients/${clientId}`), [clientId]);
-  const files = useLoad<{ items: FileView[]; total: number }>(
-    () => api.get<{ items: FileView[]; total: number }>(shelfListPath({ clientId, direction, view, docTypeId, targetMonth, caseId: filterCaseId })),
-    [clientId, direction, view, docTypeId, targetMonth, filterCaseId],
-  );
+  // Only a complete month is sent; a text that is not a month is reported on the field instead.
+  const month = monthFilter(monthText);
+  const listPath = shelfListPath({ clientId, direction, view, docTypeId, targetMonth: month.value, caseId: filterCaseId });
+  // The answer is kept with its question, so rows are never shown under another direction, view or filter.
+  const files = useLoad<{ path: string; list: ShelfList }>(async () => ({ path: listPath, list: await api.get<ShelfList>(listPath) }), [listPath]);
   const cases = useLoad<{ items: CaseView[] }>(
     () => api.get<{ items: CaseView[] }>(`/api/office/cases?clientId=${encodeURIComponent(clientId)}&limit=${CASE_LIMIT}`),
     [clientId],
@@ -104,7 +111,7 @@ export function Shelf() {
   const [withdrawing, setWithdrawing] = useState<FileView | null>(null);
   const [reason, setReason] = useState<string>(WITHDRAW_REASONS[0]);
   const [next, setNext] = useState<string>(WITHDRAW_NEXT[0]);
-  const [linking, setLinking] = useState<FileView | null>(null);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
   const [caseId, setCaseId] = useState("");
 
   // The list reloads after every attempt, so a version conflict is followed by the current version.
@@ -119,7 +126,12 @@ export function Shelf() {
     setView(first);
     // Document types differ by direction, so the type filter starts again.
     setDocTypeId("");
-    setLinking(null);
+    setLinkingId(null);
+  };
+
+  const chooseView = (value: ShelfView) => {
+    setView(value);
+    setLinkingId(null);
   };
 
   const withdraw = () => {
@@ -140,22 +152,20 @@ export function Shelf() {
 
   const startLinking = (file: FileView) => () => {
     setCaseId(file.caseId ?? "");
-    setLinking(file);
+    setLinkingId(file.id);
   };
 
-  const link = () => {
-    const target = linking;
-    if (target !== null) {
-      void action
-        .run(() => api.post(`/api/office/files/${target.id}/link-case`, { caseId: caseId === "" ? null : caseId, version: target.version }))
-        .then((ok) => {
-          if (ok) {
-            setLinking(null);
-            setCaseId("");
-          }
-          files.reload();
-        });
-    }
+  // After a refused attempt the panel stays open and the reloaded list gives it the current version.
+  const link = (target: FileView) => () => {
+    void action
+      .run(() => api.post(`/api/office/files/${target.id}/link-case`, { caseId: caseId === "" ? null : caseId, version: target.version }))
+      .then((ok) => {
+        if (ok) {
+          setLinkingId(null);
+          setCaseId("");
+        }
+        files.reload();
+      });
   };
 
   // The first open of a submission changes its state and version on the server.
@@ -177,7 +187,10 @@ export function Shelf() {
     }
     return caseNames.get(file.caseId) ?? t("office.shelf.caseNotListed");
   };
-  const items = files.data?.items ?? [];
+  const shown = shownList(files.data, listPath, files.error);
+  const items = shown?.items ?? [];
+  // Read from the list as it is now: the panel closes when its row is no longer shown.
+  const linking = linkTarget(items, linkingId);
   const withdrawFirstView = withdrawing === null ? null : firstView(withdrawing.readers);
 
   return (
@@ -203,7 +216,14 @@ export function Shelf() {
             ]}
             onChange={setDocTypeId}
           />
-          <TextField label={t("office.shelf.filterMonth")} type="month" value={targetMonth} onChange={setTargetMonth} />
+          <TextField
+            label={t("office.shelf.filterMonth")}
+            type="month"
+            value={monthText}
+            placeholder={t("office.shelf.filterMonthFormat")}
+            error={month.valid ? null : t("office.shelf.filterMonthInvalid")}
+            onChange={setMonthText}
+          />
           <SelectField
             label={t("office.shelf.filterCase")}
             value={filterCaseId}
@@ -221,14 +241,14 @@ export function Shelf() {
         </nav>
         <nav className="row" aria-label={t("office.shelf.tabs")}>
           {SHELF_VIEWS[direction].map((value) => (
-            <button key={value} type="button" className={`chip${view === value ? " chip--active" : ""}`} aria-pressed={view === value} onClick={() => setView(value)}>
+            <button key={value} type="button" className={`chip${view === value ? " chip--active" : ""}`} aria-pressed={view === value} onClick={() => chooseView(value)}>
               {t(`office.shelf.tab.${value}`)}
             </button>
           ))}
-          {files.data === null ? null : <span className="muted">{t("office.shelf.count", { count: files.data.total })}</span>}
+          {shown === null ? null : <span className="muted">{t("office.shelf.count", { count: shown.total })}</span>}
         </nav>
-        {files.data === null && files.error === null ? <Loading /> : null}
-        {files.data !== null && items.length === 0 ? <p className="card empty">{t("office.shelf.empty")}</p> : null}
+        {shown === null && files.error === null ? <Loading /> : null}
+        {shown !== null && items.length === 0 ? <p className="card empty">{t("office.shelf.empty")}</p> : null}
         {items.length === 0 ? null : (
           <section className="card" aria-label={t(`office.shelf.direction.${direction}`)}>
             <div className="table-wrap">
@@ -261,6 +281,7 @@ export function Shelf() {
                           <div className="stack stack--tight">
                             <FileStateBadge state={file.state} />
                             {file.withdrawReason === null ? null : <span className="muted">{t(`withdrawReason.${file.withdrawReason}`)}</span>}
+                            {cancelledByClient(file) ? <span className="muted">{t("office.shelf.cancelledByClient")}</span> : null}
                           </div>
                         </td>
                         <td className="muted">
@@ -329,10 +350,10 @@ export function Shelf() {
               onChange={setCaseId}
             />
             <div className="row">
-              <button type="button" className="button button--primary" disabled={action.busy} onClick={link}>
+              <button type="button" className="button button--primary" disabled={action.busy} onClick={link(linking)}>
                 {t("office.shelf.linkAction")}
               </button>
-              <button type="button" className="button" onClick={() => setLinking(null)}>
+              <button type="button" className="button" onClick={() => setLinkingId(null)}>
                 {t("common.cancel")}
               </button>
             </div>
