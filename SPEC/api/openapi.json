@@ -413,7 +413,7 @@
     },
     "/api/office/cases": {
       "get": {
-        "summary": "Cases, optionally for one client.",
+        "summary": "Cases, optionally for one client; `truncated` tells whether more match than the page holds.",
         "tags": [
           "office"
         ],
