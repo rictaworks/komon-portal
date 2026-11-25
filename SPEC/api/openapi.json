@@ -281,7 +281,7 @@
         ]
       },
       "post": {
-        "summary": "Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome.",
+        "summary": "Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome. The file is linked to a case only when its document type has a (Payroll) case type and the client has exactly one open case of that case type and month.",
         "tags": [
           "client"
         ],
@@ -1189,7 +1189,7 @@
     },
     "/api/office/doc-types": {
       "post": {
-        "summary": "Adds a document type.",
+        "summary": "Adds a document type (label, shortCode, direction, optional caseTypeId of an existing Payroll case type).",
         "tags": [
           "office"
         ],
@@ -1757,7 +1757,7 @@
     },
     "/api/office/doc-types/{id}": {
       "put": {
-        "summary": "Updates a document type.",
+        "summary": "Updates a document type (label, shortCode, direction, optional caseTypeId of an existing Payroll case type; omitted or null removes the case type).",
         "tags": [
           "office"
         ],

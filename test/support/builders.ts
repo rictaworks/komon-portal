@@ -60,7 +60,7 @@ export function caseRecord(overrides: Partial<CaseRecord> = {}): CaseRecord {
 }
 
 export function docType(overrides: Partial<DocType> = {}): DocType {
-  return { id: "d1", label: "Social insurance notice", shortCode: "SHAHO", direction: "Outbound", ...overrides };
+  return { id: "d1", label: "Social insurance notice", shortCode: "SHAHO", direction: "Outbound", caseTypeId: null, ...overrides };
 }
 
 export function docRule(overrides: Partial<DocRule> = {}): DocRule {

@@ -102,7 +102,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | DELETE | `/api/client/{clientId}/notifications/subscriptions` | Removes this browser's push subscription by endpoint. | member |
 | POST | `/api/client/{clientId}/notifications/subscriptions` | Stores this browser's push subscription for the member. | member |
 | GET | `/api/client/{clientId}/submissions` | Files the company has sent, with their confirmation state. | member |
-| POST | `/api/client/{clientId}/submissions` | Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome. | member |
+| POST | `/api/client/{clientId}/submissions` | Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome. The file is linked to a case only when its document type has a (Payroll) case type and the client has exactly one open case of that case type and month. | member |
 | POST | `/api/client/{clientId}/submissions/{id}/cancel` | Cancels a submission the office has not confirmed (version required). | member |
 | GET | `/api/config` | Public configuration: environment, Turnstile key, sign-in availability, setup state. | none |
 | POST | `/api/dev/login` | Development only: signs in as a test user (owner, staff or member). | development |
@@ -132,8 +132,8 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | GET | `/api/office/dashboard` | Office dashboard counts and the lists of unread, retrieval and due items. | staff |
 | POST | `/api/office/doc-rules` | Adds a keyword rule for a document type. | staff |
 | DELETE | `/api/office/doc-rules/{id}` | Removes a keyword rule. 404 when the rule does not exist. | staff |
-| POST | `/api/office/doc-types` | Adds a document type. | staff |
-| PUT | `/api/office/doc-types/{id}` | Updates a document type. | staff |
+| POST | `/api/office/doc-types` | Adds a document type (label, shortCode, direction, optional caseTypeId of an existing Payroll case type). | staff |
+| PUT | `/api/office/doc-types/{id}` | Updates a document type (label, shortCode, direction, optional caseTypeId of an existing Payroll case type; omitted or null removes the case type). | staff |
 | GET | `/api/office/files` | Lists files with filters (direction, states, client, case, document type or none, month, review reason) and paging. | staff |
 | GET | `/api/office/files/{id}` | One file with its readers. | staff |
 | POST | `/api/office/files/{id}/assign` | Assigns a file to a client (and optionally a case and document type) during review. | staff |

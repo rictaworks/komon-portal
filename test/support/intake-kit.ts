@@ -61,7 +61,7 @@ export function intakeKit(): IntakeKit {
   repo.docTypeRows.push(
     docType({ id: "d1", shortCode: "SHAHO" }),
     docType({ id: "d2", shortCode: "KOYOU", label: "Employment insurance notice" }),
-    docType({ id: "d3", shortCode: "KYUYO", label: "Payroll material", direction: "Inbound" }),
+    docType({ id: "d3", shortCode: "KYUYO", label: "Payroll material", direction: "Inbound", caseTypeId: "t2" }),
   );
   repo.ruleRows.push(docRule({ id: "r1", docTypeId: "d1", keyword: "shaho" }), docRule({ id: "r2", docTypeId: "d2", keyword: "koyou" }));
   const kit = coreKit(repo);

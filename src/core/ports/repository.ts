@@ -127,6 +127,7 @@ export interface CaseTypeRepository {
 
 export interface CaseFilter {
   clientId?: Id;
+  caseTypeId?: Id;
   kind?: CaseKind;
   states?: readonly CaseState[];
   targetMonth?: YearMonth;

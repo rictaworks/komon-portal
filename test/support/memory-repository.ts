@@ -260,6 +260,7 @@ export class MemoryRepository implements Repository {
         this.caseRows.filter(
           (row) =>
             (filter.clientId === undefined || row.clientId === filter.clientId) &&
+            (filter.caseTypeId === undefined || row.caseTypeId === filter.caseTypeId) &&
             (filter.kind === undefined || this.kindOf(row.caseTypeId) === filter.kind) &&
             (filter.states === undefined || filter.states.includes(row.state)) &&
             (filter.targetMonth === undefined || row.targetMonth === filter.targetMonth),
@@ -316,6 +317,13 @@ export class MemoryRepository implements Repository {
     },
   };
 
+  /** Mirrors `doc_types.case_type_id REFERENCES case_types (id)`. */
+  private requireCaseTypeOf(docType: DocType): void {
+    if (docType.caseTypeId !== null && !this.caseTypeRows.some((row) => row.id === docType.caseTypeId)) {
+      throw new Error("FOREIGN KEY constraint failed");
+    }
+  }
+
   docTypes = {
     findById: async (id: Id): Promise<DocType | null> => copy(this.docTypeRows.find((row) => row.id === id) ?? null),
     list: async (): Promise<DocType[]> => this.docTypeRows.map(copy),
@@ -323,6 +331,7 @@ export class MemoryRepository implements Repository {
       if (this.docTypeRows.some((row) => row.shortCode === docType.shortCode)) {
         return false;
       }
+      this.requireCaseTypeOf(docType);
       this.docTypeRows.push(copy(docType));
       return true;
     },
@@ -331,6 +340,7 @@ export class MemoryRepository implements Repository {
       if (index < 0 || this.docTypeRows.some((row) => row.id !== docType.id && row.shortCode === docType.shortCode)) {
         return false;
       }
+      this.requireCaseTypeOf(docType);
       this.docTypeRows[index] = copy(docType);
       return true;
     },

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { CASE_KINDS, DOC_TYPE_DIRECTIONS } from "../../../core/model/types";
 import { requireAuth, type AppBindings } from "../context";
-import { readJson, requireBoolean, requireEnum, requireInteger, requireNumber, requireString } from "../input";
+import { optionalString, readJson, requireBoolean, requireEnum, requireInteger, requireNumber, requireString } from "../input";
 import { Lookups, pageOf } from "./views";
 
 export function settingsRoutes(): Hono<AppBindings> {
@@ -46,6 +46,7 @@ export function settingsRoutes(): Hono<AppBindings> {
       label: requireString(body, "label"),
       shortCode: requireString(body, "shortCode", 16),
       direction: requireEnum(body, "direction", DOC_TYPE_DIRECTIONS),
+      caseTypeId: optionalString(body, "caseTypeId"),
     });
     return c.json(created, 201);
   });
@@ -57,6 +58,7 @@ export function settingsRoutes(): Hono<AppBindings> {
       label: requireString(body, "label"),
       shortCode: requireString(body, "shortCode", 16),
       direction: requireEnum(body, "direction", DOC_TYPE_DIRECTIONS),
+      caseTypeId: optionalString(body, "caseTypeId"),
     });
     return c.json(updated);
   });
