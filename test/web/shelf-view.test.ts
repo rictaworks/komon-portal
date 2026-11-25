@@ -50,7 +50,7 @@ describe("shelfCountPath", () => {
 function file(overrides: Partial<FileView>): FileView {
   return {
     id: "f1", direction: "Outbound", displayName: "C0031_SHAHO_20261117_03", format: "pdf", sizeBytes: 10, state: "Published",
-    client: null, caseId: null, docType: null, targetMonth: null, resolutionMethod: null, reviewReason: null, evidence: [],
+    client: null, caseId: null, caseRef: null, docType: null, targetMonth: null, resolutionMethod: null, reviewReason: null, evidence: [],
     unmatchedArrivalNumber: null, typeSource: null, jev: null, withdrawReason: null, incident: false,
     receivedAt: "2026-11-17T00:00:00.000Z", publishedAt: "2026-11-17T01:00:00.000Z", acknowledgedAt: null, trashedAt: null, trashedFrom: null, readers: [], version: 1,
     ...overrides,

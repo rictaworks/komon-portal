@@ -27,6 +27,8 @@ export interface FileView {
   state: string;
   client: ClientRef | null;
   caseId: string | null;
+  /** The matched case as the case list names it; null when the file has no case or the case is not found. */
+  caseRef: Pick<CaseView, "id" | "caseType" | "targetMonth" | "sequence"> | null;
   docType: DocTypeRef | null;
   targetMonth: string | null;
   resolutionMethod: string | null;
