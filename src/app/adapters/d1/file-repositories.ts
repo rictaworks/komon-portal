@@ -7,7 +7,7 @@ import type {
   AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository,
 } from "../../../core/ports/repository";
 import {
-  changes, chunk, escapeLike, fromIso, fromIsoOrNull, IN_CHUNK, isUniqueViolation, numberOrNull, placeholders, text, textOrNull,
+  changes, chunk, fromIso, fromIsoOrNull, IN_CHUNK, isUniqueViolation, numberOrNull, placeholders, text, textOrNull,
   toIso, toIsoOrNull, whereSql, type Row, type Where,
 } from "./sql";
 
@@ -167,9 +167,15 @@ export class D1FileRepository implements FileRepository {
     if (code === undefined) {
       throw new Error("client of the file does not exist");
     }
-    const pattern = `${escapeLike(code)}\\_%\\_${receivedOn.replaceAll("-", "")}\\_%`;
-    const rows = await this.db.prepare("SELECT display_name FROM file_records WHERE display_name LIKE ? ESCAPE '\\'").bind(pattern).all<{ display_name: string }>();
+    // A range on the unique index: every name of this client starts with "{code}_", and the
+    // backtick is the character right after the underscore.
+    const compact = `_${receivedOn.replaceAll("-", "")}_`;
+    const rows = await this.db
+      .prepare("SELECT display_name FROM file_records WHERE display_name >= ? AND display_name < ?")
+      .bind(`${code}_`, `${code}\``)
+      .all<{ display_name: string }>();
     const used = rows.results
+      .filter((row) => row.display_name.includes(compact))
       .map((row) => Number(row.display_name.slice(row.display_name.lastIndexOf("_") + 1)))
       .filter((value) => Number.isFinite(value));
     return Math.max(0, ...used) + 1;
