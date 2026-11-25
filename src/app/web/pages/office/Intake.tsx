@@ -1,7 +1,7 @@
 import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Link } from "react-router-dom";
-import type { ClassificationResult, ClientRef, FileView, IntakeResult } from "../../api/office-types";
+import type { ClassificationResult, ClientRef, IntakeResult } from "../../api/office-types";
 import { ClientPicker } from "../../components/ClientPicker";
 import { Icon } from "../../components/Icon";
 import { ErrorNotice, IndividualNumberNotice, Notice } from "../../components/Notice";
@@ -10,19 +10,13 @@ import { useAction } from "../../components/useAction";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { loadJevSettings } from "./jev-settings";
+import { canClassify, fileOfResult, hasJevKey, isNotStored, matchReasonKey, type RowResult } from "./intake-view";
 
 interface Row {
   key: string;
   /** Kept in memory for this screen only: needed to ask the classifier, never sent for storage. */
   fileName: string;
-  result: IntakeResult | { outcome: "failed"; error: unknown };
-}
-
-function fileOf(row: Row): FileView | null {
-  if (row.result.outcome === "stored") {
-    return row.result.file;
-  }
-  return row.result.outcome === "duplicate" ? row.result.existing : null;
+  result: RowResult;
 }
 
 export function Intake() {
@@ -76,14 +70,20 @@ export function Intake() {
   };
 
   const unclassified = rows.filter((row) => row.result.outcome === "stored" && row.result.file.docType === null);
+  const jev = loadJevSettings();
+  const jevReady = canClassify({ busy: classify.busy, hasJevKey: hasJevKey(jev), unclassified: unclassified.length, alreadyClassified: classified !== null });
 
   const runClassifier = (): void => {
-    const jev = loadJevSettings();
+    // The button is disabled without a key; an empty credential is never sent.
+    const settings = loadJevSettings();
+    if (!hasJevKey(settings)) {
+      return;
+    }
     void classify.run(async () => {
       const report = await api.post<{ results: ClassificationResult[] }>(
         "/api/office/classify",
-        { model: jev.model, items: unclassified.map((row) => ({ fileId: fileOf(row)?.id ?? "", fileName: row.fileName })) },
-        { "X-Jev-Key": jev.key },
+        { model: settings.model, items: unclassified.map((row) => ({ fileId: fileOfResult(row.result)?.id ?? "", fileName: row.fileName })) },
+        { "X-Jev-Key": settings.key },
       );
       setClassified(report.results);
     });
@@ -159,8 +159,24 @@ export function Intake() {
               </thead>
               <tbody>
                 {rows.map((row, index) => {
-                  const file = fileOf(row);
-                  const jev = classified?.find((entry) => entry.fileId === file?.id);
+                  const file = fileOfResult(row.result);
+                  const notStored = isNotStored(row.result);
+                  const matchKey = file === null ? null : matchReasonKey(file);
+                  const classification = classified?.find((entry) => entry.fileId === file?.id);
+                  let clientCell = t("office.intake.notDecided");
+                  if (notStored) {
+                    clientCell = t("office.intake.notStored");
+                  } else if (file?.client) {
+                    clientCell = `${file.client.code} ${file.client.corporateName}`;
+                  }
+                  let decidedBy = "";
+                  if (row.result.outcome === "duplicate") {
+                    decidedBy = t("office.intake.sameContent");
+                  } else if (notStored) {
+                    decidedBy = t("office.intake.notStored");
+                  } else if (file?.resolutionMethod) {
+                    decidedBy = t(`method.${file.resolutionMethod}`);
+                  }
                   return (
                     <tr key={row.key}>
                       <td>
@@ -169,17 +185,18 @@ export function Intake() {
                       <td>
                         {row.result.outcome === "stored" ? <FileStateBadge state={row.result.published ? "Published" : row.result.file.state} /> : null}
                         {row.result.outcome === "duplicate" ? <Badge tone="neutral" label={t("office.intake.duplicate")} /> : null}
-                        {row.result.outcome === "rejected" || row.result.outcome === "failed" ? <Badge tone="danger" label={t("office.intake.rejected")} /> : null}
+                        {notStored ? <Badge tone="danger" label={t("office.intake.rejected")} /> : null}
                       </td>
-                      <td>{file?.client === null || file === null ? t("office.intake.notDecided") : `${file.client?.code} ${file.client?.corporateName}`}</td>
-                      <td className="muted">{file?.resolutionMethod === null || file === null || file.resolutionMethod === undefined ? "" : t(`method.${file.resolutionMethod}`)}</td>
+                      <td>{clientCell}</td>
+                      <td className="muted">{decidedBy}</td>
                       <td className="muted">
                         {row.result.outcome === "rejected" ? t(`rejection.${row.result.reason}`) : null}
                         {row.result.outcome === "failed" ? <ErrorNotice error={row.result.error} /> : null}
                         {row.result.outcome === "duplicate" ? t("office.intake.duplicateReason") : null}
                         {row.result.outcome === "stored" && file?.reviewReason ? t(`reviewReason.${file.reviewReason}`) : null}
-                        {row.result.outcome === "stored" && file?.unmatchedArrivalNumber ? t("office.intake.registerCase", { number: file.unmatchedArrivalNumber }) : null}
-                        {jev === undefined ? null : ` ${t(`office.intake.jev.${jev.outcome}`)}`}
+                        {row.result.outcome === "stored" && !file?.reviewReason && matchKey !== null ? t(matchKey) : null}
+                        {row.result.outcome === "stored" && file?.unmatchedArrivalNumber ? ` ${t("office.intake.registerCase", { number: file.unmatchedArrivalNumber })}` : null}
+                        {classification === undefined ? null : ` ${t(`office.intake.jev.${classification.outcome}`)}`}
                       </td>
                     </tr>
                   );
@@ -188,8 +205,10 @@ export function Intake() {
             </table>
           </div>
           <div className="card__foot">
-            <span className="grow muted">{unclassified.length === 0 ? t("office.intake.allClassified") : t("office.intake.unclassified", { count: unclassified.length })}</span>
-            <button type="button" className="button" disabled={classify.busy || unclassified.length === 0 || classified !== null} onClick={runClassifier}>
+            <span className="grow muted">
+              {unclassified.length === 0 ? t("office.intake.allClassified") : t("office.intake.unclassified", { count: unclassified.length })} {t("office.intake.jevKeyNote")}
+            </span>
+            <button type="button" className="button" disabled={!jevReady} onClick={runClassifier}>
               {t("office.intake.classify")}
             </button>
             <Link className="button button--primary" to="/office/review">
