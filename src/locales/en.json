@@ -213,7 +213,9 @@
       "decidedBy": "Decided by",
       "document": "Document",
       "documents": "Documents",
+      "dueOn": "Due on",
       "reason": "Reason",
+      "submittedOn": "Submitted on",
       "result": "Result"
     },
     "dashboard": {
@@ -239,11 +241,12 @@
       "submittedAt": "Sent by the client {at}",
       "incidentsRegion": "Incidents",
       "incidents": "{count} withdrawn document(s) had already been opened",
-      "incidentWithdrawn": "{name} ({client}) was withdrawn: {reason}.",
+      "incidentWithdrawn": "{name} ({client}) was withdrawn on {at}: {reason}.",
       "incidentUnknownClient": "no client",
       "incidentReader": "{name} first opened it on {at}",
       "incidentReaderUnnamed": "A member without a name",
-      "incidentsShown": "Showing the {shown} most recent of {total}.",
+      "incidentsShown": "Showing the {shown} most recently withdrawn of {total}.",
+      "cappedCount": "{count}+",
       "moreNotShown": "More match than the {shown} shown here.",
       "incidentsLink": "View details"
     },
@@ -324,7 +327,8 @@
         "incidents": "Incidents"
       },
       "empty": "Nothing to show.",
-      "incidentsTruncated": "Showing {shown} of {total} incidents.",
+      "incidentsTruncated": "Showing the {shown} most recently withdrawn of {total} incidents.",
+      "incidentWithdrawnAt": "Withdrawn {at}",
       "when": "When",
       "who": "Who",
       "action": "Action",

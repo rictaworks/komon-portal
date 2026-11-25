@@ -7,7 +7,7 @@ import type { CaseFilter } from "../../../core/ports/repository";
 import { dueWindowEnd, retrievalWindowEnd, unreadCutoff } from "../../../core/office/dashboard-windows";
 import { requireAuth, type AppBindings } from "../context";
 import { optionalString, readJson, requireArray, requireInteger, requireString } from "../input";
-import { caseView, fileView, Lookups, pageOf } from "./views";
+import { caseView, incidentView, Lookups, pageOf } from "./views";
 
 /** Mis-deliveries listed on the Owner dashboard; the rest are in the incidents list. */
 const DASHBOARD_INCIDENTS = 5;
@@ -59,7 +59,7 @@ export function caseRoutes(): Hono<AppBindings> {
       const recent = await services.publish.listIncidents(actor, DASHBOARD_INCIDENTS);
       const items = [];
       for (const incident of recent.items) {
-        items.push(await fileView(lookups, incident.file, incident.receipts));
+        items.push(await incidentView(lookups, incident));
       }
       incidents = { total: recent.total, truncated: recent.truncated, items };
     }

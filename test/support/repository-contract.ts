@@ -324,6 +324,25 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.receipts.listByFiles([])).toEqual([]);
     });
 
+    it("stores the record of an incident and lists incidents by the time of their withdrawal", async () => {
+      const company = await seedClient();
+      const other = await seedClient("c2");
+      const incident = (label: string, receivedAt: Date, incidentAt: Date) =>
+        seedFile(other.id, label, {
+          receivedAt, state: "Published", publishedAt: T0, withdrawReason: "Superseded",
+          incidentFlag: true, incidentClientId: company.id, incidentReason: "WrongClient", incidentAt,
+        });
+      // Taken in first, withdrawn last.
+      const late = await incident("f1", new Date(T0.getTime() - 5000), new Date(T0.getTime() + 3000));
+      const early = await incident("f2", new Date(T0.getTime() + 1000), new Date(T0.getTime() + 1000));
+      const middle = await incident("f3", T0, new Date(T0.getTime() + 2000));
+      await seedFile(company.id, "f4", { state: "Published", publishedAt: T0 });
+      expect(await repo.files.findById(late.id)).toEqual(late);
+      expect((await repo.files.listIncidents({ limit: 10, offset: 0 })).map((row) => row.id)).toEqual([late.id, middle.id, early.id]);
+      expect((await repo.files.listIncidents({ limit: 1, offset: 1 })).map((row) => row.id)).toEqual([middle.id]);
+      expect(await repo.files.count({ incidentOnly: true })).toBe(3);
+    });
+
     it("lists trashed files that are due and purges them with their receipts in two steps", async () => {
       const company = await seedClient();
       const old = await seedFile(company.id, "f1", { state: "Trashed", trashedFrom: "Staged", trashedAt: new Date("2020-01-01T00:00:00.000Z") });

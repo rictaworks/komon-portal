@@ -1,6 +1,7 @@
 import type { DeadlineStatus } from "../../../core/cases/deadline-calculator";
 import { invalidInput } from "../../../core/model/errors";
 import type { CaseRecord, CaseType, Client, DocType, FileReceipt, FileRecord, Id, OfficeSetting, User } from "../../../core/model/types";
+import type { Incident } from "../../../core/publish/publish-service";
 import type { Services } from "../composition";
 import type { AppContext } from "../context";
 
@@ -123,6 +124,19 @@ export async function fileView(lookups: Lookups, file: FileRecord, receipts: rea
     trashedFrom: file.trashedFrom,
     readers,
     version: file.version,
+  };
+}
+
+/**
+ * A mis-delivery for the Owner: the file with the client, reason and readers of the withdrawal
+ * that raised it. They are not the file's current ones once it was assigned and published again.
+ */
+export async function incidentView(lookups: Lookups, incident: Incident): Promise<Record<string, unknown>> {
+  return {
+    ...(await fileView(lookups, incident.file, incident.receipts)),
+    client: await lookups.client(incident.clientId),
+    withdrawReason: incident.reason,
+    withdrawnAt: incident.occurredAt,
   };
 }
 

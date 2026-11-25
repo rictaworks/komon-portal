@@ -373,6 +373,7 @@ export class MemoryRepository implements Repository {
     if (file.state === "NeedsReview" && file.reviewReason === null) fail("review_reason");
     if (file.state === "Published" && file.publishedAt === null) fail("published_at");
     if (file.state === "Withdrawn" && file.withdrawReason === null) fail("withdraw_reason");
+    if (file.incidentClientId !== null && !this.clientRows.some((row) => row.id === file.incidentClientId)) fail("incident_client_id");
     if (file.state === "Acknowledged" && file.acknowledgedAt === null) fail("acknowledged_at");
     if (file.caseId !== null) {
       const linked = this.caseRows.find((row) => row.id === file.caseId);
@@ -410,6 +411,13 @@ export class MemoryRepository implements Repository {
     list: async (filter: FileFilter, page: Page): Promise<FileRecord[]> =>
       paged(
         this.fileRows.filter((row) => this.matchesFile(row, filter)).sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime()),
+        page,
+      ),
+    listIncidents: async (page: Page): Promise<FileRecord[]> =>
+      paged(
+        this.fileRows
+          .filter((row) => this.matchesFile(row, { incidentOnly: true }))
+          .sort((a, b) => (b.incidentAt?.getTime() ?? 0) - (a.incidentAt?.getTime() ?? 0) || a.id.localeCompare(b.id)),
         page,
       ),
     count: async (filter: FileFilter): Promise<number> => this.fileRows.filter((row) => this.matchesFile(row, filter)).length,

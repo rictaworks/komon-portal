@@ -78,9 +78,17 @@ export interface CaseList {
   assignees: { id: string; displayName: string }[];
 }
 
-/** Mis-delivered files with their readers. `total` counts all of them; `truncated` says that more exist than `items` holds. */
+/**
+ * A mis-delivered file as it was when it was withdrawn: `client`, `withdrawReason` and `readers`
+ * are those of that withdrawal, not the file's current ones.
+ */
+export interface IncidentView extends FileView {
+  withdrawnAt: string;
+}
+
+/** Mis-deliveries, the most recently withdrawn first. `total` counts all of them; `truncated` says that more exist than `items` holds. */
 export interface IncidentList {
-  items: FileView[];
+  items: IncidentView[];
   total: number;
   truncated: boolean;
 }
@@ -95,7 +103,7 @@ export interface Dashboard {
   /** Submissions the office has not opened yet, newest first. */
   submissions: { id: string; displayName: string; receivedAt: string; client: ClientRef | null }[];
   unread: { id: string; displayName: string; publishedAt: string; client: ClientRef | null }[];
-  /** True for a list when more items matched than are shown. */
+  /** True for a list when more items matched than the 100 it holds. */
   truncated: { unread: boolean; retrieval: boolean; due: boolean; submissions: boolean };
   retrieval: CaseView[];
   due: CaseView[];

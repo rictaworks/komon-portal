@@ -13,7 +13,8 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 **Known gaps:**
 
 - A publish whose follow-up writes (audit, metric or case update) fail is still published; its result carries a warning.
-- The Owner dashboard lists the five most recent mis-deliveries with their readers and first view times; the incidents list shows at most 100 and says when more exist, but has no paging.
+- The Owner dashboard lists the five most recently withdrawn mis-deliveries, each with the client that had the document, the readers up to the withdrawal and their first view times; the incidents list shows the 100 most recently withdrawn and says when more exist, but has no paging. A document that was mis-delivered more than once is listed once, as of its latest such withdrawal.
+- The Unread, Retrieval and Due soon lists of the dashboard hold at most 100 items each; when more match, the card shows `100+` and the list says so.
 - The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).
 - The weekly count of staff using the portal is not measured: events do not record the acting staff member.
 - The client pickers and the document list load a first page only (200 clients; documents are not paged in the screen yet).
@@ -142,7 +143,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | POST | `/api/office/files/{id}/send-back` | Sends a staged file back to review. | staff |
 | POST | `/api/office/files/{id}/trash` | Moves a file to the trash. | staff |
 | POST | `/api/office/files/{id}/withdraw` | Withdraws a published file with a reason, and says where it goes next. | staff |
-| GET | `/api/office/incidents` | Mis-delivered files that were withdrawn as wrong client or wrong file. | owner |
+| GET | `/api/office/incidents` | Mis-delivered files that were withdrawn as wrong client or wrong file, the most recently withdrawn first (`limit` 1 to 100). | owner |
 | POST | `/api/office/invitations/{id}/cancel` | Cancels an open invitation. | staff |
 | POST | `/api/office/memberships/{id}/approve` | Approves a client member. | staff |
 | POST | `/api/office/memberships/{id}/reject` | Rejects a client member. | staff |

@@ -74,7 +74,7 @@ export function Audit() {
               <span className="grow stack stack--tight">
                 <strong>{file.displayName}</strong>
                 <span className="muted">
-                  {file.client === null ? "" : `${file.client.code} ${file.client.corporateName}`} · {formatDateTime(file.receivedAt)}
+                  {file.client === null ? "" : `${file.client.code} ${file.client.corporateName}`} · {t("office.audit.incidentWithdrawnAt", { at: formatDateTime(file.withdrawnAt) })}
                 </span>
                 {sortedReaders(file.readers).map((reader, index) => (
                   <span key={`${reader.firstViewedAt}-${index}`}>

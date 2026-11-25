@@ -8,7 +8,7 @@ import type { FileFilter } from "../../../core/ports/repository";
 import { AFTER_WITHDRAW, MAX_INCIDENTS } from "../../../core/publish/publish-service";
 import { requireAuth, type AppBindings, type AppContext } from "../context";
 import { optionalBoolean, optionalString, readJson, requireArray, requireEnum, requireInteger, requireString, type JsonObject } from "../input";
-import { fileView, Lookups, pageOf } from "./views";
+import { fileView, incidentView, Lookups, pageOf } from "./views";
 
 const MAX_PUBLISH_ITEMS = 200;
 /** Multipart overhead allowed on top of the largest file. */
@@ -249,9 +249,9 @@ export function fileRoutes(): Hono<AppBindings> {
     const incidents = await services.publish.listIncidents(actor, limit);
     const items = [];
     for (const incident of incidents.items) {
-      items.push(await fileView(lookups, incident.file, incident.receipts));
+      items.push(await incidentView(lookups, incident));
     }
-    // `total` counts every incident; `truncated` is true when more exist than the items shown.
+    // The most recently withdrawn come first. `total` counts every incident; `truncated` is true when more exist than the items shown.
     return c.json({ items, total: incidents.total, truncated: incidents.truncated });
   });
 
