@@ -281,7 +281,7 @@
         ]
       },
       "post": {
-        "summary": "Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome.",
+        "summary": "Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome. The file is linked to a case only when its document type has a (Payroll) case type and the client has exactly one open case of that case type and month.",
         "tags": [
           "client"
         ],
@@ -331,7 +331,43 @@
     },
     "/api/files/{id}/content": {
       "get": {
-        "summary": "Opens a file as an attachment (mode=view or download). Records the first view or acknowledgement.",
+        "summary": "Sends the body of a file as an attachment. Changes nothing; refused without the ticket that POST /api/files/{id}/open answered (ticket query parameter).",
+        "tags": [
+          "public"
+        ],
+        "description": "Signed-in user. State-changing requests also need the same origin and the CSRF token.",
+        "x-access": "session",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/open": {
+      "post": {
+        "summary": "Records that the user opens a file (mode=view or download): the first view or the acknowledgement, and the audit entry. Answers with a ticket for the download, valid for 60 seconds in the same session.",
         "tags": [
           "public"
         ],
@@ -681,7 +717,7 @@
     },
     "/api/office/files": {
       "get": {
-        "summary": "Lists files with filters (direction, states, client, case, document type, month, review reason) and paging.",
+        "summary": "Lists files with filters (direction, states, client, case, document type or none, month, review reason) and paging.",
         "tags": [
           "office"
         ],
@@ -1167,7 +1203,7 @@
     },
     "/api/office/doc-types": {
       "post": {
-        "summary": "Adds a document type.",
+        "summary": "Adds a document type (label, shortCode, direction, optional caseTypeId of an existing Payroll case type).",
         "tags": [
           "office"
         ],
@@ -1735,7 +1771,7 @@
     },
     "/api/office/doc-types/{id}": {
       "put": {
-        "summary": "Updates a document type.",
+        "summary": "Updates a document type (label, shortCode, direction, optional caseTypeId of an existing Payroll case type; omitted or null removes the case type).",
         "tags": [
           "office"
         ],

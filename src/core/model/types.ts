@@ -177,6 +177,8 @@ export interface DocType {
   label: string;
   shortCode: string;
   direction: DocTypeDirection;
+  /** The monthly (Payroll) case type a client submission of this document type belongs to; null when it is never linked automatically. */
+  caseTypeId: Id | null;
 }
 
 export interface DocRule {

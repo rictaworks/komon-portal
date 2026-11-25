@@ -177,9 +177,9 @@ describe("caseLabel", () => {
 describe("docTypesFor", () => {
   it("keeps the document types that can travel in the shown direction", () => {
     const types: DocTypeRecord[] = [
-      { id: "1", shortCode: "SHAHO", label: "Social insurance notice", direction: "Outbound" },
-      { id: "2", shortCode: "TIME", label: "Time sheet", direction: "Inbound" },
-      { id: "3", shortCode: "OTHER", label: "Other", direction: "Both" },
+      { id: "1", shortCode: "SHAHO", label: "Social insurance notice", direction: "Outbound", caseTypeId: null },
+      { id: "2", shortCode: "TIME", label: "Time sheet", direction: "Inbound", caseTypeId: null },
+      { id: "3", shortCode: "OTHER", label: "Other", direction: "Both", caseTypeId: null },
     ];
     expect(docTypesFor("Outbound", types).map((type) => type.id)).toEqual(["1", "3"]);
     expect(docTypesFor("Inbound", types).map((type) => type.id)).toEqual(["2", "3"]);

@@ -3,7 +3,7 @@ import type {
   InvitationStatus, LocalDate, Membership, MembershipStatus, MetricEvent, OfficeSetting, PendingPurge, UploadBatch, User, YearMonth,
 } from "../../src/core/model/types";
 import type {
-  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, MemberCounts, Page, Repository,
+  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, MemberCounts, Page, Repository, UnreadPublished,
 } from "../../src/core/ports/repository";
 
 function copy<T>(value: T): T {
@@ -260,6 +260,7 @@ export class MemoryRepository implements Repository {
         this.caseRows.filter(
           (row) =>
             (filter.clientId === undefined || row.clientId === filter.clientId) &&
+            (filter.caseTypeId === undefined || row.caseTypeId === filter.caseTypeId) &&
             (filter.kind === undefined || this.kindOf(row.caseTypeId) === filter.kind) &&
             (filter.states === undefined || filter.states.includes(row.state)) &&
             (filter.targetMonth === undefined || row.targetMonth === filter.targetMonth),
@@ -316,6 +317,13 @@ export class MemoryRepository implements Repository {
     },
   };
 
+  /** Mirrors `doc_types.case_type_id REFERENCES case_types (id)`. */
+  private requireCaseTypeOf(docType: DocType): void {
+    if (docType.caseTypeId !== null && !this.caseTypeRows.some((row) => row.id === docType.caseTypeId)) {
+      throw new Error("FOREIGN KEY constraint failed");
+    }
+  }
+
   docTypes = {
     findById: async (id: Id): Promise<DocType | null> => copy(this.docTypeRows.find((row) => row.id === id) ?? null),
     list: async (): Promise<DocType[]> => this.docTypeRows.map(copy),
@@ -323,6 +331,7 @@ export class MemoryRepository implements Repository {
       if (this.docTypeRows.some((row) => row.shortCode === docType.shortCode)) {
         return false;
       }
+      this.requireCaseTypeOf(docType);
       this.docTypeRows.push(copy(docType));
       return true;
     },
@@ -331,6 +340,7 @@ export class MemoryRepository implements Repository {
       if (index < 0 || this.docTypeRows.some((row) => row.id !== docType.id && row.shortCode === docType.shortCode)) {
         return false;
       }
+      this.requireCaseTypeOf(docType);
       this.docTypeRows[index] = copy(docType);
       return true;
     },
@@ -353,10 +363,22 @@ export class MemoryRepository implements Repository {
       (filter.clientId === undefined || row.clientId === filter.clientId) &&
       (filter.caseId === undefined || row.caseId === filter.caseId) &&
       (filter.docTypeId === undefined || row.docTypeId === filter.docTypeId) &&
+      (filter.untyped !== true || row.docTypeId === null) &&
       (filter.targetMonth === undefined || row.targetMonth === filter.targetMonth) &&
       (filter.reviewReason === undefined || row.reviewReason === filter.reviewReason) &&
       (filter.incidentOnly !== true || row.incidentFlag)
     );
+  }
+
+  /** Published outbound files of the client that this user has no receipt for, the most recently published first. */
+  private unreadPublished(clientId: Id, userId: Id): FileRecord[] {
+    return this.fileRows
+      .filter(
+        (row) =>
+          this.matchesFile(row, { clientId, direction: "Outbound", states: ["Published"] }) &&
+          !this.receiptRows.some((receipt) => receipt.fileId === row.id && receipt.userId === userId),
+      )
+      .sort((a, b) => (b.publishedAt?.getTime() ?? 0) - (a.publishedAt?.getTime() ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
   /** Mirrors the CHECK and foreign key constraints of file_records. A violation throws, as D1 would. */
@@ -421,6 +443,10 @@ export class MemoryRepository implements Repository {
         page,
       ),
     count: async (filter: FileFilter): Promise<number> => this.fileRows.filter((row) => this.matchesFile(row, filter)).length,
+    unreadPublished: async (clientId: Id, userId: Id, page: Page): Promise<UnreadPublished> => {
+      const all = this.unreadPublished(clientId, userId);
+      return { files: paged(all, page), total: all.length };
+    },
     nextDisplaySequence: async (clientId: Id | null, receivedOn: LocalDate): Promise<number> => {
       const compact = receivedOn.replaceAll("-", "");
       // Display names are unique across all files, so the sequence follows the name prefix, not the current client.

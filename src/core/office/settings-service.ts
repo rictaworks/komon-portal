@@ -22,6 +22,14 @@ const SHORT_CODE = /^[A-Z0-9]{1,16}$/;
 const SETTING_TARGET = "setting";
 const MASTER_TARGET = "master";
 
+export interface DocTypeInput {
+  label: string;
+  shortCode: string;
+  direction: DocTypeDirection;
+  /** The monthly (Payroll) case type submissions of this document type belong to. Omitted or null: none. */
+  caseTypeId?: Id | null;
+}
+
 export interface SettingsServiceDeps {
   repository: Pick<Repository, "settings" | "docTypes" | "caseTypes">;
   guard: Guard;
@@ -52,10 +60,9 @@ export class SettingsService {
     return updated;
   }
 
-  async addDocType(actor: Actor, input: { label: string; shortCode: string; direction: DocTypeDirection }): Promise<DocType> {
+  async addDocType(actor: Actor, input: DocTypeInput): Promise<DocType> {
     await this.requireStaff(actor, "doc_type");
-    this.validateDocType(input);
-    const docType: DocType = { id: this.deps.ids.newId(), ...input };
+    const docType: DocType = { id: this.deps.ids.newId(), ...(await this.validDocType(input)) };
     if (!(await this.deps.repository.docTypes.insert(docType))) {
       throw conflict("short_code_taken");
     }
@@ -63,13 +70,13 @@ export class SettingsService {
     return docType;
   }
 
-  async updateDocType(actor: Actor, id: Id, input: { label: string; shortCode: string; direction: DocTypeDirection }): Promise<DocType> {
+  async updateDocType(actor: Actor, id: Id, input: DocTypeInput): Promise<DocType> {
     await this.requireStaff(actor, id);
-    this.validateDocType(input);
+    const valid = await this.validDocType(input);
     if ((await this.deps.repository.docTypes.findById(id)) === null) {
       throw notFound("doc_type");
     }
-    const docType: DocType = { id, ...input };
+    const docType: DocType = { id, ...valid };
     if (!(await this.deps.repository.docTypes.update(docType))) {
       throw conflict("short_code_taken");
     }
@@ -127,7 +134,11 @@ export class SettingsService {
     await this.deps.guard.require(actor, "staff.operate", { type: MASTER_TARGET, id });
   }
 
-  private validateDocType(input: { label: string; shortCode: string; direction: DocTypeDirection }): void {
+  /**
+   * The case type is optional; when given it must be an existing monthly (Payroll) case type, the only kind a
+   * submission is linked to (instructions.md 1.6.7). Without one, submissions of the type are never linked automatically.
+   */
+  private async validDocType(input: DocTypeInput): Promise<Omit<DocType, "id">> {
     if (input.label.trim() === "" || input.label.length > MAX_LABEL_LENGTH) {
       throw invalidInput("label");
     }
@@ -137,6 +148,14 @@ export class SettingsService {
     if (!DOC_TYPE_DIRECTIONS.includes(input.direction)) {
       throw invalidInput("direction");
     }
+    const caseTypeId = input.caseTypeId ?? null;
+    if (caseTypeId !== null) {
+      const caseType = await this.deps.repository.caseTypes.findById(caseTypeId);
+      if (caseType === null || caseType.kind !== "Payroll") {
+        throw invalidInput("case_type");
+      }
+    }
+    return { label: input.label, shortCode: input.shortCode, direction: input.direction, caseTypeId };
   }
 
   private validateCaseType(input: { kind: CaseKind; label: string }): void {

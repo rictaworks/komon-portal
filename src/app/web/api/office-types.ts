@@ -156,6 +156,7 @@ export interface OfficeSetting {
 
 export interface DocTypeRecord extends DocTypeRef {
   direction: "Outbound" | "Inbound" | "Both";
+  caseTypeId: string | null;
 }
 
 export interface SettingsView {

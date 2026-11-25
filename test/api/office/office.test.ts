@@ -68,6 +68,24 @@ describe("office API", () => {
     expect((await staff.call("POST", "/api/office/doc-rules", { body: { docTypeId: ids.d1, keyword: "shaho" } })).status).toBe(201);
     ids.t1 = String((await json(await staff.call("POST", "/api/office/case-types", { body: { kind: "Procedure", label: "Social insurance" } }))).id);
 
+    const payrollTypeId = String((await json(await staff.call("POST", "/api/office/case-types", { body: { kind: "Payroll", label: "Monthly payroll" } }))).id);
+    const linkedType = await staff.call("POST", "/api/office/doc-types", { body: { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound", caseTypeId: payrollTypeId } });
+    expect(linkedType.status).toBe(201);
+    const linkedId = String((await json(linkedType)).id);
+    for (const caseTypeId of ["missing", ids.t1]) {
+      // A case type that does not exist, and one that is not a monthly (Payroll) case type.
+      const refused = await staff.call("POST", "/api/office/doc-types", { body: { label: "X", shortCode: "XX", direction: "Inbound", caseTypeId } });
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toEqual({ error: "invalid_input", detail: "case_type" });
+    }
+    const typesNow = (await json(await staff.call("GET", "/api/office/settings"))).docTypes as Json[];
+    expect(typesNow.find((row) => row.id === linkedId)).toMatchObject({ shortCode: "KYUYO", caseTypeId: payrollTypeId });
+    expect(typesNow.find((row) => row.id === ids.d1)).toMatchObject({ caseTypeId: null });
+    const unlinked = await staff.call("PUT", `/api/office/doc-types/${linkedId}`, { body: { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound" } });
+    expect(await json(unlinked)).toMatchObject({ id: linkedId, caseTypeId: null });
+    const relinked = await staff.call("PUT", `/api/office/doc-types/${linkedId}`, { body: { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound", caseTypeId: payrollTypeId } });
+    expect(await json(relinked)).toMatchObject({ id: linkedId, caseTypeId: payrollTypeId });
+
     const listed = await json(await staff.call("GET", "/api/office/clients?query=C0031"));
     expect((listed.items as Json[]).map((item) => item.code)).toEqual(["C0031"]);
     const settings = await json(await staff.call("GET", "/api/office/settings"));
@@ -177,6 +195,21 @@ describe("office API", () => {
     const stale = await staff.call("POST", `/api/office/files/${ids.f2}/send-back`, { body: { version: 1 } });
     expect(stale.status).toBe(409);
     expect((await staff.call("GET", "/api/office/files?states=Bogus")).status).toBe(400);
+  });
+
+  it("lists the files of one document type, or the files with none, on the server", async () => {
+    const ids_ = async (query: string) => {
+      const listed = await json(await staff.call("GET", `/api/office/files?direction=Outbound&states=Staged&${query}`));
+      return { ids: (listed.items as Json[]).map((item) => item.id), total: listed.total };
+    };
+    expect(await ids_(`docTypeId=${ids.d1}`)).toEqual({ ids: [ids.f1], total: 1 });
+    // "No type" is a filter of its own, so a file without a type is found however many typed files are listed before it.
+    expect(await ids_("untyped=true&limit=1")).toEqual({ ids: [ids.f2], total: 1 });
+    for (const query of ["untyped=yes", "untyped=false", "untyped=1", `untyped=true&docTypeId=${ids.d1}`]) {
+      const response = await staff.call("GET", `/api/office/files?${query}`);
+      expect([query, response.status]).toEqual([query, 400]);
+      expect(await json(response)).toEqual({ error: "invalid_input", detail: "untyped" });
+    }
   });
 
   it("publishes with one result per file and withdraws with a reason", async () => {
@@ -334,5 +367,25 @@ describe("office API", () => {
     expect(await json(wide)).toEqual({ error: "invalid_input", detail: "limit" });
     expect((await staff.call("GET", "/api/office/clients?include=members&limit=50")).status).toBe(200);
     expect((await member.call("GET", "/api/office/clients?include=members")).status).toBe(404);
+  });
+
+  it("finds a client by code or name however many clients come before it in the list", async () => {
+    // The client picker shows a short first page; a client beyond it is reached by typing, never by loading every client.
+    for (let index = 0; index < 6; index += 1) {
+      const response = await staff.call("POST", "/api/office/clients", { body: { code: `B90${index}`, corporateName: `Picker Filler ${index}` } });
+      expect(response.status).toBe(201);
+    }
+    const created = await staff.call("POST", "/api/office/clients", { body: { code: "Z9001", corporateName: "Yotsuba Kensetsu" } });
+    expect(created.status).toBe(201);
+    const codes = async (query: string) => ((await json(await staff.call("GET", `/api/office/clients?${query}`))).items as Json[]).map((item) => item.code);
+    const firstPage = await codes("status=Active&limit=5&offset=0");
+    expect(firstPage).toHaveLength(5);
+    expect(firstPage).not.toContain("Z9001");
+    expect(await codes("status=Active&limit=5&offset=0&query=z90")).toEqual(["Z9001"]);
+    expect(await codes("status=Active&limit=5&offset=0&query=yotsuba")).toEqual(["Z9001"]);
+    expect(await codes("limit=5&offset=0&query=Yotsuba+Kensetsu")).toEqual(["Z9001"]);
+    // A search that matches many clients is still cut to the page asked for.
+    expect(await codes("status=Active&limit=5&offset=0&query=picker")).toEqual(["B900", "B901", "B902", "B903", "B904"]);
+    expect(await codes("status=Active&limit=5&offset=5&query=picker")).toEqual(["B905"]);
   });
 });

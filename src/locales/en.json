@@ -127,6 +127,7 @@
       "confirmation_required": "Tick the confirmation before staging this document.",
       "corporate_number": "The corporate number is not valid.",
       "code": "Use letters and digits only for the code.",
+      "case_type": "Choose an existing payroll case type.",
       "reference_code": "Use letters, digits and hyphens only for the reference code.",
       "target_month": "The target month is not valid.",
       "arrival_number": "An arrival number does not match the configured pattern.",
@@ -205,6 +206,14 @@
       "trash": "Move to trash"
     },
     "allClients": "All clients",
+    "clientPicker": {
+      "hint": "Type part of a client code or name.",
+      "searching": "Searching for clients.",
+      "none": "No client matches.",
+      "found": "{count} client(s) found. Use the arrow keys to choose.",
+      "more": "Showing the first {count} clients. Type more to narrow the list.",
+      "clear": "Clear the chosen client"
+    },
     "unclassified": "Unclassified",
     "columns": {
       "case": "Case",
@@ -302,6 +311,8 @@
     "staged": {
       "title": "Staged",
       "list": "Staged documents",
+      "type": "Type",
+      "allTypes": "All types",
       "empty": "No staged documents.",
       "confirmation": "Confirmation",
       "publish": "Publish to {count} client(s)",
@@ -349,11 +360,9 @@
       "openCases": "Open cases",
       "kind": "Kind",
       "allKinds": "All kinds",
-      "clientCode": "Client code",
-      "search": "Search",
       "empty": "No cases match.",
-      "moreCases": "More cases match than the {count} shown. The oldest ones are missing: show more, or narrow the search by client code, kind or state.",
-      "moreCasesMax": "More cases match than the {count} shown, and no more can be listed at once. The oldest ones are missing: narrow the search by client code, kind or state.",
+      "moreCases": "More cases match than the {count} shown. The oldest ones are missing: show more, or narrow the search by client, kind or state.",
+      "moreCasesMax": "More cases match than the {count} shown, and no more can be listed at once. The oldest ones are missing: narrow the search by client, kind or state.",
       "showMore": "Show more cases",
       "reference": "Reference",
       "due": "Due",
@@ -459,6 +468,12 @@
       "label": "Label",
       "shortCode": "Short code",
       "direction": "Direction",
+      "docCaseType": "Case type for submissions",
+      "docCaseTypeHint": "Payroll case types only. A file a client sends with this document type is linked to the client's open case of this case type and the same month, when there is exactly one. It can be changed later in the list above.",
+      "docCaseTypeFor": "Case type for submissions of {docType}",
+      "docCaseTypeNone": "None (never linked automatically)",
+      "docCaseTypeLinked": "Case type: {caseType}",
+      "docCaseTypeUnknown": "Unknown case type",
       "addDocType": "Add document type",
       "rules": "Keyword rules",
       "removeRule": "Remove",
@@ -644,6 +659,7 @@
       "title": "What the portal keeps about you",
       "identity": "Only your Google account ID and display name. Your email address, date of birth, address and phone number are not requested or stored.",
       "cookies": "One session cookie, needed to keep you signed in. No advertising or tracking cookies are used.",
+      "pageViews": "Page views are counted with Cloudflare Web Analytics, which uses no cookies and does not identify you.",
       "individualNumber": "Documents that contain an Individual Number (My Number) must not be uploaded."
     },
     "ai": {

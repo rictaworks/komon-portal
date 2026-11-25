@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
-import type { CaseList, CaseView } from "../../api/office-types";
+import type { CaseList, CaseView, ClientRef } from "../../api/office-types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { ClientPicker } from "../../components/ClientPicker";
 import { SelectField, TextField } from "../../components/Form";
 import { formatDay } from "../../components/format";
 import { ErrorNotice, errorText, Notice } from "../../components/Notice";
@@ -11,7 +12,7 @@ import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import { caseSteps, freshestCase, parseArrivalNumbers } from "./case-progress";
-import { clientOptions, useClients, useSettings } from "./useMasterData";
+import { useSettings } from "./useMasterData";
 
 const CASE_KINDS = ["Procedure", "Payroll", "Other"] as const;
 /** Every state a case can still move on from; "Closed" and "Cancelled" are final (instructions.md 6.3). */
@@ -25,10 +26,10 @@ const ALL_FILTER = "all";
 const LIST_STEP = 50;
 const LIST_MAX = 200;
 
-function listPath(clientCode: string, kind: string, stateFilter: string, limit: number): string {
+function listPath(clientId: string, kind: string, stateFilter: string, limit: number): string {
   const query = new URLSearchParams();
   query.set("limit", String(limit));
-  if (clientCode !== "") query.set("clientCode", clientCode);
+  if (clientId !== "") query.set("clientId", clientId);
   if (kind !== "") query.set("kind", kind);
   if (stateFilter === OPEN_FILTER) {
     query.set("states", OPEN_STATES.join(","));
@@ -249,33 +250,29 @@ export function CaseDetailPanel({ selectedId, record, loading, error, action, on
 export function Cases() {
   const t = useT();
   const { api } = useSession();
-  const [codeInput, setCodeInput] = useState("");
-  const [clientCode, setClientCode] = useState("");
+  const [clientFilter, setClientFilter] = useState<ClientRef | null>(null);
   const [kindFilter, setKindFilter] = useState("");
   const [stateFilter, setStateFilter] = useState(OPEN_FILTER);
   const [limit, setLimit] = useState(LIST_STEP);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** The answer of the last change, shown until a reload brings a copy that is at least as new. */
   const [saved, setSaved] = useState<CaseView | null>(null);
-  const cases = useLoad<CaseList>(() => api.get<CaseList>(listPath(clientCode, kindFilter, stateFilter, limit)), [clientCode, kindFilter, stateFilter, limit]);
+  const cases = useLoad<CaseList>(() => api.get<CaseList>(listPath(clientFilter?.id ?? "", kindFilter, stateFilter, limit)), [clientFilter, kindFilter, stateFilter, limit]);
   const detail = useLoad<CaseView | null>(() => (selectedId === null ? Promise.resolve(null) : api.get<CaseView>(`/api/office/cases/${selectedId}`)), [selectedId]);
-  const clients = useClients();
   const settings = useSettings();
   const action = useAction();
-  const [clientId, setClientId] = useState("");
+  const [client, setClient] = useState<ClientRef | null>(null);
   const [caseTypeId, setCaseTypeId] = useState("");
   const [targetMonth, setTargetMonth] = useState("");
   const [referenceCode, setReferenceCode] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [dueOn, setDueOn] = useState("");
 
-  const search = (event: FormEvent) => {
-    event.preventDefault();
-    setClientCode(codeInput.trim());
+  // A new filter starts again from the first cases.
+  const chooseClient = (value: ClientRef | null) => {
+    setClientFilter(value);
     setLimit(LIST_STEP);
   };
-
-  // A new filter starts again from the first cases.
   const chooseKind = (value: string) => {
     setKindFilter(value);
     setLimit(LIST_STEP);
@@ -289,7 +286,7 @@ export function Cases() {
     event.preventDefault();
     void action.run(async () => {
       const created = await api.post<CaseView>("/api/office/cases", {
-        clientId,
+        clientId: client?.id,
         caseTypeId,
         targetMonth,
         referenceCode,
@@ -327,15 +324,12 @@ export function Cases() {
       <ErrorNotice error={action.error} />
       <div className="split">
         <div className="split__main stack">
-          <section className="card" aria-label={t("office.cases.list")}>
-            <form className="card__head card__head--end" role="search" onSubmit={search}>
-              <TextField label={t("office.cases.clientCode")} type="search" value={codeInput} onChange={setCodeInput} narrow mono />
-              <button type="submit" className="button">
-                {t("office.cases.search")}
-              </button>
+          <section className="card card--open" aria-label={t("office.cases.list")}>
+            <div className="card__head card__head--end" role="search">
+              <ClientPicker label={t("office.columns.client")} emptyLabel={t("office.allClients")} value={clientFilter} onChange={chooseClient} status={null} compact />
               <SelectField label={t("office.cases.kind")} value={kindFilter} options={[{ value: "", label: t("office.cases.allKinds") }, ...CASE_KINDS.map((value) => ({ value, label: t(`caseKind.${value}`) }))]} onChange={chooseKind} />
               <SelectField label={t("office.cases.state")} value={stateFilter} options={stateOptions} onChange={chooseState} />
-            </form>
+            </div>
             {cases.loading && cases.data === null ? <Loading /> : null}
             {cases.data !== null && items.length === 0 ? <p className="empty">{t("office.cases.empty")}</p> : null}
             {cases.data?.truncated === true ? (
@@ -400,13 +394,13 @@ export function Cases() {
         </div>
         <form className="card card--pad split__side stack" onSubmit={register} aria-label={t("office.cases.register")}>
           <h2 className="subtitle">{t("office.cases.register")}</h2>
-          <SelectField label={t("office.columns.client")} value={clientId} options={[{ value: "", label: t("office.review.chooseClient") }, ...clientOptions(clients.data)]} onChange={setClientId} />
+          <ClientPicker label={t("office.columns.client")} emptyLabel={t("office.review.chooseClient")} value={client} onChange={setClient} />
           <SelectField label={t("office.cases.caseType")} value={caseTypeId} options={[{ value: "", label: t("office.cases.chooseCaseType") }, ...(settings.data?.caseTypes ?? []).map((type) => ({ value: type.id, label: type.label }))]} onChange={setCaseTypeId} />
           <TextField label={t("office.cases.month")} type="month" value={targetMonth} onChange={setTargetMonth} />
           <TextField label={t("office.cases.referenceCode")} value={referenceCode} onChange={setReferenceCode} mono hint={t("office.cases.referenceHint")} />
           <SelectField label={t("office.cases.assignee")} value={assigneeId} options={[{ value: "", label: t("office.cases.unassigned") }, ...(cases.data?.assignees ?? []).map((user) => ({ value: user.id, label: user.displayName }))]} onChange={setAssigneeId} />
           <TextField label={t("office.cases.dueOn")} type="date" value={dueOn} onChange={setDueOn} />
-          <button type="submit" className="button button--primary" disabled={action.busy || clientId === "" || caseTypeId === "" || targetMonth === "" || referenceCode === ""}>
+          <button type="submit" className="button button--primary" disabled={action.busy || client === null || caseTypeId === "" || targetMonth === "" || referenceCode === ""}>
             {t("office.cases.registerAction")}
           </button>
         </form>

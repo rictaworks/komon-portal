@@ -25,7 +25,8 @@ async function requireReach(c: AppContext, clientId: Id): Promise<{ actor: UserA
 }
 
 /** Published documents of one client that this member may read, with whether this member has opened each. */
-async function publishedDocuments(services: Services, actor: UserActor, clientId: Id, c: AppContext, page = pageOf(c)) {
+async function publishedDocuments(services: Services, actor: UserActor, clientId: Id, c: AppContext) {
+  const page = pageOf(c);
   const docTypeId = c.req.query("docTypeId");
   const targetMonth = c.req.query("targetMonth");
   const files = await services.repository.files.list(
@@ -68,17 +69,29 @@ export function clientPortalRoutes(): Hono<AppBindings> {
 
   routes.get("/:clientId/home", async (c) => {
     const { actor, services } = await requireReach(c, c.req.param("clientId"));
-    const documentRows = await publishedDocuments(services, actor, c.req.param("clientId"), c, HOME_FETCH);
-    const caseRows = await services.repository.cases.list({ clientId: c.req.param("clientId") }, HOME_FETCH);
+    const clientId = c.req.param("clientId");
+    // The database picks the documents this member has not opened, over the whole shelf, newest publication first.
+    // The page and the total come from one read, so `unreadTotal` and `truncated.documents` cannot contradict the list.
+    const { files: unreadRows, total: unreadTotal } = await services.repository.files.unreadPublished(clientId, actor.userId, { limit: HOME_WINDOW, offset: 0 });
+    const lookups = new Lookups(services);
+    const unread = [];
+    for (const file of unreadRows) {
+      if (!services.policy.can(actor, "file.read", { file })) {
+        throw new Error("the unread query returned a file this member may not read");
+      }
+      unread.push({ ...(await documentView(lookups, file)), opened: false });
+    }
+    const caseRows = await services.repository.cases.list({ clientId }, HOME_FETCH);
     const cases = [];
     for (const record of caseRows.slice(0, HOME_WINDOW)) {
       cases.push(await services.cases.clientView(record));
     }
     // `truncated` is true when more items exist than the window shows.
     return c.json({
-      unread: documentRows.slice(0, HOME_WINDOW).filter((document) => !document.opened),
+      unread,
+      unreadTotal,
       cases,
-      truncated: { documents: documentRows.length > HOME_WINDOW, cases: caseRows.length > HOME_WINDOW },
+      truncated: { documents: unreadTotal > unread.length, cases: caseRows.length > HOME_WINDOW },
     });
   });
 

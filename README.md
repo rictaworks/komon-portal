@@ -15,9 +15,8 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 - A publish whose follow-up writes (audit, metric or case update) fail is still published; its result carries a warning.
 - The Owner dashboard lists the five most recently withdrawn mis-deliveries, each with the client that had the document, the readers up to the withdrawal and their first view times; the incidents list shows the 100 most recently withdrawn and says when more exist, but has no paging. A document that was mis-delivered more than once is listed once, as of its latest such withdrawal.
 - The Unread, Retrieval and Due soon lists of the dashboard hold at most 100 items each; when more match, the card shows `100+` and the list says so.
-- The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).
 - The weekly count of staff using the portal is not measured: events do not record the acting staff member.
-- The client pickers and the document list load a first page only (200 clients; documents are not paged in the screen yet).
+- The document list of a shelf loads a first page only (documents are not paged in the screen yet). The Review and Staged lists show at most 200 documents.
 - Browser checks are manual in this version: there is no automated end-to-end run in CI yet.
 
 ## Stack
@@ -103,11 +102,12 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | DELETE | `/api/client/{clientId}/notifications/subscriptions` | Removes this browser's push subscription by endpoint. | member |
 | POST | `/api/client/{clientId}/notifications/subscriptions` | Stores this browser's push subscription for the member. | member |
 | GET | `/api/client/{clientId}/submissions` | Files the company has sent, with their confirmation state. | member |
-| POST | `/api/client/{clientId}/submissions` | Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome. | member |
+| POST | `/api/client/{clientId}/submissions` | Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome. The file is linked to a case only when its document type has a (Payroll) case type and the client has exactly one open case of that case type and month. | member |
 | POST | `/api/client/{clientId}/submissions/{id}/cancel` | Cancels a submission the office has not confirmed (version required). | member |
 | GET | `/api/config` | Public configuration: environment, Turnstile key, sign-in availability, setup state. | none |
 | POST | `/api/dev/login` | Development only: signs in as a test user (owner, staff or member). | development |
-| GET | `/api/files/{id}/content` | Opens a file as an attachment (mode=view or download). Records the first view or acknowledgement. | session |
+| GET | `/api/files/{id}/content` | Sends the body of a file as an attachment. Changes nothing; refused without the ticket of the request below (`ticket` query parameter). | session |
+| POST | `/api/files/{id}/open` | Records that the user opens a file (mode=view or download): the first view or the acknowledgement, and the audit entry. Answers with a ticket for the download, valid for 60 seconds in the same session. | session |
 | GET | `/api/health` | Liveness check. | none |
 | POST | `/api/invitations/redeem` | Uses an invitation code. Requires a Turnstile token and a signed-in user. | session |
 | GET | `/api/me` | The signed-in user with memberships and CSRF token. 401 when signed out. | session |
@@ -132,9 +132,9 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | GET | `/api/office/dashboard` | Office dashboard counts and the lists of unread, retrieval and due items. | staff |
 | POST | `/api/office/doc-rules` | Adds a keyword rule for a document type. | staff |
 | DELETE | `/api/office/doc-rules/{id}` | Removes a keyword rule. 404 when the rule does not exist. | staff |
-| POST | `/api/office/doc-types` | Adds a document type. | staff |
-| PUT | `/api/office/doc-types/{id}` | Updates a document type. | staff |
-| GET | `/api/office/files` | Lists files with filters (direction, states, client, case, document type, month, review reason) and paging. | staff |
+| POST | `/api/office/doc-types` | Adds a document type (label, shortCode, direction, optional caseTypeId of an existing Payroll case type). | staff |
+| PUT | `/api/office/doc-types/{id}` | Updates a document type (label, shortCode, direction, optional caseTypeId of an existing Payroll case type; omitted or null removes the case type). | staff |
+| GET | `/api/office/files` | Lists files with filters (direction, states, client, case, document type or none, month, review reason) and paging. | staff |
 | GET | `/api/office/files/{id}` | One file with its readers. | staff |
 | POST | `/api/office/files/{id}/assign` | Assigns a file to a client (and optionally a case and document type) during review. | staff |
 | POST | `/api/office/files/{id}/doc-type` | Sets the document type of a file. | staff |
@@ -200,6 +200,7 @@ Each deployment serves one office, in that office's own Cloudflare account. Noth
    - put the D1 ID returned in step 2 in place of the placeholder;
    - make the paths relative to `ENV/`: `"main": "../src/app/index.ts"` (admin: `"../src/admin/index.ts"`), the assets directory `../dist/client`, and the migrations directory `../src/app/migrations`;
    - in `ENV/wrangler.jsonc`, add `TURNSTILE_SITE_KEY` (a public value) to `vars`, next to `ENVIRONMENT`, which must be `production`;
+   - optionally, to count page views, add `WEB_ANALYTICS_TOKEN` to the same `vars` (see "Page views" below);
    - in `ENV/wrangler.admin.jsonc`, add a `vars` block with `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` from the Cloudflare Access application that protects the admin Worker.
 
 4. Apply the migrations to the remote database:
@@ -231,6 +232,15 @@ Each deployment serves one office, in that office's own Cloudflare account. Noth
    The three VAPID values must be set together; a partial set is refused. Until the Google and Turnstile values are set, sign-in and the invitation and setup forms answer "not configured".
 
 7. Create the first Owner. Sign in with Google, open `/setup`, and enter the `SETUP_TOKEN`. The token stops working once an Owner exists.
+
+### Page views (optional)
+
+Page views and per-screen use are counted with Cloudflare Web Analytics, which sets no cookie. It is off until a token is configured.
+
+1. In the Cloudflare dashboard, open Web Analytics, add the portal's hostname as a site with manual setup (automatic setup must stay off, so the beacon is not added twice), and copy the token from the JavaScript snippet (the `token` value in `data-cf-beacon`).
+2. Add `WEB_ANALYTICS_TOKEN` with that token to `vars` in `ENV/wrangler.jsonc` and deploy the portal again (step 5). The token is a public value; it may contain only letters and digits, and any other value makes every request fail with an error.
+
+With the token set, the Worker adds the beacon script to each page, the Content Security Policy additionally allows `https://static.cloudflareinsights.com` for that script and `https://cloudflareinsights.com` for its reports, and the open-source notices page says that page views are counted without cookies. Without the token no beacon is loaded and the policy allows external scripts for Google sign-in and Turnstile only.
 
 ## Releases
 

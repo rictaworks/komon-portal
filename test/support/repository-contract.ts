@@ -209,6 +209,8 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.cases.list({ clientId: company.id, states: ["Open"] }, PAGE)).toEqual([]);
       expect(await repo.cases.list({ clientId: company.id, states: [] }, PAGE)).toEqual([]);
       expect(await repo.cases.list({ clientId: company.id, kind: "Payroll" }, PAGE)).toEqual([]);
+      expect((await repo.cases.list({ clientId: company.id, caseTypeId: first.caseTypeId }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect(await repo.cases.list({ clientId: company.id, caseTypeId: id("t-other") }, PAGE)).toEqual([]);
       expect((await repo.cases.list({ clientId: company.id, kind: "Procedure", targetMonth: first.targetMonth, states: ["Closed"] }, PAGE)).map((row) => row.id)).toEqual([first.id]);
     });
 
@@ -245,7 +247,18 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.docTypes.insert(type)).toBe(true);
       expect(await repo.docTypes.insert(docType({ id: id("d2"), shortCode: code }))).toBe(false);
       expect(await repo.docTypes.update({ ...type, label: "Renamed", direction: "Both" })).toBe(true);
-      expect(await repo.docTypes.findById(type.id)).toMatchObject({ label: "Renamed", direction: "Both" });
+      expect(await repo.docTypes.findById(type.id)).toMatchObject({ label: "Renamed", direction: "Both", caseTypeId: null });
+      const linkedTo = caseType({ id: id("t-doc"), kind: "Payroll", label: "Payroll" });
+      await repo.caseTypes.insert(linkedTo);
+      expect(await repo.docTypes.update({ ...type, caseTypeId: linkedTo.id })).toBe(true);
+      expect(await repo.docTypes.findById(type.id)).toMatchObject({ caseTypeId: linkedTo.id });
+      expect((await repo.docTypes.list()).find((row) => row.id === type.id)?.caseTypeId).toBe(linkedTo.id);
+      const linkedCode = `${code}L`.slice(-16);
+      expect(await repo.docTypes.insert(docType({ id: id("d3"), shortCode: linkedCode, caseTypeId: linkedTo.id }))).toBe(true);
+      expect(await repo.docTypes.findById(id("d3"))).toMatchObject({ caseTypeId: linkedTo.id });
+      await expect(repo.docTypes.insert(docType({ id: id("d4"), shortCode: `${code}M`.slice(-16), caseTypeId: id("no-such-type") }))).rejects.toThrow(/FOREIGN KEY/);
+      expect(await repo.docTypes.update({ ...type, caseTypeId: null })).toBe(true);
+      expect(await repo.docTypes.findById(type.id)).toMatchObject({ caseTypeId: null });
       expect(await repo.docTypes.update(docType({ id: id("missing"), shortCode: `${code}X`.slice(0, 16) }))).toBe(false);
       await repo.docTypes.insertRule(docRule({ id: id("r1"), docTypeId: type.id, keyword: "kettei" }));
       expect((await repo.docTypes.listRules()).filter((rule) => rule.docTypeId === type.id)).toEqual([{ id: id("r1"), docTypeId: type.id, keyword: "kettei" }]);
@@ -317,6 +330,14 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.files.count({ clientId: company.id, targetMonth: "2026-11" })).toBe(1);
       expect(await repo.files.count({ clientId: company.id, states: [] })).toBe(0);
       expect(await repo.files.count({ caseId: linked.id, incidentOnly: true })).toBe(0);
+      // Files with no document type are found by the store itself, not picked out of one page of a longer list.
+      const typed = docType({ id: id("d-untyped"), shortCode: `U${Date.now().toString(36)}`.toUpperCase().slice(0, 16) });
+      expect(await repo.docTypes.insert(typed)).toBe(true);
+      const withType = await seedFile(company.id, "f6", { docTypeId: typed.id, typeSource: "Staff" });
+      expect((await repo.files.list({ clientId: company.id, states: ["Staged"], untyped: true }, { limit: 1, offset: 0 })).map((row) => row.id)).toEqual([staged.id]);
+      expect(await repo.files.count({ clientId: company.id, states: ["Staged"], untyped: true })).toBe(1);
+      expect((await repo.files.list({ clientId: company.id, docTypeId: typed.id }, PAGE)).map((row) => row.id)).toEqual([withType.id]);
+      expect(await repo.files.count({ clientId: company.id, docTypeId: typed.id, untyped: true })).toBe(0);
       expect(await repo.receipts.hasOpened(opened.id, viewer.id)).toBe(true);
       expect(await repo.receipts.hasOpened(staged.id, viewer.id)).toBe(false);
       expect((await repo.receipts.listByFile(opened.id)).map((row) => row.id)).toEqual([id("x1")]);
@@ -341,6 +362,39 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect((await repo.files.listIncidents({ limit: 10, offset: 0 })).map((row) => row.id)).toEqual([late.id, middle.id, early.id]);
       expect((await repo.files.listIncidents({ limit: 1, offset: 1 })).map((row) => row.id)).toEqual([middle.id]);
       expect(await repo.files.count({ incidentOnly: true })).toBe(3);
+    });
+
+    it("lists and counts the published files a user has not opened, newest publication first", async () => {
+      const company = await seedClient();
+      const other = await seedClient("o");
+      const at = (seconds: number): Date => new Date(T0.getTime() + seconds * 1000);
+      // Intake order is the reverse of publication order, so the two orderings cannot be confused.
+      const early = await seedFile(company.id, "f1", { state: "Published", receivedAt: at(30), publishedAt: at(100) });
+      const middle = await seedFile(company.id, "f2", { state: "Published", receivedAt: at(20), publishedAt: at(200) });
+      const late = await seedFile(company.id, "f3", { state: "Published", receivedAt: at(10), publishedAt: at(300) });
+      const opened = await seedFile(company.id, "f4", { state: "Published", receivedAt: at(40), publishedAt: at(400) });
+      await seedFile(company.id, "f5", { receivedAt: at(50) });
+      await seedFile(company.id, "f6", { state: "Withdrawn", withdrawReason: "Other", publishedAt: at(500) });
+      await seedFile(company.id, "f7", { direction: "Inbound", state: "Submitted", targetMonth: "2026-11" });
+      await seedFile(other.id, "f8", { state: "Published", publishedAt: at(600) });
+      // Only a trashed file can be purged (a CHECK constraint ties purging_at to state 'Trashed'), so
+      // this row is left out by its state; a published file being purged cannot exist.
+      const purged = await seedFile(company.id, "f9", { state: "Trashed", trashedFrom: "Withdrawn", withdrawReason: "Other", publishedAt: at(700), trashedAt: T0 });
+      const reader = await seedUser("reader");
+      const colleague = await seedUser("colleague");
+      await repo.receipts.insertIfAbsent({ id: id("x1"), fileId: opened.id, userId: reader.id, firstViewedAt: T0 });
+      await repo.receipts.insertIfAbsent({ id: id("x2"), fileId: late.id, userId: colleague.id, firstViewedAt: T0 });
+      expect(await repo.files.beginPurge(purged.id, T0, T0)).toBe(true);
+
+      const ids = async (clientId: string, userId: string, page = PAGE) => {
+        const view = await repo.files.unreadPublished(clientId, userId, page);
+        return { ids: view.files.map((row) => row.id), total: view.total };
+      };
+      expect(await ids(company.id, reader.id)).toEqual({ ids: [late.id, middle.id, early.id], total: 3 });
+      // The total counts every unread file, whatever the page.
+      expect(await ids(company.id, reader.id, { limit: 1, offset: 1 })).toEqual({ ids: [middle.id], total: 3 });
+      expect(await ids(company.id, colleague.id)).toEqual({ ids: [opened.id, middle.id, early.id], total: 3 });
+      expect(await ids(id("no-client"), reader.id)).toEqual({ ids: [], total: 0 });
     });
 
     it("lists trashed files that are due and purges them with their receipts in two steps", async () => {

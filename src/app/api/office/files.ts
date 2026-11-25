@@ -49,6 +49,14 @@ function fileFilter(c: AppContext): FileFilter {
   assign("clientId", c.req.query("clientId"));
   assign("caseId", c.req.query("caseId"));
   assign("docTypeId", c.req.query("docTypeId"));
+  // "No document type" is a filter of its own. Any other value, or a document type beside it, is refused rather than ignored.
+  const untyped = c.req.query("untyped");
+  if (untyped !== undefined && untyped !== "") {
+    if (untyped !== "true" || filter.docTypeId !== undefined) {
+      throw invalidInput("untyped");
+    }
+    filter.untyped = true;
+  }
   const targetMonth = c.req.query("targetMonth");
   // A month written another way matches nothing; it is refused so it cannot pass for an empty shelf.
   if (targetMonth !== undefined && targetMonth !== "" && !TARGET_MONTH.test(targetMonth)) {
