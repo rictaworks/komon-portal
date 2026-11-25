@@ -51,6 +51,20 @@ describe("ReviewService", () => {
       expect(updated.state).toBe("Staged");
     });
 
+    it("requires confirmation whenever another client holds the same content, whatever the reason says", async () => {
+      kit.repo.fileRows.push(fileRecord({ id: "f0", clientId: "c2", state: "Staged" }));
+      seed({ reviewReason: "NoKey" });
+      await expect(kit.review.assign(staff, "f1", { clientId: "c1", caseId: null, confirmed: false }, 1)).rejects.toThrow("invalid_input: confirmation_required");
+      expect((await kit.review.assign(staff, "f1", { clientId: "c1", caseId: null, confirmed: true }, 1)).state).toBe("Staged");
+    });
+
+    it("still requires that confirmation after a staged file was sent back", async () => {
+      kit.repo.fileRows.push(fileRecord({ id: "f0", clientId: "c2", state: "Staged" }));
+      kit.repo.fileRows.push(fileRecord({ id: "f1", clientId: "c1", state: "Staged", sha256: "a".repeat(64), displayName: "C0031_UNCLASSIFIED_20261124_05" }));
+      await kit.review.sendBack(staff, "f1", 1);
+      await expect(kit.review.assign(staff, "f1", { clientId: "c1", caseId: null, confirmed: false }, 2)).rejects.toThrow("invalid_input: confirmation_required");
+    });
+
     it("counts corrections of client and type", async () => {
       seed({ clientId: "c2", reviewReason: "SentBack", docTypeId: "d2", typeSource: "Rule" });
       await kit.review.assign(staff, "f1", { clientId: "c1", caseId: null, docTypeId: "d1", confirmed: false }, 1);
@@ -87,6 +101,15 @@ describe("ReviewService", () => {
     });
   });
 
+  describe("published files", () => {
+    it("cannot have their client, case or type changed", async () => {
+      kit.repo.fileRows.push(fileRecord({ id: "f1", state: "Published", publishedAt: new Date() }));
+      await expect(kit.review.assign(staff, "f1", { clientId: "c2", caseId: null, confirmed: true }, 1)).rejects.toThrow("invalid_state: not_in_review");
+      await expect(kit.review.sendBack(staff, "f1", 1)).rejects.toThrow("invalid_state: not_staged");
+      expect(kit.repo.fileRows[0]).toMatchObject({ clientId: "c1", state: "Published", version: 1 });
+    });
+  });
+
   describe("setDocType", () => {
     it("changes the type of a staged file and renames it", async () => {
       kit.repo.fileRows.push(fileRecord({ id: "f1", state: "Staged", docTypeId: "d1", typeSource: "Rule" }));
@@ -105,7 +128,8 @@ describe("ReviewService", () => {
   describe("sendBack", () => {
     it("returns a staged file to review", async () => {
       kit.repo.fileRows.push(fileRecord({ id: "f1", state: "Staged" }));
-      expect(await kit.review.sendBack(staff, "f1", 1)).toMatchObject({ state: "NeedsReview", reviewReason: "SentBack", clientId: "c1", version: 2 });
+      expect(await kit.review.sendBack(staff, "f1", 1)).toMatchObject({ state: "NeedsReview", reviewReason: "SentBack", clientId: "c1", resolutionMethod: null, version: 2 });
+      expect(kit.repo.metricRows.at(-1)).toMatchObject({ name: "review.sent_back" });
     });
 
     it("applies only to staged files", async () => {
@@ -120,6 +144,13 @@ describe("ReviewService", () => {
       const updated = await kit.review.trash(staff, "f1", 1);
       expect(updated).toMatchObject({ state: "Trashed", trashedFrom: state, version: 2 });
       expect(updated.trashedAt).toEqual(kit.clock.now());
+    });
+
+    it("refuses to act on a version other than the one given", async () => {
+      kit.repo.fileRows.push(fileRecord({ id: "f1", state: "Staged", version: 3 }));
+      await expect(kit.review.trash(staff, "f1", 2)).rejects.toThrow("conflict: stale");
+      await expect(kit.review.sendBack(staff, "f1", 4)).rejects.toThrow("conflict: stale");
+      await expect(kit.review.setDocType(staff, "f1", "d1", 1)).rejects.toThrow("conflict: stale");
     });
 
     it("refuses to trash a published file directly", async () => {

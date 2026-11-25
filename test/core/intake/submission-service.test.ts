@@ -125,11 +125,28 @@ describe("SubmissionService.cancel and linkCase", () => {
     await expect(kit.submissions.cancel(memberActor(["c1"], "u-colleague"), fileId, 1)).rejects.toThrow("invalid_state: not_cancellable");
     await kit.view.open(staff, fileId, "view");
     await expect(kit.submissions.cancel(member, fileId, 2)).rejects.toThrow("invalid_state: not_cancellable");
+    await expect(kit.submissions.cancel(member, "x".repeat(300), 1)).rejects.toThrow("not_found: file");
+    expect(kit.repo.auditRows.at(-1)).toMatchObject({ targetId: "invalid", result: "denied" });
   });
 
   it("answers not found to members of other clients", async () => {
     await expect(kit.submissions.cancel(memberActor(["c2"], "u-outsider"), fileId, 1)).rejects.toThrow("not_found: file");
     await expect(kit.submissions.cancel(member, "missing", 1)).rejects.toThrow("not_found: file");
+  });
+
+  it("refuses a version other than the current one, so an acknowledged submission cannot be cancelled", async () => {
+    await expect(kit.submissions.cancel(member, fileId, 2)).rejects.toThrow("conflict: stale");
+    await expect(kit.submissions.linkCase(staff, fileId, null, 5)).rejects.toThrow("conflict: stale");
+    expect(kit.repo.fileRows[0]).toMatchObject({ state: "Submitted", version: 1 });
+  });
+
+  it("removes the body again when the record cannot be written", async () => {
+    kit.repo.files.insert = async () => {
+      throw new Error("database unavailable");
+    };
+    const before = kit.store.objects.size;
+    await expect(kit.submissions.submit(member, input, { fileName: "b.pdf", bytes: pdf("b") })).rejects.toThrow("database unavailable");
+    expect(kit.store.objects.size).toBe(before);
   });
 
   it("lets staff link and unlink a case of the same client", async () => {
@@ -183,9 +200,9 @@ describe("TrashService", () => {
   });
 
   it("erases body, record and receipts after 30 days and audits each erasure as the system", async () => {
-    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 0, failed: 0 });
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 0, skipped: 0, failed: 0 });
     kit.clock.advanceDays(30);
-    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 2, failed: 0 });
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 2, skipped: 0, failed: 0 });
     expect(kit.repo.fileRows).toEqual([]);
     expect(kit.repo.receiptRows).toEqual([]);
     expect(kit.store.objects.size).toBe(0);
@@ -196,16 +213,66 @@ describe("TrashService", () => {
 
   it("continues with the remaining files when one erasure fails", async () => {
     kit.clock.advanceDays(31);
-    const original = kit.store.delete.bind(kit.store);
-    kit.store.delete = async (key: string) => {
-      if (key === "files/f1") {
-        throw new Error("storage unavailable");
+    const original = kit.repo.files.purge;
+    kit.repo.files.purge = async (id, before, audit) => {
+      if (id === "f1") {
+        throw new Error("database unavailable");
       }
-      await original(key);
+      return original(id, before, audit);
     };
-    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 1, failed: 1 });
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 1, skipped: 0, failed: 1 });
     expect(kit.repo.fileRows.map((row) => row.id)).toEqual(["f1"]);
-    expect(kit.repo.auditRows.filter((row) => row.action === "file.purge").map((row) => row.result)).toEqual(["failed", "ok"]);
+    expect(kit.repo.auditRows.filter((row) => row.action === "file.purge").map((row) => [row.targetId, row.result])).toEqual([["f1", "failed"], ["f2", "ok"]]);
+  });
+
+  it("never erases a file that was restored after the job listed it", async () => {
+    kit.clock.advanceDays(31);
+    const original = kit.repo.files.listTrashedBefore;
+    kit.repo.files.listTrashedBefore = async (threshold, page) => {
+      const listed = await original(threshold, page);
+      const row = kit.repo.fileRows.find((candidate) => candidate.id === "f1" && candidate.state === "Trashed");
+      if (row !== undefined) {
+        // Staff restore f1 right after the listing was read.
+        Object.assign(row, { state: "NeedsReview", reviewReason: "Restored", trashedAt: null, trashedFrom: null, version: 2 });
+      }
+      return listed;
+    };
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 1, skipped: 1, failed: 0 });
+    expect(kit.repo.fileRows.map((row) => [row.id, row.state])).toEqual([["f1", "NeedsReview"]]);
+    expect(kit.store.objects.has("files/f1")).toBe(true);
+    expect(kit.repo.auditRows.filter((row) => row.action === "file.purge").map((row) => row.targetId)).toEqual(["f2"]);
+  });
+
+  it("reaches every due file even when more than a page of them keeps failing", async () => {
+    kit.repo.fileRows = [];
+    for (let index = 0; index < 130; index += 1) {
+      const id = `p${String(index).padStart(3, "0")}`;
+      kit.repo.fileRows.push(fileRecord({
+        id, sha256: String(index).padStart(64, "0"), displayName: `N_${id}`, state: "Trashed", trashedFrom: "Staged",
+        trashedAt: new Date(kit.clock.now().getTime() + index),
+      }));
+    }
+    kit.clock.advanceDays(31);
+    const original = kit.repo.files.purge;
+    kit.repo.files.purge = async (id, before, audit) => {
+      if (Number(id.slice(1)) < 110) {
+        throw new Error("database unavailable");
+      }
+      return original(id, before, audit);
+    };
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 20, skipped: 0, failed: 110 });
+    expect(kit.repo.fileRows).toHaveLength(110);
+  });
+
+  it("finishes the job even when a failure cannot be recorded", async () => {
+    kit.clock.advanceDays(31);
+    kit.repo.files.purge = async () => {
+      throw new Error("database unavailable");
+    };
+    kit.repo.audit.append = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 0, skipped: 0, failed: 2 });
   });
 
   it("can only be run by the system", async () => {
