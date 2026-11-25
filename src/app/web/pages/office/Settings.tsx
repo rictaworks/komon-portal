@@ -187,6 +187,7 @@ export function Settings() {
   const [docLabel, setDocLabel] = useState("");
   const [docShortCode, setDocShortCode] = useState("");
   const [docDirection, setDocDirection] = useState<string>("Outbound");
+  const [docCaseType, setDocCaseType] = useState("");
   const [ruleDocType, setRuleDocType] = useState("");
   const [ruleKeyword, setRuleKeyword] = useState("");
   const [caseKind, setCaseKind] = useState<string>("Procedure");
@@ -203,11 +204,12 @@ export function Settings() {
 
   const addDocType = () => {
     void action
-      .run(() => api.post("/api/office/doc-types", { label: docLabel, shortCode: docShortCode, direction: docDirection }))
+      .run(() => api.post("/api/office/doc-types", { label: docLabel, shortCode: docShortCode, direction: docDirection, caseTypeId: docCaseType === "" ? null : docCaseType }))
       .then((ok) => {
         if (ok) {
           setDocLabel("");
           setDocShortCode("");
+          setDocCaseType("");
           refresh();
         }
       });
@@ -264,6 +266,7 @@ export function Settings() {
   }
   const current = settings.data;
   const docTypeById = new Map(current.docTypes.map((type) => [type.id, type]));
+  const caseTypeById = new Map(current.caseTypes.map((type) => [type.id, type]));
 
   return (
     <div className="page">
@@ -279,6 +282,11 @@ export function Settings() {
             <li key={type.id} className="list__item">
               <span className="code">{type.shortCode}</span>
               <span className="grow">{type.label}</span>
+              {type.caseTypeId === null ? null : (
+                <span className="muted">
+                  {t("office.settings.docCaseTypeLinked", { caseType: caseTypeById.get(type.caseTypeId)?.label ?? t("office.settings.docCaseTypeUnknown") })}
+                </span>
+              )}
               <span className="muted">{t(`direction.${type.direction}`)}</span>
             </li>
           ))}
@@ -287,7 +295,16 @@ export function Settings() {
           <TextField label={t("office.settings.label")} value={docLabel} onChange={setDocLabel} />
           <TextField label={t("office.settings.shortCode")} value={docShortCode} onChange={setDocShortCode} mono />
         </div>
-        <SelectField label={t("office.settings.direction")} value={docDirection} options={DIRECTIONS.map((value) => ({ value, label: t(`direction.${value}`) }))} onChange={setDocDirection} />
+        <div className="grid2">
+          <SelectField label={t("office.settings.direction")} value={docDirection} options={DIRECTIONS.map((value) => ({ value, label: t(`direction.${value}`) }))} onChange={setDocDirection} />
+          <SelectField
+            label={t("office.settings.docCaseType")}
+            hint={t("office.settings.docCaseTypeHint")}
+            value={docCaseType}
+            options={[{ value: "", label: t("office.settings.docCaseTypeNone") }, ...current.caseTypes.map((type) => ({ value: type.id, label: type.label }))]}
+            onChange={setDocCaseType}
+          />
+        </div>
         <button type="button" className="button" disabled={action.busy || docLabel === "" || docShortCode === ""} onClick={addDocType}>
           {t("office.settings.addDocType")}
         </button>

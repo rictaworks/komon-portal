@@ -117,6 +117,21 @@ describe("SettingsService", () => {
     await expect(service.addDocType(memberActor(), { label: "X", shortCode: "X", direction: "Both" })).rejects.toThrow("forbidden");
   });
 
+  it("links a document type to an existing case type, and removes the link when none is given", async () => {
+    repo.caseTypeRows.push(caseType({ id: "t2", kind: "Payroll", label: "Payroll" }));
+    const plain = await service.addDocType(staff, { label: "Taxi receipts", shortCode: "TAXI", direction: "Inbound" });
+    expect(plain.caseTypeId).toBeNull();
+    const linked = await service.addDocType(staff, { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound", caseTypeId: "t2" });
+    expect(linked.caseTypeId).toBe("t2");
+    expect(repo.docTypeRows.find((row) => row.id === linked.id)?.caseTypeId).toBe("t2");
+    await expect(service.addDocType(staff, { label: "X", shortCode: "X", direction: "Inbound", caseTypeId: "missing" })).rejects.toThrow("invalid_input: case_type");
+    await expect(service.updateDocType(staff, plain.id, { label: "X", shortCode: "TAXI", direction: "Inbound", caseTypeId: "missing" })).rejects.toThrow("invalid_input: case_type");
+    expect(repo.docTypeRows.map((row) => row.shortCode).sort()).toEqual(["KYUYO", "TAXI"]);
+    expect((await service.updateDocType(staff, plain.id, { label: "Taxi receipts", shortCode: "TAXI", direction: "Inbound", caseTypeId: "t2" })).caseTypeId).toBe("t2");
+    expect((await service.updateDocType(staff, linked.id, { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound" })).caseTypeId).toBeNull();
+    expect(repo.docTypeRows.find((row) => row.id === linked.id)?.caseTypeId).toBeNull();
+  });
+
   it("lets staff add and rename case types without changing the kind", async () => {
     repo.docTypeRows.push(docType());
     repo.caseTypeRows.push(caseType({ id: "t1", kind: "Procedure" }));

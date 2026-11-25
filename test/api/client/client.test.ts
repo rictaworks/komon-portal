@@ -45,6 +45,8 @@ describe("client API and file delivery", () => {
     ids.in = String((await json(await staff.call("POST", "/api/office/doc-types", { body: { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound" } }))).id);
     await staff.call("POST", "/api/office/doc-rules", { body: { docTypeId: ids.out, keyword: "shaho" } });
     ids.payrollType = String((await json(await staff.call("POST", "/api/office/case-types", { body: { kind: "Payroll", label: "Payroll" } }))).id);
+    // Submissions of the payroll material belong to payroll cases.
+    expect((await staff.call("PUT", `/api/office/doc-types/${ids.in}`, { body: { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound", caseTypeId: ids.payrollType } })).status).toBe(200);
     ids.payroll = String((await json(await staff.call("POST", "/api/office/cases", { body: { clientId: OWN, caseTypeId: ids.payrollType, targetMonth: "2026-11", referenceCode: "KYUYO-2611-01" } }))).id);
 
     ids.published = String((await intake(OWN, "shaho_one.pdf", "%PDF-1.7 published")).id);
