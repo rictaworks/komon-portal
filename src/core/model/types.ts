@@ -93,6 +93,8 @@ export const REJECTION_REASONS = ["Empty", "TooLarge", "UnsupportedFormat", "Con
 export type RejectionReason = (typeof REJECTION_REASONS)[number];
 
 export interface OfficeSetting {
+  /** The name shown in the sidebar. Null until the Owner sets it. */
+  officeName: string | null;
   timezone: string;
   arrivalNumberPattern: string;
   retrievalDeadlineDays: number;

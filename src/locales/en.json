@@ -133,6 +133,7 @@
       "arrival_number": "An arrival number does not match the configured pattern.",
       "arrival_number_pattern": "The pattern is not accepted. Use digits or simple character classes with a fixed length, for example [0-9]{17,18}.",
       "jev_threshold": "The threshold must be between 0.80 and 1.00.",
+      "office_name": "The office name must be 1 to 100 characters.",
       "model": "Enter a fixed version such as jev-1.13.0. Aliases ending in -latest are not accepted.",
       "credential": "Enter your Jev API key in Settings first.",
       "endpoint": "This browser's notification service is not supported.",
@@ -200,6 +201,8 @@
       "owner": "Signed in as Owner",
       "staff": "Signed in as Staff"
     },
+    "officeNameUnset": "Set the office name in Settings",
+    "officeNameLoadFailed": "The office name could not be loaded",
     "actions": {
       "open": "Open",
       "openShelf": "Open shelf",
@@ -457,6 +460,8 @@
       "title": "Settings",
       "office": "Office",
       "ownerOnly": "Only the Owner can change office settings.",
+      "officeName": "Office name",
+      "officeNameHint": "Shown in the sidebar. 1 to 100 characters.",
       "timezone": "Time zone",
       "arrivalPattern": "Arrival number pattern",
       "arrivalHint": "Pattern in the restricted syntax the portal accepts.",
@@ -466,6 +471,7 @@
       "jevThresholdHint": "Jev sets a document type only at or above this confidence. The value can be raised up to 1.00 and never set below 0.80.",
       "save": "Save",
       "docTypes": "Document types",
+      "ruleExplanation": "A file gets a type when its name (without the extension) contains a keyword of exactly one type that takes outbound files; letter case and full-width or half-width characters do not matter. A name that matches two types or none is left for the Jev classifier, which needs a Jev key saved in this browser and sets a type only at or above the confidence threshold; otherwise the file stays unclassified.",
       "label": "Label",
       "shortCode": "Short code",
       "direction": "Direction",

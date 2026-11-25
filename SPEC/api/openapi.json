@@ -1803,7 +1803,7 @@
     },
     "/api/office/settings/office": {
       "put": {
-        "summary": "Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing, Jev confidence threshold).",
+        "summary": "Updates office settings (office name, time zone, arrival-number pattern, deadlines, automatic publishing, Jev confidence threshold).",
         "tags": [
           "office"
         ],

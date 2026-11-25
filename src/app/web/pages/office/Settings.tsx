@@ -11,7 +11,8 @@ import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import { formatDateTime } from "../../components/format";
 import { isFixedModelName, loadJevSettings, removeJevSettings, saveJevSettings } from "./jev-settings";
-import { JEV_THRESHOLD_MAX, JEV_THRESHOLD_MIN, JEV_THRESHOLD_STEP, copyText, docTypeUpdate, parseJevThreshold, submissionCaseTypeOptions, takesSubmissions } from "./settings-input";
+import { useOfficeNameReload } from "./office-name-context";
+import { JEV_THRESHOLD_MAX, JEV_THRESHOLD_MIN, JEV_THRESHOLD_STEP, copyText, docTypeUpdate, parseJevThreshold, parseOfficeName, submissionCaseTypeOptions, takesSubmissions } from "./settings-input";
 import { outstandingInvitations } from "./staff-invitations";
 
 const DIRECTIONS = ["Outbound", "Inbound", "Both"] as const;
@@ -29,6 +30,8 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
   const t = useT();
   const { api } = useSession();
   const action = useAction();
+  const [officeName, setOfficeName] = useState(view.office.officeName ?? "");
+  const [nameInvalid, setNameInvalid] = useState(false);
   const [timezone, setTimezone] = useState(view.office.timezone);
   const [pattern, setPattern] = useState(view.office.arrivalNumberPattern);
   const [days, setDays] = useState(String(view.office.retrievalDeadlineDays));
@@ -38,14 +41,17 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
 
   const save = (event: FormEvent) => {
     event.preventDefault();
+    const name = parseOfficeName(officeName);
     const jevThreshold = parseJevThreshold(threshold);
+    setNameInvalid(name === null);
     setThresholdInvalid(jevThreshold === null);
-    if (jevThreshold === null) {
+    if (name === null || jevThreshold === null) {
       return;
     }
     void action
       .run(() =>
         api.put("/api/office/settings/office", {
+          officeName: name,
           timezone,
           arrivalNumberPattern: pattern,
           retrievalDeadlineDays: Number(days),
@@ -65,6 +71,13 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
         // Native validation is off: its step check would block every save while the stored threshold is off the
         // 0.01 grid, and its messages are not ours. The threshold is checked in save and again by the server.
         <form className="stack" noValidate onSubmit={save}>
+          <TextField
+            label={t("office.settings.officeName")}
+            value={officeName}
+            onChange={setOfficeName}
+            hint={t("office.settings.officeNameHint")}
+            error={nameInvalid ? t("errors.invalid_input.office_name") : null}
+          />
           <TextField label={t("office.settings.timezone")} value={timezone} onChange={setTimezone} />
           <TextField label={t("office.settings.arrivalPattern")} value={pattern} onChange={setPattern} mono hint={t("office.settings.arrivalHint")} />
           <TextField label={t("office.settings.retrievalDays")} type="number" value={days} onChange={setDays} />
@@ -236,6 +249,11 @@ export function Settings() {
   const refresh = () => {
     settings.reload();
   };
+  const reloadOfficeName = useOfficeNameReload();
+  const savedOffice = () => {
+    refresh();
+    reloadOfficeName();
+  };
 
   const addDocType = () => {
     void action
@@ -313,10 +331,11 @@ export function Settings() {
       <h1 className="title">{t("office.settings.title")}</h1>
       <ErrorNotice error={action.error ?? settings.error} />
 
-      <OfficeSettingsForm view={current} canEdit={isOwner && current.canEditOffice} onSaved={refresh} />
+      <OfficeSettingsForm view={current} canEdit={isOwner && current.canEditOffice} onSaved={savedOffice} />
 
       <section className="card card--pad stack" aria-label={t("office.settings.docTypes")}>
         <h2 className="subtitle">{t("office.settings.docTypes")}</h2>
+        <p className="muted">{t("office.settings.ruleExplanation")}</p>
         <ul className="list">
           {current.docTypes.map((type: DocTypeRecord) => (
             <li key={type.id} className="list__item">

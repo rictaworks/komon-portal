@@ -146,6 +146,7 @@ export interface StaffList {
 }
 
 export interface OfficeSetting {
+  officeName: string | null;
   timezone: string;
   arrivalNumberPattern: string;
   retrievalDeadlineDays: number;

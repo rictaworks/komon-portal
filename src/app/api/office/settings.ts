@@ -1,8 +1,18 @@
 import { Hono } from "hono";
+import { invalidInput } from "../../../core/model/errors";
 import { CASE_KINDS, DOC_TYPE_DIRECTIONS } from "../../../core/model/types";
 import { requireAuth, type AppBindings } from "../context";
-import { optionalString, readJson, requireBoolean, requireEnum, requireInteger, requireNumber, requireString } from "../input";
+import { optionalString, readJson, requireBoolean, requireEnum, requireInteger, requireNumber, requireString, type JsonObject } from "../input";
 import { Lookups, pageOf } from "./views";
+
+/** The office name is checked by the settings service (1 to 100 characters after trimming); here only its type is. */
+function officeNameOf(body: JsonObject): string {
+  const value = body.officeName;
+  if (typeof value !== "string") {
+    throw invalidInput("office_name");
+  }
+  return value;
+}
 
 export function settingsRoutes(): Hono<AppBindings> {
   const routes = new Hono<AppBindings>();
@@ -28,6 +38,7 @@ export function settingsRoutes(): Hono<AppBindings> {
     const updated = await c.get("services").settings.updateOffice(
       actor,
       {
+        officeName: officeNameOf(body),
         timezone: requireString(body, "timezone", 64),
         arrivalNumberPattern: requireString(body, "arrivalNumberPattern", 100),
         retrievalDeadlineDays: requireInteger(body, "retrievalDeadlineDays"),

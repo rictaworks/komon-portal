@@ -66,7 +66,14 @@ describe("ClientService", () => {
 describe("SettingsService", () => {
   let repo: MemoryRepository;
   let service: SettingsService;
-  const input = { timezone: "Asia/Tokyo", arrivalNumberPattern: "[0-9]{17,18}", retrievalDeadlineDays: 90, autoPublishEnabled: true, jevThreshold: 0.95 };
+  const input = {
+    officeName: "Aoba Labor Office",
+    timezone: "Asia/Tokyo",
+    arrivalNumberPattern: "[0-9]{17,18}",
+    retrievalDeadlineDays: 90,
+    autoPublishEnabled: true,
+    jevThreshold: 0.95,
+  };
 
   beforeEach(() => {
     repo = new MemoryRepository();
@@ -92,6 +99,24 @@ describe("SettingsService", () => {
   ])("rejects %j", async (override, message) => {
     await expect(service.updateOffice(owner, { ...input, ...override }, 1)).rejects.toThrow(message);
     expect(repo.setting.version).toBe(1);
+  });
+
+  it.each([
+    [{ officeName: "" }, "invalid_input: office_name"],
+    [{ officeName: "   " }, "invalid_input: office_name"],
+    [{ officeName: "a".repeat(101) }, "invalid_input: office_name"],
+    [{ officeName: "事".repeat(101) }, "invalid_input: office_name"],
+    [{ officeName: null as never }, "invalid_input: office_name"],
+  ])("rejects an office name %j", async (override, message) => {
+    await expect(service.updateOffice(owner, { ...input, ...override }, 1)).rejects.toThrow(message);
+    expect(repo.setting.version).toBe(1);
+    expect(repo.setting.officeName).toBeNull();
+  });
+
+  it("stores the office name trimmed and accepts 100 characters", async () => {
+    expect((await service.updateOffice(owner, { ...input, officeName: "  Aoba Labor Office " }, 1)).officeName).toBe("Aoba Labor Office");
+    expect(repo.setting.officeName).toBe("Aoba Labor Office");
+    expect((await service.updateOffice(owner, { ...input, officeName: "事".repeat(100) }, 2)).officeName).toBe("事".repeat(100));
   });
 
   it("accepts the lowest and highest threshold", async () => {
