@@ -1,4 +1,6 @@
 import type { FileView, IntakeResult } from "../../api/office-types";
+import type { Translator } from "../../i18n";
+import { caseLabel } from "./shelf-view";
 
 /** Rules of the Intake screen that do not need React: what a row is about, and when classification may run. */
 
@@ -19,13 +21,13 @@ export function isNotStored(result: RowResult): boolean {
 }
 
 /**
- * The message key of the sentence that explains how a file was matched, or null when no key matched.
+ * The message key of the sentence that explains how a file was matched, or null when no method matched.
  * An arrival number that found a case is explained with the case.
  */
-export function matchReasonKey(file: Pick<FileView, "resolutionMethod" | "caseId">): string | null {
+export function matchReasonKey(file: Pick<FileView, "resolutionMethod" | "caseRef">): string | null {
   switch (file.resolutionMethod) {
     case "ArrivalNumber":
-      return file.caseId === null ? "office.intake.reason.arrivalClient" : "office.intake.reason.arrivalCase";
+      return file.caseRef === null ? "office.intake.reason.arrivalClient" : "office.intake.reason.arrivalCase";
     case "ClientCode":
       return "office.intake.reason.clientCode";
     case "CorporateNumber":
@@ -35,6 +37,51 @@ export function matchReasonKey(file: Pick<FileView, "resolutionMethod" | "caseId
     default:
       return null;
   }
+}
+
+/** The values the match sentence needs: the matched case, named as the case list names it. */
+export function matchReasonParams(file: Pick<FileView, "caseRef">): Record<string, string> {
+  return file.caseRef === null ? {} : { case: caseLabel(file.caseRef) };
+}
+
+/** The Client cell: the client of the file the row is about, or why there is none. */
+export function clientCellText(result: RowResult, file: FileView | null, t: Translator): string {
+  if (isNotStored(result)) {
+    return t("office.intake.notStored");
+  }
+  return file?.client ? `${file.client.code} ${file.client.corporateName}` : t("office.intake.notDecided");
+}
+
+/** The Decided-by cell: what settled the destination; empty when no method did. */
+export function decidedByText(result: RowResult, file: FileView | null, t: Translator): string {
+  if (result.outcome === "duplicate") {
+    return t("office.intake.sameContent");
+  }
+  if (isNotStored(result)) {
+    return t("office.intake.notStored");
+  }
+  return file?.resolutionMethod ? t(`method.${file.resolutionMethod}`) : "";
+}
+
+/**
+ * The Reason cell text: why the row has its state, or null when no sentence applies.
+ * A failed row has no text here; its error is shown as a notice instead.
+ */
+export function reasonText(result: RowResult, file: FileView | null, t: Translator): string | null {
+  if (result.outcome === "rejected") {
+    return t(`rejection.${result.reason}`);
+  }
+  if (result.outcome === "duplicate") {
+    return t("office.intake.duplicateReason");
+  }
+  if (result.outcome !== "stored" || file === null) {
+    return null;
+  }
+  if (file.reviewReason) {
+    return t(`reviewReason.${file.reviewReason}`);
+  }
+  const key = matchReasonKey(file);
+  return key === null ? null : t(key, matchReasonParams(file));
 }
 
 /** Whether a Jev key is stored in this browser. A blank key counts as none. */

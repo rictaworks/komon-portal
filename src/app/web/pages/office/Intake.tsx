@@ -10,7 +10,7 @@ import { useAction } from "../../components/useAction";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { loadJevSettings } from "./jev-settings";
-import { canClassify, fileOfResult, hasJevKey, isNotStored, matchReasonKey, type RowResult } from "./intake-view";
+import { canClassify, clientCellText, decidedByText, fileOfResult, hasJevKey, isNotStored, reasonText, type RowResult } from "./intake-view";
 
 interface Row {
   key: string;
@@ -161,22 +161,7 @@ export function Intake() {
                 {rows.map((row, index) => {
                   const file = fileOfResult(row.result);
                   const notStored = isNotStored(row.result);
-                  const matchKey = file === null ? null : matchReasonKey(file);
                   const classification = classified?.find((entry) => entry.fileId === file?.id);
-                  let clientCell = t("office.intake.notDecided");
-                  if (notStored) {
-                    clientCell = t("office.intake.notStored");
-                  } else if (file?.client) {
-                    clientCell = `${file.client.code} ${file.client.corporateName}`;
-                  }
-                  let decidedBy = "";
-                  if (row.result.outcome === "duplicate") {
-                    decidedBy = t("office.intake.sameContent");
-                  } else if (notStored) {
-                    decidedBy = t("office.intake.notStored");
-                  } else if (file?.resolutionMethod) {
-                    decidedBy = t(`method.${file.resolutionMethod}`);
-                  }
                   return (
                     <tr key={row.key}>
                       <td>
@@ -187,14 +172,10 @@ export function Intake() {
                         {row.result.outcome === "duplicate" ? <Badge tone="neutral" label={t("office.intake.duplicate")} /> : null}
                         {notStored ? <Badge tone="danger" label={t("office.intake.rejected")} /> : null}
                       </td>
-                      <td>{clientCell}</td>
-                      <td className="muted">{decidedBy}</td>
+                      <td>{clientCellText(row.result, file, t)}</td>
+                      <td className="muted">{decidedByText(row.result, file, t)}</td>
                       <td className="muted">
-                        {row.result.outcome === "rejected" ? t(`rejection.${row.result.reason}`) : null}
-                        {row.result.outcome === "failed" ? <ErrorNotice error={row.result.error} /> : null}
-                        {row.result.outcome === "duplicate" ? t("office.intake.duplicateReason") : null}
-                        {row.result.outcome === "stored" && file?.reviewReason ? t(`reviewReason.${file.reviewReason}`) : null}
-                        {row.result.outcome === "stored" && !file?.reviewReason && matchKey !== null ? t(matchKey) : null}
+                        {row.result.outcome === "failed" ? <ErrorNotice error={row.result.error} /> : reasonText(row.result, file, t)}
                         {row.result.outcome === "stored" && file?.unmatchedArrivalNumber ? ` ${t("office.intake.registerCase", { number: file.unmatchedArrivalNumber })}` : null}
                         {classification === undefined ? null : ` ${t(`office.intake.jev.${classification.outcome}`)}`}
                       </td>

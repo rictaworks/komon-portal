@@ -282,7 +282,7 @@
       "notDecided": "Not decided",
       "notStored": "Not stored",
       "reason": {
-        "arrivalCase": "Matched a case by arrival number.",
+        "arrivalCase": "Matched case {case}.",
         "arrivalClient": "Matched a client by arrival number.",
         "clientCode": "Code at the start of the file name.",
         "corporateNumber": "Matched exactly one client.",
