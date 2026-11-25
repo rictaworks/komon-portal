@@ -130,10 +130,10 @@ export function clientRoutes(): Hono<AppBindings> {
     const invitations = await services.repository.invitations.listIssued(null);
     return c.json({
       members: members.map((view) => ({
-        userId: view.user.id,
-        displayName: view.user.displayName,
-        officeRole: view.user.officeRole,
-        officeStatus: view.user.officeStatus,
+        userId: view.userId,
+        displayName: view.displayName,
+        officeRole: view.officeRole,
+        officeStatus: view.officeStatus,
         redeemedAt: view.redeemedAt,
       })),
       invitations: invitations.map(invitationView),
