@@ -519,7 +519,27 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       await repo.audit.append({ id: id("l2"), actorUserId: null, action: "file.purge", targetType: "file", targetId: id("f"), result: "failed", occurredAt: new Date("2099-01-02T00:00:00.000Z") });
       const listed = (await repo.audit.list({ limit: 500, offset: 0 })).filter((entry) => entry.targetId === id("f"));
       expect(listed.map((entry) => [entry.id, entry.actorUserId, entry.result])).toEqual([[id("l2"), null, "failed"], [id("l1"), actor.id, "ok"]]);
-      await expect(repo.metrics.append({ id: id("e1"), name: "intake.accepted", clientId: null, attributes: { fileId: id("f"), ok: true, n: 1, none: null }, occurredAt: T0 })).resolves.toBeUndefined();
+      await expect(repo.metrics.append({ id: id("e1"), name: "intake.accepted", clientId: null, actorKind: "staff", actorUserId: actor.id, attributes: { fileId: id("f"), ok: true, n: 1, none: null }, occurredAt: T0 })).resolves.toBeUndefined();
+      await expect(repo.metrics.append({ id: id("e2"), name: "maintenance.finished", clientId: null, actorKind: "system", actorUserId: null, attributes: {}, occurredAt: T0 })).resolves.toBeUndefined();
+      await expect(repo.metrics.append({ id: id("e3"), name: "invitation.redeemed", clientId: null, actorKind: null, actorUserId: null, attributes: {}, occurredAt: T0 })).resolves.toBeUndefined();
+    });
+
+    it("refuses a metric event whose actor kind and user ID do not agree", async () => {
+      const actor = await seedUser("metric-actor");
+      const event = { name: "intake.accepted", clientId: null, attributes: {}, occurredAt: T0 };
+      await expect(repo.metrics.append({ ...event, id: id("eb1"), actorKind: "staff", actorUserId: null })).rejects.toThrow();
+      await expect(repo.metrics.append({ ...event, id: id("eb2"), actorKind: "member", actorUserId: null })).rejects.toThrow();
+      await expect(repo.metrics.append({ ...event, id: id("eb3"), actorKind: "system", actorUserId: actor.id })).rejects.toThrow();
+      await expect(repo.metrics.append({ ...event, id: id("eb4"), actorKind: null, actorUserId: actor.id })).rejects.toThrow();
+    });
+
+    it("tells whether an event was already recorded for a case, by name", async () => {
+      const event = { clientId: null, actorKind: "system" as const, actorUserId: null, occurredAt: T0 };
+      await repo.metrics.append({ ...event, id: id("ec1"), name: "case.retrieval_warned", attributes: { caseId: id("kw1"), level: "warning" } });
+      await repo.metrics.append({ ...event, id: id("ec2"), name: "case.state_changed", attributes: { caseId: id("kw2"), from: null, to: "Open" } });
+      expect(await repo.metrics.hasCaseEvent("case.retrieval_warned", id("kw1"))).toBe(true);
+      expect(await repo.metrics.hasCaseEvent("case.retrieval_warned", id("kw2"))).toBe(false);
+      expect(await repo.metrics.hasCaseEvent("case.state_changed", id("kw1"))).toBe(false);
     });
 
     it("ends the sessions of a user without error when there are none", async () => {

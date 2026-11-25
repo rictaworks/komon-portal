@@ -747,11 +747,37 @@
     "events": {
       "heading": "Events"
     },
+    "dailyJob": {
+      "heading": "Daily job",
+      "none": "The daily job has not run yet.",
+      "ok": "Last run {ranAt}: completed.",
+      "failed": "Last run {ranAt}: failed ({steps}).",
+      "report": "Erased {purged} trashed files ({purgeSkipped} skipped, {purgeFailed} failed); expired {expiredInvitations} invitations; removed {removedSessions} ended sessions; recorded {retrievalWarnings} retrieval warnings.",
+      "runs": "{runs} runs in the window, {failedRuns} with a failure."
+    },
     "weekly": {
-      "heading": "Active clients per week"
+      "heading": "Active clients and staff per week",
+      "value": "{clients} clients, {staff} staff"
     },
     "accepted": {
       "heading": "Accepted documents by matching method"
+    },
+    "review": {
+      "heading": "Review-required documents by reason"
+    },
+    "intakeToPublish": {
+      "heading": "Intake to publication",
+      "text": "{count} documents published; average {hours} hours from intake to publication.",
+      "noData": "{count} documents published; no average yet."
+    },
+    "jev": {
+      "heading": "Jev judgments",
+      "outcome": "{accepted} applied; {belowThreshold} below the threshold and left to staff.",
+      "confidence": "Confidence {range}"
+    },
+    "retrieval": {
+      "heading": "Retrieval deadline warnings",
+      "total": "{cases} cases entered the warning period. Their state now:"
     },
     "withdrawals": {
       "heading": "Withdrawals by reason",

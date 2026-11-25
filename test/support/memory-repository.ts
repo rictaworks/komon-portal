@@ -584,7 +584,14 @@ export class MemoryRepository implements Repository {
 
   metrics = {
     append: async (event: MetricEvent): Promise<void> => {
+      // Mirrors the CHECK on metric_events: a person always has an ID, the system and nobody never do.
+      const person = event.actorKind === "staff" || event.actorKind === "member";
+      if (person !== (event.actorUserId !== null)) {
+        throw new Error("metric event actor kind and user ID do not agree");
+      }
       this.metricRows.push(copy(event));
     },
+    hasCaseEvent: async (name: string, caseId: Id): Promise<boolean> =>
+      this.metricRows.some((row) => row.name === name && row.attributes.caseId === caseId),
   };
 }

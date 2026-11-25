@@ -28,7 +28,38 @@ function renderPage(summary: MetricsSummary): string {
   const rows = (items: readonly { label: string; value: string }[]) =>
     items.map((item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(item.value)}</td></tr>`).join("");
   const events = rows(summary.events.map((event) => ({ label: event.name, value: String(event.count) })));
-  const weeks = rows(summary.activeClientsByWeek.map((week) => ({ label: week.week, value: String(week.clients) })));
+  const weeks = rows(
+    summary.activeByWeek.map((week) => ({ label: week.week, value: adminText("admin.weekly.value", { clients: week.clients, staff: week.staff }) })),
+  );
+  const review = rows(summary.reviewByReason.map((entry) => ({ label: entry.reason, value: String(entry.count) })));
+  const intakeToPublish = summary.intakeToPublishHours;
+  const intakeToPublishText =
+    intakeToPublish.averageHours === null
+      ? adminText("admin.intakeToPublish.noData", { count: intakeToPublish.count })
+      : adminText("admin.intakeToPublish.text", { count: intakeToPublish.count, hours: intakeToPublish.averageHours.toFixed(1) });
+  const jevConfidence = rows(
+    summary.jev.confidence.map((entry) => ({ label: adminText("admin.jev.confidence", { range: entry.range }), value: String(entry.count) })),
+  );
+  const warnedStates = rows(summary.retrievalWarnings.byState.map((entry) => ({ label: entry.state, value: String(entry.count) })));
+  const lastRun = summary.dailyJob.last;
+  const jobLines =
+    lastRun === null
+      ? [adminText("admin.dailyJob.none")]
+      : [
+          lastRun.result === "ok"
+            ? adminText("admin.dailyJob.ok", { ranAt: lastRun.ranAt })
+            : adminText("admin.dailyJob.failed", { ranAt: lastRun.ranAt, steps: lastRun.failedSteps.join(", ") }),
+          adminText("admin.dailyJob.report", {
+            purged: lastRun.purged,
+            purgeSkipped: lastRun.purgeSkipped,
+            purgeFailed: lastRun.purgeFailed,
+            expiredInvitations: lastRun.expiredInvitations,
+            removedSessions: lastRun.removedSessions,
+            retrievalWarnings: lastRun.retrievalWarnings,
+          }),
+        ];
+  jobLines.push(adminText("admin.dailyJob.runs", { runs: summary.dailyJob.runs, failedRuns: summary.dailyJob.failedRuns }));
+  const job = jobLines.map((line) => `<p>${escapeHtml(line)}</p>`).join("");
   const accepted = rows(summary.acceptedByMethod.map((entry) => ({ label: entry.method, value: String(entry.count) })));
   const withdrawals = rows(
     summary.withdrawalsByReason.map((entry) => ({ label: entry.reason, value: adminText("admin.withdrawals.incidents", { count: entry.count, incidents: entry.incidents }) })),
@@ -44,9 +75,14 @@ function renderPage(summary: MetricsSummary): string {
 <body>
 <h1>${escapeHtml(adminText("admin.title"))}</h1>
 <p>${escapeHtml(adminText("admin.window", { days: summary.windowDays }))}</p>
+<h2>${escapeHtml(adminText("admin.dailyJob.heading"))}</h2>${job}
 <h2>${escapeHtml(adminText("admin.events.heading"))}</h2><table><tbody>${events}</tbody></table>
 <h2>${escapeHtml(adminText("admin.weekly.heading"))}</h2><table><tbody>${weeks}</tbody></table>
 <h2>${escapeHtml(adminText("admin.accepted.heading"))}</h2><table><tbody>${accepted}</tbody></table>
+<h2>${escapeHtml(adminText("admin.review.heading"))}</h2><table><tbody>${review}</tbody></table>
+<h2>${escapeHtml(adminText("admin.intakeToPublish.heading"))}</h2><p>${escapeHtml(intakeToPublishText)}</p>
+<h2>${escapeHtml(adminText("admin.jev.heading"))}</h2><p>${escapeHtml(adminText("admin.jev.outcome", { accepted: summary.jev.accepted, belowThreshold: summary.jev.belowThreshold }))}</p><table><tbody>${jevConfidence}</tbody></table>
+<h2>${escapeHtml(adminText("admin.retrieval.heading"))}</h2><p>${escapeHtml(adminText("admin.retrieval.total", { cases: summary.retrievalWarnings.cases }))}</p><table><tbody>${warnedStates}</tbody></table>
 <h2>${escapeHtml(adminText("admin.withdrawals.heading"))}</h2><table><tbody>${withdrawals}</tbody></table>
 <h2>${escapeHtml(adminText("admin.firstView.heading"))}</h2><p>${escapeHtml(firstViewText)}</p>
 </body>

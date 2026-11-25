@@ -169,7 +169,7 @@ export class ClassificationService {
       throw error;
     }
     await this.deps.audit.record(actor, "file.classify", FILE_TARGET, file.id);
-    await this.deps.metrics.record("jev.classified", file.clientId, { fileId: file.id, model, confidence: answer.confidence, accepted });
+    await this.deps.metrics.record(actor, "jev.classified", file.clientId, { fileId: file.id, model, confidence: answer.confidence, accepted });
     return accepted
       ? { fileId: file.id, outcome: "classified", docTypeId: answer.choiceId, confidence: answer.confidence }
       : { fileId: file.id, outcome: "below_threshold", candidateDocTypeId: answer.choiceId, confidence: answer.confidence };

@@ -54,7 +54,7 @@ export class SubmissionService {
     const docType = await this.validate(input);
     const validation = validateFile(incoming);
     if (!validation.ok) {
-      await this.deps.metrics.record("submission.rejected", input.clientId, { reason: validation.reason });
+      await this.deps.metrics.record(actor, "submission.rejected", input.clientId, { reason: validation.reason });
       return { outcome: "rejected", reason: validation.reason };
     }
     const sha256 = await sha256Hex(incoming.bytes);
@@ -91,7 +91,7 @@ export class SubmissionService {
       return this.duplicate(actor, winner ?? null);
     }
     await this.deps.audit.record(actor, "file.submit", FILE_TARGET, written.file.id);
-    await this.deps.metrics.record("submission.received", input.clientId, {
+    await this.deps.metrics.record(actor, "submission.received", input.clientId, {
       fileId: written.file.id,
       linked: written.file.caseId !== null,
       heldByOtherClient: copies.some((copy) => copy.clientId !== null),
@@ -122,7 +122,7 @@ export class SubmissionService {
       expectedVersion,
     );
     await this.deps.audit.record(actor, "submission.cancel", FILE_TARGET, fileId);
-    await this.deps.metrics.record("submission.cancelled", file.clientId, { fileId });
+    await this.deps.metrics.record(actor, "submission.cancelled", file.clientId, { fileId });
     if (file.caseId !== null) {
       await this.deps.cases.onFileEvent(file.caseId);
     }

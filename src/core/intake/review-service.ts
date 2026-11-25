@@ -65,7 +65,7 @@ export class ReviewService {
       true,
     );
     await this.deps.audit.record(actor, "file.assign", FILE_TARGET, fileId);
-    await this.deps.metrics.record("review.assigned", updated.clientId, {
+    await this.deps.metrics.record(actor, "review.assigned", updated.clientId, {
       fileId,
       reason: file.reviewReason,
       clientChanged: file.clientId !== null && file.clientId !== input.clientId,
@@ -89,7 +89,7 @@ export class ReviewService {
       true,
     );
     await this.deps.audit.record(actor, "file.set_type", FILE_TARGET, fileId);
-    await this.deps.metrics.record("review.type_changed", updated.clientId, { fileId, previousSource: file.typeSource });
+    await this.deps.metrics.record(actor, "review.type_changed", updated.clientId, { fileId, previousSource: file.typeSource });
     return updated;
   }
 
@@ -106,7 +106,7 @@ export class ReviewService {
       expectedVersion,
     );
     await this.deps.audit.record(actor, "file.send_back", FILE_TARGET, fileId);
-    await this.deps.metrics.record("review.sent_back", updated.clientId, { fileId });
+    await this.deps.metrics.record(actor, "review.sent_back", updated.clientId, { fileId });
     await this.notifyCases(file.caseId, updated.caseId);
     return updated;
   }
@@ -127,7 +127,7 @@ export class ReviewService {
       expectedVersion,
     );
     await this.deps.audit.record(actor, "file.trash", FILE_TARGET, fileId);
-    await this.deps.metrics.record("file.trashed", updated.clientId, { fileId, from: file.state });
+    await this.deps.metrics.record(actor, "file.trashed", updated.clientId, { fileId, from: file.state });
     await this.notifyCases(file.caseId, null);
     return updated;
   }

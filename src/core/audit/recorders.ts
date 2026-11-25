@@ -1,6 +1,6 @@
 import type { Actor } from "../model/actor";
 import { actorUserId } from "../model/actor";
-import type { AuditEntry, Id, MetricEvent } from "../model/types";
+import type { AuditEntry, Id, MetricActorKind, MetricEvent } from "../model/types";
 import type { Clock } from "../ports/clock";
 import type { IdGenerator } from "../ports/id-generator";
 import type { AuditRepository, MetricRepository } from "../ports/repository";
@@ -32,6 +32,22 @@ export class AuditRecorder {
   }
 }
 
+/**
+ * How a measurement event names its actor: the kind and, for a person, the internal user ID.
+ * A user with an active office role acts as staff; any other signed-in user acts as a client
+ * member (the two roles never combine). The scheduled jobs act as the system.
+ */
+export function metricActorOf(actor: Actor | null): Pick<MetricEvent, "actorKind" | "actorUserId"> {
+  if (actor === null) {
+    return { actorKind: null, actorUserId: null };
+  }
+  if (actor.kind === "system") {
+    return { actorKind: "system", actorUserId: null };
+  }
+  const actorKind: MetricActorKind = actor.officeRole !== null && actor.officeStatus === "Active" ? "staff" : "member";
+  return { actorKind, actorUserId: actor.userId };
+}
+
 /** Appends measurement events. Attributes hold internal IDs and codes only, never names. */
 export class MetricRecorder {
   constructor(
@@ -40,7 +56,8 @@ export class MetricRecorder {
     private readonly ids: IdGenerator,
   ) {}
 
-  async record(name: string, clientId: Id | null, attributes: MetricEvent["attributes"] = {}): Promise<void> {
-    await this.metrics.append({ id: this.ids.newId(), name, clientId, attributes, occurredAt: this.clock.now() });
+  /** Appends an event. `actor` is who caused it, or null when nobody identified did. */
+  async record(actor: Actor | null, name: string, clientId: Id | null, attributes: MetricEvent["attributes"] = {}): Promise<void> {
+    await this.metrics.append({ id: this.ids.newId(), name, clientId, ...metricActorOf(actor), attributes, occurredAt: this.clock.now() });
   }
 }

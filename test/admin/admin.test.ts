@@ -70,7 +70,29 @@ describe("admin Worker", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Security-Policy")).toBe("default-src 'none'; frame-ancestors 'none'");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
-    expect(await response.text()).toContain("intake.accepted");
+    const page = await response.text();
+    expect(page).toContain("intake.accepted");
+    for (const heading of [
+      "Daily job", "Active clients and staff per week", "Review-required documents by reason", "Intake to publication",
+      "Jev judgments", "Retrieval deadline warnings",
+    ]) {
+      expect(page).toContain(`<h2>${heading}</h2>`);
+    }
+    expect(page).toContain("The daily job has not run yet.");
+  });
+
+  it("shows the last run of the daily job on the page", async () => {
+    await env.DB.prepare(
+      "INSERT INTO metric_events (id, name, client_id, actor_kind, actor_user_id, attributes, occurred_at) VALUES ('metric-job-1', 'maintenance.finished', NULL, 'system', NULL, ?, ?)",
+    ).bind(
+      JSON.stringify({ result: "failed", failedSteps: "purge_files", purged: 3, purgeSkipped: 0, purgeFailed: 1, expiredInvitations: 2, removedSessions: 4, retrievalWarnings: 1 }),
+      "2026-11-24T18:00:00.000Z",
+    ).run();
+    const response = await app.request("/", { headers: { "Cf-Access-Jwt-Assertion": await assertion() } }, config);
+    const page = await response.text();
+    expect(page).toContain("Last run 2026-11-24T18:00:00.000Z: failed (purge_files).");
+    expect(page).not.toContain("The daily job has not run yet.");
+    expect(page).not.toContain("metric-job-1");
   });
 
   it("reports an unreachable key set as an outage, not as a refused visitor", async () => {
@@ -88,9 +110,9 @@ describe("admin Worker", () => {
     await env.DB.prepare("INSERT INTO metric_events (id, name, client_id, attributes, occurred_at) VALUES (?, 'week.probe', 'client-week', '{}', ?)")
       .bind("metric-week-probe", "2027-01-01T12:00:00.000Z").run();
     const response = await app.request("/api/summary", { headers: { "Cf-Access-Jwt-Assertion": await assertion() } }, config);
-    const summary = (await response.json()) as { events: { name: string }[]; activeClientsByWeek: { week: string; clients: number }[] };
+    const summary = (await response.json()) as { events: { name: string }[]; activeByWeek: { week: string; clients: number; staff: number }[] };
     expect(summary.events.map((event) => event.name)).not.toContain("window.old");
-    expect(summary.activeClientsByWeek).toContainEqual({ week: "2026-W53", clients: 1 });
+    expect(summary.activeByWeek).toContainEqual({ week: "2026-W53", clients: 1, staff: 0 });
   });
 
   it("counts a document once, from its earliest view, however many members open it", async () => {

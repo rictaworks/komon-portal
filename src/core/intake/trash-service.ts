@@ -165,7 +165,7 @@ export class TrashService {
   private async recordFailure(actor: Actor, file: PendingPurge, error: unknown): Promise<void> {
     try {
       await this.deps.audit.record(actor, "file.purge", FILE_TARGET, file.id, "failed");
-      await this.deps.metrics.record("purge.failed", file.clientId, { fileId: file.id, error: error instanceof Error ? error.name : "unknown" });
+      await this.deps.metrics.record(actor, "purge.failed", file.clientId, { fileId: file.id, error: error instanceof Error ? error.name : "unknown" });
     } catch {
       // The failure is still counted in the report returned to the caller.
     }
