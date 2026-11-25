@@ -45,4 +45,4 @@ sequenceDiagram
   P->>D: first-view receipt, audit entry
 ```
 
-A failure at a step leaves the record as it was, and the result for that file says why. Two known exceptions, both listed in the README: a publish whose follow-up writes (audit, metric or case update) fail is still published and carries a warning; and a purge whose body cannot be removed after its record is erased.
+A failure at a step leaves the record as it was, and the result for that file says why. One known exception, listed in the README: a publish whose follow-up writes (audit, metric or case update) fail is still published and carries a warning.
