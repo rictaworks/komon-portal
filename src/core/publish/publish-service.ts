@@ -93,7 +93,7 @@ export class PublishService implements AutoPublisher {
       }
     } finally {
       // Also when a later file failed: the clients of the files published before it are told.
-      await this.notifyClients(results);
+      await this.notifyClients(actor, results);
     }
     return results;
   }
@@ -106,7 +106,7 @@ export class PublishService implements AutoPublisher {
       return false;
     }
     const result = await this.publishOne(systemActor(), { fileId, version: file.version }, "file.auto_publish", "throw");
-    await this.notifyClients([result]);
+    await this.notifyClients(systemActor(), [result]);
     return result.outcome === "published";
   }
 
@@ -145,7 +145,7 @@ export class PublishService implements AutoPublisher {
       ? { ...hidden, incidentFlag: true, incidentClientId: file.clientId, incidentReason: reason, incidentAt: this.deps.writer.now() }
       : hidden;
     const settled = await this.settleWithdrawn(flagged, input.next);
-    await this.bestEffort(() => this.deps.metrics.record("file.withdrawn", file.clientId, { fileId, reason, incident, opened: receipts.length }));
+    await this.bestEffort(() => this.deps.metrics.record(actor, "file.withdrawn", file.clientId, { fileId, reason, incident, opened: receipts.length }));
     if (file.caseId !== null) {
       await this.deps.cases.onFileEvent(file.caseId);
     }
@@ -216,7 +216,7 @@ export class PublishService implements AutoPublisher {
       }
       // Nothing was written: the file is still staged. The cause is kept as a measurement event.
       await this.bestEffort(() =>
-        this.deps.metrics.record("publish.failed", file.clientId, { fileId: file.id, error: error instanceof Error ? error.name : "unknown" }),
+        this.deps.metrics.record(actor, "publish.failed", file.clientId, { fileId: file.id, error: error instanceof Error ? error.name : "unknown" }),
       );
       return skip("not_recorded");
     }
@@ -224,7 +224,7 @@ export class PublishService implements AutoPublisher {
     // follows must not report the file as failed or stop the remaining files; it is returned as
     // a warning instead.
     const recorded = await this.bestEffort(async () => {
-      await this.deps.metrics.record("file.published", file.clientId, {
+      await this.deps.metrics.record(actor, "file.published", file.clientId, {
         fileId: file.id,
         method: file.resolutionMethod,
         automatic: actor.kind === "system",
@@ -265,13 +265,13 @@ export class PublishService implements AutoPublisher {
   }
 
   /** One notification per client. A notification failure is recorded and never undoes or blocks publishing. */
-  private async notifyClients(results: readonly PublishResult[]): Promise<void> {
+  private async notifyClients(actor: Actor, results: readonly PublishResult[]): Promise<void> {
     const clientIds = new Set(results.flatMap((result) => (result.outcome === "published" ? [result.clientId] : [])));
     for (const clientId of clientIds) {
       try {
         await this.deps.notifier.notifyNewDocument(clientId);
       } catch (error) {
-        await this.bestEffort(() => this.deps.metrics.record("notify.failed", clientId, { error: error instanceof Error ? error.name : "unknown" }));
+        await this.bestEffort(() => this.deps.metrics.record(actor, "notify.failed", clientId, { error: error instanceof Error ? error.name : "unknown" }));
       }
     }
   }

@@ -152,7 +152,8 @@ export class InvitationService {
       throw error instanceof DomainError ? invalidInput(INVALID_CODE) : error;
     }
     await this.deps.audit.record(actor, "invitation.redeem", INVITATION_TARGET, invitation.id);
-    await this.deps.metrics.record("invitation.redeemed", invitation.clientId, { target: invitation.targetType });
+    // The user holds no role yet (the request is only pending), so the event names no actor.
+    await this.deps.metrics.record(null, "invitation.redeemed", invitation.clientId, { target: invitation.targetType });
     return redeemed;
   }
 

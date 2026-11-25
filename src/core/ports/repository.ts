@@ -265,6 +265,8 @@ export interface AuditRepository {
 
 export interface MetricRepository {
   append(event: MetricEvent): Promise<void>;
+  /** Whether an event with this name was already recorded for the case (its `caseId` attribute). */
+  hasCaseEvent(name: string, caseId: Id, submittedOn: string): Promise<boolean>;
 }
 
 /** Persistence port of the Domain Core. */

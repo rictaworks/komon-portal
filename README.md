@@ -15,7 +15,6 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 - A publish is stored together with its audit entry, or not at all; in a batch, a file whose entry cannot be stored stays staged, is reported for that file, and the other files are still published. A case state change made by the system is stored together with its audit entry in the same way. What follows it is best-effort: when the measurement event or the update of the linked case (with that update's own audit entry) fails, the file is still published and its result carries a warning. For a withdrawal only the measurement event is best-effort.
 - The Owner dashboard lists the five most recently withdrawn mis-deliveries, each with the client that had the document, the readers up to the withdrawal and their first view times; the incidents list shows the 100 most recently withdrawn and says when more exist, but has no paging. A document that was mis-delivered more than once is listed once, as of its latest such withdrawal.
 - The Unread, Retrieval and Due soon lists of the dashboard hold at most 100 items each; when more match, the card shows `100+` and the list says so.
-- The weekly count of staff using the portal is not measured: events do not record the acting staff member.
 - The document list of a shelf loads a first page only (documents are not paged in the screen yet). The Review and Staged lists show at most 200 documents.
 - Browser checks are manual in this version: there is no automated end-to-end run in CI yet.
 
@@ -165,11 +164,17 @@ A separate Worker in `src/admin` with `wrangler.admin.jsonc`. It has a D1 bindin
 
 | Path | What it returns |
 |---|---|
-| `/` | Summary page: events, weekly active clients, accepted documents by method, withdrawals by reason, time from publication to first view |
+| `/` | Summary page for the last 30 days: the last run of the daily job and what it reported, events, weekly active clients and staff, accepted documents by method, review-required documents by reason, time from intake to publication, Jev judgments by outcome and confidence range, cases that entered a retrieval warning by their state now, withdrawals by reason, time from publication to first view |
 | `/api/summary` | The same figures as JSON |
 | `/api/health` | Liveness |
 
 Counts and averages only: no names, file names or identifiers.
+
+How the figures are measured:
+
+- Each measurement event stores who caused it as a kind (staff, client member or the system) and, for a person, the internal user ID. A staff member is active in a week when at least one event of that week was caused by them; reading screens alone records no event. Events recorded before migration `0005_metric_actor.sql` name no actor, so earlier weeks show no staff.
+- The daily job records, once per case, each submitted case whose retrieval deadline is 10 days away or less (or has passed). The summary groups the cases recorded in the window by the state they are in now, so a case still shown as `Submitted` is still waiting for its document.
+- The daily job stores the outcome of each run as an event. The summary shows the most recent run with its time, whether it completed or which steps failed, and its counts; it is a record to read, not an alert.
 
 ## Deployment
 

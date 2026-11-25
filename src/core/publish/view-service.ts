@@ -151,7 +151,7 @@ export class ViewService {
     });
     if (first) {
       await this.deps.audit.record(actor, "file.receive", FILE_TARGET, file.id);
-      await this.deps.metrics.record("file.first_viewed", file.clientId, {
+      await this.deps.metrics.record(actor, "file.first_viewed", file.clientId, {
         fileId: file.id,
         secondsSincePublished: file.publishedAt === null ? null : Math.round((now.getTime() - file.publishedAt.getTime()) / 1000),
       });
@@ -171,7 +171,7 @@ export class ViewService {
     try {
       const updated = await this.deps.writer.update({ ...file, state: "Acknowledged", acknowledgedAt: this.deps.writer.now() }, file.version);
       await this.deps.audit.record(actor, "file.acknowledge", FILE_TARGET, file.id);
-      await this.deps.metrics.record("submission.acknowledged", file.clientId, { fileId: file.id });
+      await this.deps.metrics.record(actor, "submission.acknowledged", file.clientId, { fileId: file.id });
       return updated;
     } catch (error) {
       // Another staff member acknowledged it at the same moment: read the settled record.
