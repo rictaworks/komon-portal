@@ -575,7 +575,7 @@ export class MemoryRepository implements Repository {
       this.receiptRows.some((row) => row.fileId === fileId && row.userId === userId),
   };
 
-  /** Mirrors AUDIT_OF_CLIENT in the D1 adapter: the client, and its cases and files as they are stored now. */
+  /** Mirrors AUDIT_OF_CLIENT in the D1 adapter: the client, and its cases, files, memberships and client invitations as they are stored now. */
   private concernsClient(entry: AuditEntry, clientId: Id): boolean {
     switch (entry.targetType) {
       case "client":
@@ -584,6 +584,10 @@ export class MemoryRepository implements Repository {
         return this.caseRows.some((row) => row.id === entry.targetId && row.clientId === clientId);
       case "file":
         return this.fileRows.some((row) => row.id === entry.targetId && row.clientId === clientId);
+      case "membership":
+        return this.membershipRows.some((row) => row.id === entry.targetId && row.clientId === clientId);
+      case "invitation":
+        return this.invitationRows.some((row) => row.id === entry.targetId && row.clientId === clientId);
       default:
         return false;
     }

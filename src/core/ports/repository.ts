@@ -260,8 +260,8 @@ export interface ReceiptRepository {
 
 export interface AuditFilter {
   /**
-   * Lists only the entries about this client: the client itself, and its cases and files as they are stored now.
-   * Left out, every entry is listed. An entry about a file or case that no longer exists is not listed under a client.
+   * Lists only the entries about this client: the client itself, and its cases, files, memberships and client invitations
+   * as they are stored now. Left out, every entry is listed. An entry about a record that no longer exists is not listed under a client.
    */
   clientId?: Id;
 }
