@@ -127,6 +127,7 @@ export interface SettingsView {
   docTypes: DocTypeRecord[];
   docRules: { id: string; docTypeId: string; keyword: string }[];
   caseTypes: { id: string; kind: "Procedure" | "Payroll" | "Other"; label: string }[];
+  notifications: { pushConfigured: boolean };
 }
 
 export type IntakeResult =

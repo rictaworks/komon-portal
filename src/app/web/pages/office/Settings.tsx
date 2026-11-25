@@ -1,6 +1,8 @@
+import { faCopy } from "@fortawesome/free-solid-svg-icons";
 import { useState, type FormEvent } from "react";
 import type { DocTypeRecord, SettingsView, StaffList } from "../../api/office-types";
-import { CheckField, SelectField, TextField } from "../../components/Form";
+import { CheckField, Field, SelectField, TextField } from "../../components/Form";
+import { Icon } from "../../components/Icon";
 import { ErrorNotice, Notice } from "../../components/Notice";
 import { useAction } from "../../components/useAction";
 import { useLoad } from "../../components/useLoad";
@@ -12,6 +14,14 @@ import { isFixedModelName, loadJevSettings, removeJevSettings, saveJevSettings }
 const DIRECTIONS = ["Outbound", "Inbound", "Both"] as const;
 const CASE_KINDS = ["Procedure", "Payroll", "Other"] as const;
 const JEV_PRICING_URL = "https://docs.typesafe.ai/models";
+const JEV_LIMITS_URL = "https://docs.typesafe.ai/model-jaggedness/jev-1.13";
+const JEV_THRESHOLD_MIN = "0.80";
+const JEV_THRESHOLD_MAX = "1";
+const JEV_THRESHOLD_STEP = "0.01";
+
+function staffInviteLink(code: string): string {
+  return `${window.location.origin}/redeem#${code}`;
+}
 
 /** Office settings, document and case types, staff, and the browser-held Jev key. */
 /** Office-wide values. Owner only; Staff see them read-only as a notice. */
@@ -23,6 +33,7 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
   const [pattern, setPattern] = useState(view.office.arrivalNumberPattern);
   const [days, setDays] = useState(String(view.office.retrievalDeadlineDays));
   const [autoPublish, setAutoPublish] = useState(view.office.autoPublishEnabled);
+  const [threshold, setThreshold] = useState(String(view.office.jevThreshold));
 
   const save = (event: FormEvent) => {
     event.preventDefault();
@@ -33,6 +44,8 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
           arrivalNumberPattern: pattern,
           retrievalDeadlineDays: Number(days),
           autoPublishEnabled: autoPublish,
+          // An empty or non-numeric entry becomes NaN, which JSON sends as null and the server refuses.
+          jevThreshold: Number.parseFloat(threshold),
           version: view.office.version,
         }),
       )
@@ -51,6 +64,21 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
           <CheckField checked={autoPublish} onChange={setAutoPublish}>
             {t("office.settings.autoPublish")}
           </CheckField>
+          <Field label={t("office.settings.jevThreshold")} hint={t("office.settings.jevThresholdHint")}>
+            {(id) => (
+              <input
+                id={id}
+                className="input input--narrow"
+                type="number"
+                min={JEV_THRESHOLD_MIN}
+                max={JEV_THRESHOLD_MAX}
+                step={JEV_THRESHOLD_STEP}
+                required
+                value={threshold}
+                onChange={(event) => setThreshold(event.target.value)}
+              />
+            )}
+          </Field>
           <button type="submit" className="button button--primary" disabled={action.busy}>
             {t("office.settings.save")}
           </button>
@@ -62,11 +90,93 @@ function OfficeSettingsForm({ view, canEdit, onSaved }: { view: SettingsView; ca
   );
 }
 
+/** Staff members and staff invitations. Rendered for the Owner only, so the Owner-only list is never requested by Staff. */
+function StaffSection() {
+  const t = useT();
+  const { api, me } = useSession();
+  const staff = useLoad<StaffList>(() => api.get<StaffList>("/api/office/staff"), []);
+  const action = useAction();
+  const [staffRole, setStaffRole] = useState<string>("Staff");
+  const [issuedLink, setIssuedLink] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+
+  const inviteStaff = () => {
+    void action.run(async () => {
+      // The code is returned by this one response only; the server keeps its hash.
+      const issued = await api.post<{ code: string }>("/api/office/staff/invitations", { role: staffRole });
+      setIssuedLink(staffInviteLink(issued.code));
+      setCopyState("idle");
+      staff.reload();
+    });
+  };
+
+  const copyLink = (link: string) => () => {
+    navigator.clipboard.writeText(link).then(
+      () => setCopyState("copied"),
+      () => setCopyState("failed"),
+    );
+  };
+
+  const staffAction = (userId: string, verb: "approve" | "reject" | "revoke") => () => {
+    void action.run(() => api.post(`/api/office/staff/${userId}/${verb}`, {})).then((ok) => ok && staff.reload());
+  };
+
+  return (
+    <section className="card card--pad stack" aria-label={t("office.settings.staff")}>
+      <h2 className="subtitle">{t("office.settings.staff")}</h2>
+      <ErrorNotice error={action.error ?? staff.error} />
+      <ul className="list">
+        {(staff.data?.members ?? []).map((member) => (
+          <li key={member.userId} className="list__item">
+            <span className="grow">{member.displayName}</span>
+            <span className="muted">{member.officeRole === null ? "" : t(`role.${member.officeRole}`)}</span>
+            {member.officeStatus === "Pending" ? (
+              <>
+                <button type="button" className="button" disabled={action.busy} onClick={staffAction(member.userId, "approve")}>
+                  {t("office.clients.approve")}
+                </button>
+                <button type="button" className="button button--danger" disabled={action.busy} onClick={staffAction(member.userId, "reject")}>
+                  {t("office.clients.reject")}
+                </button>
+              </>
+            ) : null}
+            {member.officeStatus === "Active" && member.userId !== me?.user.id ? (
+              <button type="button" className="button button--danger" disabled={action.busy} onClick={staffAction(member.userId, "revoke")}>
+                {t("office.clients.revoke")}
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <div className="grid2">
+        <SelectField label={t("office.settings.staffRole")} value={staffRole} options={[{ value: "Staff", label: t("role.Staff") }, { value: "Owner", label: t("role.Owner") }]} onChange={setStaffRole} />
+      </div>
+      <button type="button" className="button" disabled={action.busy} onClick={inviteStaff}>
+        {t("office.settings.inviteStaff")}
+      </button>
+      {issuedLink === null ? null : (
+        <div className="stack">
+          <Notice tone="success">{t("office.settings.staffInviteIssued")}</Notice>
+          <Field label={t("office.settings.staffInviteLink")} hint={t("office.settings.staffInviteHint")}>
+            {(id) => <input id={id} className="input mono" readOnly value={issuedLink} />}
+          </Field>
+          <div className="row">
+            <button type="button" className="button" onClick={copyLink(issuedLink)}>
+              <Icon icon={faCopy} /> {t("office.settings.copyLink")}
+            </button>
+            {copyState === "copied" ? <span role="status">{t("office.settings.copied")}</span> : null}
+          </div>
+          {copyState === "failed" ? <Notice tone="danger">{t("office.settings.copyFailed")}</Notice> : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function Settings() {
   const t = useT();
   const { api, me } = useSession();
   const settings = useLoad<SettingsView>(() => api.get<SettingsView>("/api/office/settings"), []);
-  const staff = useLoad<StaffList>(() => api.get<StaffList>("/api/office/staff"), []);
   const action = useAction();
   const isOwner = me?.user.officeRole === "Owner";
 
@@ -77,7 +187,6 @@ export function Settings() {
   const [ruleKeyword, setRuleKeyword] = useState("");
   const [caseKind, setCaseKind] = useState<string>("Procedure");
   const [caseLabel, setCaseLabel] = useState("");
-  const [staffRole, setStaffRole] = useState<string>("Staff");
 
   const jevStored = loadJevSettings();
   const [jevKey, setJevKey] = useState("");
@@ -86,7 +195,6 @@ export function Settings() {
 
   const refresh = () => {
     settings.reload();
-    staff.reload();
   };
 
   const addDocType = () => {
@@ -127,14 +235,6 @@ export function Settings() {
       });
   };
 
-  const inviteStaff = () => {
-    void action.run(() => api.post("/api/office/staff/invitations", { role: staffRole })).then((ok) => ok && refresh());
-  };
-
-  const staffAction = (userId: string, verb: "approve" | "reject" | "revoke") => () => {
-    void action.run(() => api.post(`/api/office/staff/${userId}/${verb}`, {})).then((ok) => ok && refresh());
-  };
-
   const saveJev = () => {
     if (!isFixedModelName(jevModel)) {
       setJevError(t("office.settings.jev.aliasRejected"));
@@ -159,11 +259,12 @@ export function Settings() {
     return <div className="page">{settings.error === null ? <Loading /> : <ErrorNotice error={settings.error} />}</div>;
   }
   const current = settings.data;
+  const docTypeById = new Map(current.docTypes.map((type) => [type.id, type]));
 
   return (
     <div className="page">
       <h1 className="title">{t("office.settings.title")}</h1>
-      <ErrorNotice error={action.error ?? settings.error ?? staff.error} />
+      <ErrorNotice error={action.error ?? settings.error} />
 
       <OfficeSettingsForm view={current} canEdit={isOwner && current.canEditOffice} onSaved={refresh} />
 
@@ -190,7 +291,9 @@ export function Settings() {
         <ul className="list">
           {current.docRules.map((rule) => (
             <li key={rule.id} className="list__item">
-              <span className="grow code">{rule.keyword}</span>
+              <span className="code">{docTypeById.get(rule.docTypeId)?.shortCode}</span>
+              <span className="grow">{docTypeById.get(rule.docTypeId)?.label ?? t("office.settings.ruleUnknownType")}</span>
+              <span className="code">{rule.keyword}</span>
               <button type="button" className="button button--danger" disabled={action.busy} onClick={removeRule(rule.id)}>
                 {t("office.settings.removeRule")}
               </button>
@@ -225,45 +328,14 @@ export function Settings() {
         </button>
       </section>
 
-      {isOwner ? (
-        <section className="card card--pad stack" aria-label={t("office.settings.staff")}>
-          <h2 className="subtitle">{t("office.settings.staff")}</h2>
-          <ul className="list">
-            {(staff.data?.members ?? []).map((member) => (
-              <li key={member.userId} className="list__item">
-                <span className="grow">{member.displayName}</span>
-                <span className="muted">{member.officeRole === null ? "" : t(`role.${member.officeRole}`)}</span>
-                {member.officeStatus === "Pending" ? (
-                  <>
-                    <button type="button" className="button" disabled={action.busy} onClick={staffAction(member.userId, "approve")}>
-                      {t("office.clients.approve")}
-                    </button>
-                    <button type="button" className="button button--danger" disabled={action.busy} onClick={staffAction(member.userId, "reject")}>
-                      {t("office.clients.reject")}
-                    </button>
-                  </>
-                ) : null}
-                {member.officeStatus === "Active" && member.userId !== me?.user.id ? (
-                  <button type="button" className="button button--danger" disabled={action.busy} onClick={staffAction(member.userId, "revoke")}>
-                    {t("office.clients.revoke")}
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          <div className="grid2">
-            <SelectField label={t("office.settings.staffRole")} value={staffRole} options={[{ value: "Staff", label: t("role.Staff") }, { value: "Owner", label: t("role.Owner") }]} onChange={setStaffRole} />
-          </div>
-          <button type="button" className="button" disabled={action.busy} onClick={inviteStaff}>
-            {t("office.settings.inviteStaff")}
-          </button>
-        </section>
-      ) : null}
+      {isOwner ? <StaffSection /> : null}
 
       <section className="card card--pad stack" aria-label={t("office.settings.jev.title")}>
         <h2 className="subtitle">{t("office.settings.jev.title")}</h2>
         <Notice tone="info">
-          {t("office.settings.jev.note")} <a href={JEV_PRICING_URL} target="_blank" rel="noopener noreferrer">{t("office.settings.jev.pricing")}</a>
+          {t("office.settings.jev.note")} {t("office.settings.jev.terms")}{" "}
+          <a href={JEV_PRICING_URL} target="_blank" rel="noopener noreferrer">{t("office.settings.jev.pricing")}</a>{" "}
+          <a href={JEV_LIMITS_URL} target="_blank" rel="noopener noreferrer">{t("office.settings.jev.limits")}</a>
         </Notice>
         <TextField label={t("office.settings.jev.model")} value={jevModel} onChange={setJevModel} mono hint={t("office.settings.jev.modelHint")} />
         <TextField label={t("office.settings.jev.key")} type="password" value={jevKey} onChange={setJevKey} mono hint={t("office.settings.jev.keyHint")} />
@@ -276,6 +348,16 @@ export function Settings() {
             {t("office.settings.jev.forget")}
           </button>
         </div>
+      </section>
+
+      <section className="card card--pad stack" aria-label={t("office.settings.notifications.title")}>
+        <h2 className="subtitle">{t("office.settings.notifications.title")}</h2>
+        <p className="muted">{t("office.settings.notifications.lead")}</p>
+        {current.notifications.pushConfigured ? (
+          <Notice tone="success">{t("office.settings.notifications.configured")}</Notice>
+        ) : (
+          <Notice tone="review">{t("office.settings.notifications.notConfigured")}</Notice>
+        )}
       </section>
     </div>
   );

@@ -73,6 +73,15 @@ describe("office API", () => {
     const settings = await json(await staff.call("GET", "/api/office/settings"));
     expect(settings.canEditOffice).toBe(false);
     expect((settings.docRules as Json[]).map((rule) => rule.keyword)).toContain("shaho");
+    expect(settings.docRules).toEqual(expect.arrayContaining([expect.objectContaining({ docTypeId: ids.d1, keyword: "shaho" })]));
+    expect(settings.notifications).toEqual({ pushConfigured: false });
+    const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"])) as CryptoKeyPair;
+    const publicKey = btoa(String.fromCharCode(...new Uint8Array((await crypto.subtle.exportKey("raw", pair.publicKey)) as ArrayBuffer)));
+    const privateKey = ((await crypto.subtle.exportKey("jwk", pair.privateKey)) as JsonWebKey).d ?? "";
+    const withPush = { VAPID_PUBLIC_KEY: publicKey.replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", ""), VAPID_PRIVATE_KEY: privateKey, VAPID_SUBJECT: "mailto:info@rictaworks.jp" };
+    const configured = await json(await staff.call("GET", "/api/office/settings", { env: withPush }));
+    expect(configured.notifications).toEqual({ pushConfigured: true });
+    expect(JSON.stringify(configured)).not.toContain(privateKey);
   });
 
   it("keeps Owner-only actions from staff", async () => {
@@ -98,6 +107,13 @@ describe("office API", () => {
     expect(await stale.json()).toEqual({ error: "conflict", detail: "stale" });
     const tooLow = await owner.call("PUT", "/api/office/settings/office", { body: { ...change, jevThreshold: 0.5, version: Number(office.version) + 1 } });
     expect(tooLow.status).toBe(400);
+    expect(await tooLow.json()).toEqual({ error: "invalid_input", detail: "jev_threshold" });
+    const tooHigh = await owner.call("PUT", "/api/office/settings/office", { body: { ...change, jevThreshold: 1.01, version: Number(office.version) + 1 } });
+    expect(tooHigh.status).toBe(400);
+    expect(await tooHigh.json()).toEqual({ error: "invalid_input", detail: "jev_threshold" });
+    const missing = await owner.call("PUT", "/api/office/settings/office", { body: { ...change, jevThreshold: undefined, version: Number(office.version) + 1 } });
+    expect(missing.status).toBe(400);
+    expect((await json(await owner.call("GET", "/api/office/settings"))).office).toMatchObject({ jevThreshold: 0.95, version: Number(office.version) + 1 });
     expect((await json(await owner.call("GET", "/api/office/staff"))).members).toEqual(expect.arrayContaining([expect.objectContaining({ officeRole: "Owner" })]));
     const invited = await json(await owner.call("POST", "/api/office/staff/invitations", { body: { role: "Staff" } }));
     expect(String(invited.code).length).toBeGreaterThanOrEqual(32);
