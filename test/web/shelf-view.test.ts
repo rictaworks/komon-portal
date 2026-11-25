@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CaseView, DocTypeRecord, FileView } from "../../src/app/web/api/office-types";
 import {
-  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_VIEWS, shelfActions, shelfDirectionOf, shelfListPath,
-  shelfPath, shownList, sortedReaders,
+  cancelledByClient, caseLabel, casePagePath, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_VIEWS, shelfActions, shelfDirectionOf,
+  shelfListPath, shelfPath, shownList, sortedReaders,
 } from "../../src/app/web/pages/office/shelf-view";
 
 function file(overrides: Partial<FileView>): FileView {
@@ -138,6 +138,13 @@ describe("loadAllPages", () => {
 
   it("passes a failure on instead of returning a part of the list", async () => {
     await expect(loadAllPages(async (offset) => (offset === 0 ? [1, 2] : Promise.reject(new Error("offline"))), 2)).rejects.toThrow("offline");
+  });
+});
+
+describe("case picker paging", () => {
+  it("asks for one page of the client's cases at an offset, so the picker can read every case", () => {
+    expect(casePagePath({ clientId: "client 1", offset: 0 })).toBe("/api/office/cases?clientId=client%201&limit=200&offset=0");
+    expect(casePagePath({ clientId: "client-1", offset: 400 })).toBe("/api/office/cases?clientId=client-1&limit=200&offset=400");
   });
 });
 

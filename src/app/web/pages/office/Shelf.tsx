@@ -13,8 +13,8 @@ import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import {
-  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_DIRECTIONS, SHELF_VIEWS, shelfActions,
-  shelfDirectionOf, shelfListPath, shownList, sortedReaders,
+  CASE_PAGE, cancelledByClient, caseLabel, casePagePath, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_DIRECTIONS, SHELF_VIEWS,
+  shelfActions, shelfDirectionOf, shelfListPath, shownList, sortedReaders,
   type ShelfDirection, type ShelfList, type ShelfView,
 } from "./shelf-view";
 import { rowsOutside } from "./list-limit";
@@ -26,7 +26,6 @@ const WITHDRAW_NEXT = ["NeedsReview", "Trashed"] as const;
 const TERMINAL_STATES: readonly string[] = ["Closed", "Cancelled"];
 /** Clients are read page by page to the end; this is the largest page the server gives. */
 const CLIENT_PAGE = 200;
-const CASE_LIMIT = 200;
 
 /** Entry of the menu: choose the client whose shelf to open. */
 export function ShelfChooser() {
@@ -102,8 +101,9 @@ export function Shelf() {
   const listPath = shelfListPath({ clientId, direction, view, docTypeId, targetMonth: month.value, caseId: filterCaseId });
   // The answer is kept with its question, so rows are never shown under another direction, view or filter.
   const files = useLoad<{ path: string; list: ShelfList }>(async () => ({ path: listPath, list: await api.get<ShelfList>(listPath) }), [listPath]);
-  const cases = useLoad<{ items: CaseView[] }>(
-    () => api.get<{ items: CaseView[] }>(`/api/office/cases?clientId=${encodeURIComponent(clientId)}&limit=${CASE_LIMIT}`),
+  // Every case of the client is read page by page, so the filter and the link picker never miss one beyond the first page.
+  const cases = useLoad<CaseView[]>(
+    () => loadAllPages(async (offset) => (await api.get<{ items: CaseView[] }>(casePagePath({ clientId, offset }))).items, CASE_PAGE),
     [clientId],
   );
   const settings = useSettings();
@@ -181,7 +181,7 @@ export function Shelf() {
     return <div className="page">{client.error === null ? <Loading /> : <ErrorNotice error={client.error} />}</div>;
   }
 
-  const caseRecords = cases.data?.items ?? [];
+  const caseRecords = cases.data ?? [];
   const caseNames = new Map(caseRecords.map((record) => [record.id, caseLabel(record)]));
   const caseName = (file: FileView): string => {
     if (file.caseId === null) {

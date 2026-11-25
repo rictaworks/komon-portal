@@ -127,6 +127,14 @@ export function monthFilter(text: string): { valid: boolean; value: string } {
   return MONTH_TEXT.test(text) ? { valid: true, value: text } : { valid: false, value: "" };
 }
 
+/** The most cases one request of the Shelf case picker asks for: the largest page the API serves. */
+export const CASE_PAGE = 200;
+
+/** One page of a client's cases, for the case filter and the case link picker. */
+export function casePagePath(query: { clientId: string; offset: number }): string {
+  return `/api/office/cases?clientId=${encodeURIComponent(query.clientId)}&limit=${CASE_PAGE}&offset=${query.offset}`;
+}
+
 /** Reads a paged list to its end, so a long list is never cut off at the page size. */
 export async function loadAllPages<T>(loadPage: (offset: number) => Promise<T[]>, pageSize: number): Promise<T[]> {
   const all: T[] = [];
