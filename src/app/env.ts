@@ -15,4 +15,6 @@ export interface AppEnv {
   VAPID_PRIVATE_KEY?: string;
   /** Operator contact for push services, for example mailto:info@example.com. */
   VAPID_SUBJECT?: string;
+  /** Cloudflare Web Analytics site token (a public value). Page views are counted only when it is set. */
+  WEB_ANALYTICS_TOKEN?: string;
 }

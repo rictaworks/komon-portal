@@ -201,6 +201,7 @@ Each deployment serves one office, in that office's own Cloudflare account. Noth
    - put the D1 ID returned in step 2 in place of the placeholder;
    - make the paths relative to `ENV/`: `"main": "../src/app/index.ts"` (admin: `"../src/admin/index.ts"`), the assets directory `../dist/client`, and the migrations directory `../src/app/migrations`;
    - in `ENV/wrangler.jsonc`, add `TURNSTILE_SITE_KEY` (a public value) to `vars`, next to `ENVIRONMENT`, which must be `production`;
+   - optionally, to count page views, add `WEB_ANALYTICS_TOKEN` to the same `vars` (see "Page views" below);
    - in `ENV/wrangler.admin.jsonc`, add a `vars` block with `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` from the Cloudflare Access application that protects the admin Worker.
 
 4. Apply the migrations to the remote database:
@@ -232,6 +233,15 @@ Each deployment serves one office, in that office's own Cloudflare account. Noth
    The three VAPID values must be set together; a partial set is refused. Until the Google and Turnstile values are set, sign-in and the invitation and setup forms answer "not configured".
 
 7. Create the first Owner. Sign in with Google, open `/setup`, and enter the `SETUP_TOKEN`. The token stops working once an Owner exists.
+
+### Page views (optional)
+
+Page views and per-screen use are counted with Cloudflare Web Analytics, which sets no cookie. It is off until a token is configured.
+
+1. In the Cloudflare dashboard, open Web Analytics, add the portal's hostname as a site with manual setup (automatic setup must stay off, so the beacon is not added twice), and copy the token from the JavaScript snippet (the `token` value in `data-cf-beacon`).
+2. Add `WEB_ANALYTICS_TOKEN` with that token to `vars` in `ENV/wrangler.jsonc` and deploy the portal again (step 5). The token is a public value; it may contain only letters and digits, and any other value makes every request fail with an error.
+
+With the token set, the Worker adds the beacon script to each page, the Content Security Policy additionally allows `https://static.cloudflareinsights.com` for that script and `https://cloudflareinsights.com` for its reports, and the open-source notices page says that page views are counted without cookies. Without the token no beacon is loaded and the policy allows external scripts for Google sign-in and Turnstile only.
 
 ## Releases
 
