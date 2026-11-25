@@ -28,10 +28,20 @@ async function requireReach(c: AppContext, clientId: Id): Promise<{ actor: UserA
 /**
  * One page of a client's files with whether rows exist beyond it. One row more than the page is read,
  * so the flag comes from the same read as the rows and a screen can page to the end.
+ * `order` says how the rows are sorted: by intake, or by publication for the published list.
  */
-async function filePage(services: Services, filter: FileFilter, c: AppContext): Promise<{ files: FileRecord[]; hasMore: boolean }> {
+async function filePage(
+  services: Services,
+  filter: FileFilter,
+  order: "intake" | "publication",
+  c: AppContext,
+): Promise<{ files: FileRecord[]; hasMore: boolean }> {
   const page = pageOf(c);
-  const rows = await services.repository.files.list(filter, { limit: page.limit + 1, offset: page.offset });
+  const bounds = { limit: page.limit + 1, offset: page.offset };
+  const rows =
+    order === "publication"
+      ? await services.repository.files.listByPublication(filter, bounds)
+      : await services.repository.files.list(filter, bounds);
   return { files: rows.slice(0, page.limit), hasMore: rows.length > page.limit };
 }
 
@@ -48,6 +58,7 @@ async function publishedDocuments(services: Services, actor: UserActor, clientId
       ...(docTypeId === undefined || docTypeId === "" ? {} : { docTypeId }),
       ...(targetMonth === undefined || targetMonth === "" ? {} : { targetMonth }),
     },
+    "publication",
     c,
   );
   const visible = files.filter((file) => services.policy.can(actor, "file.read", { file }));
@@ -122,7 +133,7 @@ export function clientPortalRoutes(): Hono<AppBindings> {
 
   routes.get("/:clientId/submissions", async (c) => {
     const { actor, services } = await requireReach(c, c.req.param("clientId"));
-    const { files, hasMore } = await filePage(services, { clientId: c.req.param("clientId"), direction: "Inbound", states: ["Submitted", "Acknowledged"] }, c);
+    const { files, hasMore } = await filePage(services, { clientId: c.req.param("clientId"), direction: "Inbound", states: ["Submitted", "Acknowledged"] }, "intake", c);
     const lookups = new Lookups(services);
     const items = [];
     for (const file of files.filter((candidate) => services.policy.can(actor, "file.read", { file: candidate }))) {

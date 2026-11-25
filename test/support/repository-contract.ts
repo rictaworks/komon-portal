@@ -397,6 +397,33 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await ids(id("no-client"), reader.id)).toEqual({ ids: [], total: 0 });
     });
 
+    it("lists published files by publication, newest first, with ties broken by id and a stable order across pages", async () => {
+      const company = await seedClient();
+      const other = await seedClient("o");
+      const at = (seconds: number): Date => new Date(T0.getTime() + seconds * 1000);
+      // Intake order is the reverse of publication order, so `list` and `listByPublication` differ.
+      const early = await seedFile(company.id, "p1", { state: "Published", receivedAt: at(30), publishedAt: at(100) });
+      const tieA = await seedFile(company.id, "p2", { state: "Published", receivedAt: at(20), publishedAt: at(200) });
+      const tieB = await seedFile(company.id, "p3", { state: "Published", receivedAt: at(40), publishedAt: at(200) });
+      const late = await seedFile(company.id, "p4", { state: "Published", receivedAt: at(10), publishedAt: at(300) });
+      await seedFile(company.id, "p5", { receivedAt: at(50) });
+      await seedFile(other.id, "p6", { state: "Published", receivedAt: at(60), publishedAt: at(400) });
+      const tied = [tieA.id, tieB.id].sort();
+      const expected = [late.id, ...tied, early.id];
+      const filter = { clientId: company.id, direction: "Outbound" as const, states: ["Published" as const] };
+
+      expect((await repo.files.listByPublication(filter, PAGE)).map((row) => row.id)).toEqual(expected);
+      expect((await repo.files.list(filter, PAGE)).map((row) => row.id)).toEqual([tieB.id, early.id, tieA.id, late.id]);
+      // Every page cuts the same order: walking one row at a time yields the whole list once.
+      const walked: string[] = [];
+      for (let offset = 0; offset < expected.length; offset += 1) {
+        walked.push(...(await repo.files.listByPublication(filter, { limit: 1, offset })).map((row) => row.id));
+      }
+      expect(walked).toEqual(expected);
+      expect((await repo.files.listByPublication(filter, { limit: 2, offset: 1 })).map((row) => row.id)).toEqual(tied);
+      expect(await repo.files.listByPublication({ ...filter, clientId: id("no-client") }, PAGE)).toEqual([]);
+    });
+
     it("lists trashed files that are due and purges them with their receipts in two steps", async () => {
       const company = await seedClient();
       const old = await seedFile(company.id, "f1", { state: "Trashed", trashedFrom: "Staged", trashedAt: new Date("2020-01-01T00:00:00.000Z") });

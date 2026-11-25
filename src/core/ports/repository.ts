@@ -207,7 +207,10 @@ export interface FileRepository {
   findById(id: Id): Promise<FileRecord | null>;
   /** Files with this content that are not trashed. */
   findActiveBySha256(sha256: string): Promise<FileRecord[]>;
+  /** Files matching the filter, the most recently taken in first, ties broken by id. */
   list(filter: FileFilter, page: Page): Promise<FileRecord[]>;
+  /** Files matching the filter, the most recently published first, ties broken by id. For the client's published list. */
+  listByPublication(filter: FileFilter, page: Page): Promise<FileRecord[]>;
   /** Files flagged as an incident, the most recently withdrawn first. `count({ incidentOnly: true })` counts them. */
   listIncidents(page: Page): Promise<FileRecord[]>;
   count(filter: FileFilter): Promise<number>;

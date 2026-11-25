@@ -167,6 +167,18 @@ export class D1FileRepository implements FileRepository {
     return rows.results.map(toFile);
   }
 
+  async listByPublication(filter: FileFilter, page: Page): Promise<FileRecord[]> {
+    const where = fileWhere(filter);
+    if (where === null) {
+      return [];
+    }
+    const rows = await this.db
+      .prepare(`SELECT * FROM file_records${whereSql(where)} ORDER BY published_at DESC, id LIMIT ? OFFSET ?`)
+      .bind(...where.params, page.limit, page.offset)
+      .all<Row>();
+    return rows.results.map(toFile);
+  }
+
   async listIncidents(page: Page): Promise<FileRecord[]> {
     const rows = await this.db
       .prepare(`SELECT * FROM file_records WHERE ${NOT_PURGING} AND incident_flag = 1 ORDER BY incident_at DESC, id LIMIT ? OFFSET ?`)

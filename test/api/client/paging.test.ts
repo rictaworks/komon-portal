@@ -50,7 +50,8 @@ describe("client lists: paging to the end", () => {
     for (let index = 0; index < ROWS; index += 1) {
       const published = fileRecord({
         id: `doc-${index}`, batchId: "page-out", clientId: OWN, sha256: `a${index}`.padStart(64, "0"), state: "Published",
-        targetMonth: index === 0 ? "2026-10" : "2026-11", receivedAt: at(index), publishedAt: at(100 + index),
+        // Published documents come out in the reverse of intake order: doc-0 was published last.
+        targetMonth: index === 0 ? "2026-10" : "2026-11", receivedAt: at(index), publishedAt: at(100 - index),
       });
       const submitted = fileRecord({
         id: `sub-${index}`, batchId: "page-in", direction: "Inbound", clientId: OWN, sha256: `b${index}`.padStart(64, "0"), state: "Submitted",
@@ -62,14 +63,18 @@ describe("client lists: paging to the end", () => {
   });
 
   it("tells whether published documents exist beyond the page, up to the last one", async () => {
-    expect(await walk("documents", 2)).toEqual([["doc-4", "doc-3"], ["doc-2", "doc-1"], ["doc-0"]]);
+    expect(await walk("documents", 2)).toEqual([["doc-0", "doc-1"], ["doc-2", "doc-3"], ["doc-4"]]);
     expect(await page("documents", "limit=5&offset=0")).toMatchObject({ hasMore: false });
     expect(await page("documents", "limit=4&offset=0")).toMatchObject({ hasMore: true });
     expect(await page("documents", "limit=2&offset=6")).toEqual({ items: [], hasMore: false });
   });
 
+  it("lists published documents newest publication first, not newest intake first", async () => {
+    expect(((await page("documents", "limit=5&offset=0")).items).map((item) => item.id)).toEqual(["doc-0", "doc-1", "doc-2", "doc-3", "doc-4"]);
+  });
+
   it("pages within a filter, not over the whole shelf", async () => {
-    expect(await walk("documents", 2, "&targetMonth=2026-11")).toEqual([["doc-4", "doc-3"], ["doc-2", "doc-1"]]);
+    expect(await walk("documents", 2, "&targetMonth=2026-11")).toEqual([["doc-1", "doc-2"], ["doc-3", "doc-4"]]);
     expect(await walk("documents", 2, "&targetMonth=2026-10")).toEqual([["doc-0"]]);
   });
 
