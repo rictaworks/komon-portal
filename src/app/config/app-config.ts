@@ -15,7 +15,18 @@ export interface AppConfig {
   vapidPrivateKey: string | undefined;
   /** Operator contact sent to push services (mailto: or https: URL). */
   vapidSubject: string | undefined;
+  /** Cloudflare Web Analytics site token; page views are counted only when it is set. */
+  webAnalyticsToken: string | undefined;
 }
+
+/** Cloudflare Web Analytics (instructions.md 1.12): the beacon script and the endpoint it reports to. It sets no cookie. */
+export const WEB_ANALYTICS = {
+  scriptOrigin: "https://static.cloudflareinsights.com",
+  scriptUrl: "https://static.cloudflareinsights.com/beacon.min.js",
+  reportOrigin: "https://cloudflareinsights.com",
+} as const;
+
+const WEB_ANALYTICS_TOKEN_PATTERN = /^[A-Za-z0-9]{1,128}$/;
 
 export const SESSION = {
   cookieName: "__Host-kp_session",
@@ -43,6 +54,18 @@ function emptyToUndefined(value: string | undefined): string | undefined {
   return value === undefined || value === "" ? undefined : value;
 }
 
+/**
+ * Reads the Web Analytics token. Unset or empty means the measurement is off. A value that is not
+ * letters and digits is an error: it is written into the page, so it is never passed on unchecked.
+ */
+export function loadWebAnalyticsToken(env: Pick<AppEnv, "WEB_ANALYTICS_TOKEN">): string | undefined {
+  const token = emptyToUndefined(env.WEB_ANALYTICS_TOKEN);
+  if (token !== undefined && !WEB_ANALYTICS_TOKEN_PATTERN.test(token)) {
+    throw new Error("WEB_ANALYTICS_TOKEN must contain only letters and digits");
+  }
+  return token;
+}
+
 /** Reads the configuration. An unknown environment name is an error, never silently treated as production or development. */
 export function loadConfig(env: AppEnv): AppConfig {
   const environment = ENVIRONMENTS.find((candidate) => candidate === env.ENVIRONMENT);
@@ -60,5 +83,6 @@ export function loadConfig(env: AppEnv): AppConfig {
     vapidPublicKey: emptyToUndefined(env.VAPID_PUBLIC_KEY),
     vapidPrivateKey: emptyToUndefined(env.VAPID_PRIVATE_KEY),
     vapidSubject: emptyToUndefined(env.VAPID_SUBJECT),
+    webAnalyticsToken: loadWebAnalyticsToken(env),
   };
 }

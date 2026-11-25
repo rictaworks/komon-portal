@@ -627,6 +627,7 @@
       "title": "What the portal keeps about you",
       "identity": "Only your Google account ID and display name. Your email address, date of birth, address and phone number are not requested or stored.",
       "cookies": "One session cookie, needed to keep you signed in. No advertising or tracking cookies are used.",
+      "pageViews": "Page views are counted with Cloudflare Web Analytics, which uses no cookies and does not identify you.",
       "individualNumber": "Documents that contain an Individual Number (My Number) must not be uploaded."
     },
     "ai": {
