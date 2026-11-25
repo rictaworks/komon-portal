@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 const WEB_ROOT = "src/app/web";
 const TEXT_ATTRIBUTES = new Set(["placeholder", "title", "alt", "aria-label", "label"]);
 const LETTERS = /\p{L}{2,}/u;
+const EQUALITY = new Set([ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken]);
 
 export function listSourceFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
@@ -34,6 +35,10 @@ function collectExpressionLiterals(node: ts.Node, found: string[]): void {
     return;
   }
   if (ts.isCallExpression(node)) {
+    return;
+  }
+  // A literal compared with a value is a code, not text shown to the user.
+  if (ts.isBinaryExpression(node) && EQUALITY.has(node.operatorToken.kind)) {
     return;
   }
   if (isTextLiteral(node) && LETTERS.test(literalText(node))) {
@@ -92,6 +97,11 @@ describe("user-facing strings", () => {
   it("detects literals in nested elements inside expressions", () => {
     const sample = 'export const X = () => <ul>{items.map((i) => <li key={i.id}>Bad item</li>)}</ul>;';
     expect(findHardcodedText("sample.tsx", sample)).toEqual(['sample.tsx: text "Bad item"']);
+  });
+
+  it("ignores literals that are only compared with a value", () => {
+    const sample = 'export const X = () => <p>{mode === "development" ? t("a") : null}{kind !== "none" && t("b")}</p>;';
+    expect(findHardcodedText("sample.tsx", sample)).toEqual([]);
   });
 
   it("accepts text that comes from the translator", () => {

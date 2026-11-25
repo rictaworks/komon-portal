@@ -1,13 +1,246 @@
 {
   "app": {
     "name": "Komon Portal",
-    "tagline": "Every document on the right shelf."
-  },
-  "shell": {
-    "loading": "Loading"
+    "brand": "KOMON PORTAL",
+    "tagline": "Every document on the right shelf.",
+    "lead": "Documents from your labour and social security office arrive here, and you can send payroll material back the same way.",
+    "contact": "info@rictaworks.jp"
   },
   "notification": {
     "title": "Komon Portal",
     "body": "You have a new document."
+  },
+  "common": {
+    "loading": "Loading",
+    "cancel": "Cancel",
+    "signOut": "Sign out",
+    "notices": "Open-source notices",
+    "backToStart": "Back to the start",
+    "reload": "Reload",
+    "save": "Save",
+    "close": "Close",
+    "none": "None",
+    "yes": "Yes",
+    "no": "No",
+    "individualNumberNotice": "Do not upload documents that contain an Individual Number (My Number)."
+  },
+  "signIn": {
+    "title": "Sign in",
+    "privacy": "Use the Google account you were approved with. Only your Google account ID and display name are kept. Your email address is not requested or stored.",
+    "google": "Sign in with Google",
+    "notConfigured": "Google sign-in is not configured on this installation.",
+    "haveInvitation": "I have an invitation link",
+    "approvalNote": "After you use an invitation, the office checks your display name and approves your access. Nothing is visible until then.",
+    "developmentNote": "Development environment: sign in as a ready-made test user. These buttons do not exist in production.",
+    "development": {
+      "owner": "Test Owner",
+      "staff": "Test Staff",
+      "member": "Test Client Member"
+    }
+  },
+  "redeem": {
+    "title": "Use an invitation",
+    "lead": "The office gave you a one-time link. It works once and expires 72 hours after it was issued.",
+    "signInFirst": "Sign in with Google first. You will come back to this page.",
+    "code": "Invitation code",
+    "turnstileMissing": "The human check is not configured on this installation, so this form cannot be used.",
+    "submit": "Use invitation"
+  },
+  "setup": {
+    "title": "First-time setup",
+    "lead": "Enter the setup token that was set when this portal was deployed. The first person who does so becomes the Owner of the office.",
+    "closed": "Setup is finished. An Owner already exists, or no setup token is configured.",
+    "token": "Setup token",
+    "submit": "Become Owner"
+  },
+  "pending": {
+    "title": "Waiting for approval",
+    "lead": "Your invitation was used as {name}. The office will check this name and approve your access.",
+    "note": "Nothing is visible until you are approved. If you used the link by mistake, you can simply sign out.",
+    "check": "Check again"
+  },
+  "noAccess": {
+    "title": "No access yet",
+    "lead": "You are signed in, but this account has not been invited. Ask your office for an invitation link."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "lead": "The page does not exist, or you do not have access to it."
+  },
+  "startupError": {
+    "title": "The portal could not start"
+  },
+  "errors": {
+    "unexpected": "Something went wrong. Reload the page and try again.",
+    "unknown": "The request failed (code: {code}).",
+    "network_error": {
+      "_": "The server could not be reached. Check your connection and try again."
+    },
+    "bad_response": {
+      "_": "The server sent an answer that could not be read."
+    },
+    "internal_error": {
+      "_": "The server failed to handle the request. Try again later."
+    },
+    "unauthenticated": {
+      "_": "Your session has ended. Sign in again."
+    },
+    "forbidden": {
+      "_": "You are not allowed to do this."
+    },
+    "not_found": {
+      "_": "Not found.",
+      "client": "Not found.",
+      "file": "This document is not available."
+    },
+    "bad_origin": {
+      "_": "The request was refused. Reload the page and try again."
+    },
+    "bad_csrf": {
+      "_": "The request was refused. Reload the page and try again."
+    },
+    "human_check_failed": {
+      "_": "The human check did not pass. Try it again."
+    },
+    "not_configured": {
+      "_": "This feature is not configured on this installation.",
+      "turnstile": "The human check is not configured on this installation.",
+      "google": "Google sign-in is not configured on this installation."
+    },
+    "sign_in_failed": {
+      "_": "Sign-in did not complete. Try again."
+    },
+    "conflict": {
+      "_": "Someone else changed this at the same time. Reload and try again.",
+      "stale": "Someone else changed this at the same time. Reload and try again.",
+      "duplicate_content": "This client already holds a document with the same content.",
+      "client_code_taken": "This client code is already in use.",
+      "short_code_taken": "This short code is already in use.",
+      "arrival_number_taken": "This arrival number already belongs to another case."
+    },
+    "invalid_input": {
+      "_": "Some of the input is not valid.",
+      "invitation": "This invitation cannot be used. It may have expired, been used or been cancelled.",
+      "setup_token": "The setup token was not accepted.",
+      "confirmation_required": "Tick the confirmation before staging this document.",
+      "corporate_number": "The corporate number is not valid.",
+      "code": "Use letters and digits only for the code.",
+      "reference_code": "Use letters, digits and hyphens only for the reference code.",
+      "target_month": "The target month is not valid.",
+      "arrival_number": "An arrival number does not match the configured pattern.",
+      "arrival_number_pattern": "The pattern is not accepted. Use digits or simple character classes with a fixed length, for example [0-9]{17,18}.",
+      "jev_threshold": "The threshold must be between 0.80 and 1.00.",
+      "model": "Enter a fixed version such as jev-1.13.0. Aliases ending in -latest are not accepted.",
+      "credential": "Enter your Jev API key in Settings first.",
+      "endpoint": "This browser's notification service is not supported.",
+      "file_too_large": "The file is larger than 50 MB."
+    },
+    "invalid_state": {
+      "_": "This cannot be done in the current state.",
+      "published_must_be_withdrawn": "A published document must be withdrawn before it can be trashed.",
+      "client_not_active": "This client is not active.",
+      "case_not_cancellable": "A case that already has a document cannot be cancelled.",
+      "not_cancellable": "The office has already opened this file, so it can no longer be cancelled.",
+      "trash_expired": "More than 30 days have passed, so this document can no longer be restored.",
+      "last_owner": "The last Owner cannot be removed.",
+      "not_a_procedure": "A submission date can only be recorded for procedure cases.",
+      "client_status_transition": "This status change is not allowed."
+    },
+    "classifier_failed": {
+      "_": "The classifier could not be used. The documents stay unclassified.",
+      "authentication_failed": "The Jev API key was not accepted. The documents stay unclassified.",
+      "unsupported_model": "The model name is not supported. The documents stay unclassified.",
+      "limit_reached": "The usage limit of your Jev account was reached. The documents stay unclassified.",
+      "network_failure": "The classifier could not be reached. The documents stay unclassified.",
+      "invalid_response": "The classifier sent an answer that could not be used. The documents stay unclassified."
+    }
+  },
+  "fileState": {
+    "Staged": "Staged",
+    "NeedsReview": "Needs review",
+    "Published": "Published",
+    "Withdrawn": "Withdrawn",
+    "Trashed": "In trash",
+    "Submitted": "Sent",
+    "Acknowledged": "Confirmed by the office"
+  },
+  "caseState": {
+    "Open": "Open",
+    "Submitted": "Submitted",
+    "MaterialsReceived": "Materials received",
+    "DocumentReceived": "Document received",
+    "Delivered": "Delivered",
+    "Confirmed": "Confirmed",
+    "Closed": "Closed",
+    "Cancelled": "Cancelled"
+  },
+  "deadline": {
+    "ok": "{days} days left",
+    "caution": "Caution: {days} days left",
+    "warning": "Warning: {days} days left",
+    "expired": "Expired {days} days ago"
+  },
+  "office": {
+    "menu": {
+      "label": "Office menu",
+      "dashboard": "Dashboard",
+      "intake": "Intake",
+      "review": "Review",
+      "staged": "Staged",
+      "clients": "Clients",
+      "cases": "Cases",
+      "settings": "Settings",
+      "audit": "Audit Log"
+    },
+    "role": {
+      "owner": "Signed in as Owner",
+      "staff": "Signed in as Staff"
+    }
+  },
+  "client": {
+    "company": "Company",
+    "menu": {
+      "label": "Main",
+      "home": "Home",
+      "documents": "Documents",
+      "send": "Send Files",
+      "notifications": "Notifications"
+    }
+  },
+  "notices": {
+    "title": "Open-source notices",
+    "license": {
+      "title": "Licence",
+      "body": "Komon Portal is open-source software released under the MIT License. Each office runs it in its own Cloudflare account.",
+      "thirdParty": "It includes the following open-source software:"
+    },
+    "software": {
+      "React": "(MIT License)",
+      "ReactRouter": "(MIT License)",
+      "Hono": "(MIT License)",
+      "jose": "(MIT License)",
+      "fflate": "(MIT License)",
+      "FontAwesomeFree": "(icons: CC BY 4.0, code: MIT License)",
+      "Montserrat": "(SIL Open Font License 1.1)"
+    },
+    "jev": {
+      "title": "Jev classifier (bring your own key)",
+      "use": "The portal can ask TypeSafe Jev to suggest the document type of a file. It is never used to decide which client a document belongs to.",
+      "key": "The key is your own. It is kept in your browser only, sent with a request when you start a classification, used for that one call and never stored on the server.",
+      "sent": "Only the form or notice name taken from the file name is sent, with arrival numbers, client codes and long digit runs removed. File contents are never sent.",
+      "cost": "Usage is billed to you by TypeSafe under their terms, including how they handle the data you send. Set your usage limit on their side. This portal shows no prices.",
+      "models": "Models and pricing on the TypeSafe site",
+      "limits": "Known limits of the Jev model"
+    },
+    "privacy": {
+      "title": "What the portal keeps about you",
+      "identity": "Only your Google account ID and display name. Your email address, date of birth, address and phone number are not requested or stored.",
+      "cookies": "One session cookie, needed to keep you signed in. No advertising or tracking cookies are used.",
+      "individualNumber": "Documents that contain an Individual Number (My Number) must not be uploaded."
+    },
+    "ai": {
+      "title": "Use of AI",
+      "body": "Parts of this software and its interface texts were written with the help of AI and reviewed before release."
+    }
   }
 }

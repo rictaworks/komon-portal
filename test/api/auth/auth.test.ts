@@ -133,6 +133,16 @@ describe("authentication", () => {
       expect(await response.json()).toEqual({ error: "unauthenticated" });
     });
 
+    it("answers the session question with 200 and null when nobody is signed in", async () => {
+      const anonymous = await client.call("GET", "/api/session");
+      expect(anonymous.status).toBe(200);
+      expect(await anonymous.json()).toEqual({ me: null });
+      await client.signIn("staff");
+      const signedIn = (await (await client.call("GET", "/api/session")).json()) as { me: { user: { officeRole: string }; csrfToken: string } };
+      expect(signedIn.me.user.officeRole).toBe("Staff");
+      expect(signedIn.me.csrfToken).toBe(client.csrfToken);
+    });
+
     it("ends after 60 idle minutes", async () => {
       await googleSignIn();
       kit.clock.current = new Date(kit.clock.current.getTime() + 59 * 60 * 1000);
