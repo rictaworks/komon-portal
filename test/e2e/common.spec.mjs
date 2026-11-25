@@ -28,7 +28,8 @@ test("an invitation code leaves the address bar and is kept for the form after s
   const page = await sessions.anonymous();
   await page.goto("/redeem#sample-code-123");
   await expect(page.getByText("Sign in with Google first.")).toBeVisible();
-  expect(page.url()).not.toContain("sample-code-123");
+  // The screen moves the code out of the address bar after its first render.
+  await expect(page).toHaveURL(/\/redeem$/);
 
   await page.goto("/sign-in");
   await page.getByRole("button", { name: "Test Client Member", exact: true }).click();

@@ -19,7 +19,9 @@ test("staff land on the dashboard and do not reach the audit log", async ({ sess
 test("a client member lands in the company's area and reaches neither the office nor another company", async ({ sessions }) => {
   const page = await sessions.as("member");
   await expect(page.getByRole("heading", { name: /^New documents/ })).toBeVisible();
-  await expect(page.getByText(DEMO_CLIENT.name).first()).toBeVisible();
+  const company = page.getByRole("combobox", { name: "Company" });
+  await expect(company).toHaveValue(DEMO_CLIENT.id);
+  await expect(company.locator("option:checked")).toHaveText(DEMO_CLIENT.name);
   await page.goto("/office/dashboard");
   await expect(page.getByRole("heading", { name: "No access yet" })).toBeVisible();
   await page.goto("/client/another-client/home");
@@ -28,9 +30,15 @@ test("a client member lands in the company's area and reaches neither the office
 
 test("signing out ends the session", async ({ sessions }) => {
   const page = await sessions.as("owner");
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await page.waitForURL(/\/sign-in/);
-  await page.goto("/office/dashboard");
+  const [loggedOut] = await Promise.all([
+    page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/auth/logout"),
+    page.getByRole("button", { name: "Sign out" }).click(),
+  ]);
+  expect(loggedOut.status()).toBe(200);
+  // The server no longer knows the browser, and the start page sends it to Sign in.
+  const session = await page.request.get("/api/session");
+  expect(await session.json()).toEqual({ me: null });
+  await page.goto("/");
   await page.waitForURL(/\/sign-in/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
