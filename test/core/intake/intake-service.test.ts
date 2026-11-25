@@ -120,6 +120,30 @@ describe("IntakeService", () => {
     expect((await accept("C0031_a.pdf", pdf("same"))).outcome).toBe("stored");
   });
 
+  it("removes the body again when the record cannot be written", async () => {
+    const original = kit.repo.files.insert;
+    kit.repo.files.insert = async () => {
+      throw new Error("database unavailable");
+    };
+    await expect(accept("C0031_a.pdf", pdf("a"))).rejects.toThrow("database unavailable");
+    kit.repo.files.insert = original;
+    expect(kit.store.objects.size).toBe(0);
+    expect(kit.repo.fileRows).toEqual([]);
+  });
+
+  it("audits opening a batch, rejections and duplicates", async () => {
+    const batch = await kit.intake.openBatch(staff, "c1");
+    await kit.intake.accept(staff, batch.id, { fileName: "a.exe", bytes: PDF });
+    const stored = await kit.intake.accept(staff, batch.id, { fileName: "a.pdf", bytes: pdf("same") });
+    await kit.intake.accept(staff, batch.id, { fileName: "b.pdf", bytes: pdf("same") });
+    expect(kit.repo.auditRows.map((row) => [row.action, row.targetId, row.result])).toEqual([
+      ["batch.open", batch.id, "ok"],
+      ["file.reject", batch.id, "failed"],
+      ["file.accept", stored.outcome === "stored" ? stored.file.id : "", "ok"],
+      ["file.duplicate", stored.outcome === "stored" ? stored.file.id : "", "ok"],
+    ]);
+  });
+
   it("asks for automatic publishing only for staged files", async () => {
     const staged = await accept("C0031_a.pdf", pdf("a"));
     await accept("nokey.pdf", pdf("b"));

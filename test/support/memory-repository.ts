@@ -265,6 +265,18 @@ export class MemoryRepository implements Repository {
       this.caseRows[index] = copy(record);
       return true;
     },
+    updateWithArrivals: async (record: CaseRecord, expectedVersion: number, arrivals: readonly CaseArrival[]): Promise<"ok" | "stale" | "arrival_taken"> => {
+      const index = this.caseRows.findIndex((row) => row.id === record.id);
+      if (index < 0 || this.caseRows[index]?.version !== expectedVersion) {
+        return "stale";
+      }
+      if (arrivals.some((arrival) => this.arrivalRows.some((row) => row.arrivalNumber === arrival.arrivalNumber))) {
+        return "arrival_taken";
+      }
+      this.caseRows[index] = copy(record);
+      this.arrivalRows.push(...arrivals.map(copy));
+      return "ok";
+    },
     listArrivals: async (caseId: Id): Promise<CaseArrival[]> => this.arrivalRows.filter((row) => row.caseId === caseId).map(copy),
     addArrival: async (arrival: CaseArrival): Promise<boolean> => {
       if (this.arrivalRows.some((row) => row.arrivalNumber === arrival.arrivalNumber)) {
