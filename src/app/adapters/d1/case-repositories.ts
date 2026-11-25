@@ -231,7 +231,8 @@ export class D1DocTypeRepository implements DocTypeRepository {
     await this.db.prepare("INSERT INTO doc_rules (id, doc_type_id, keyword) VALUES (?, ?, ?)").bind(rule.id, rule.docTypeId, rule.keyword).run();
   }
 
-  async deleteRule(id: Id): Promise<void> {
-    await this.db.prepare("DELETE FROM doc_rules WHERE id = ?").bind(id).run();
+  async deleteRule(id: Id): Promise<boolean> {
+    const result = await this.db.prepare("DELETE FROM doc_rules WHERE id = ?").bind(id).run();
+    return result.meta.changes > 0;
   }
 }
