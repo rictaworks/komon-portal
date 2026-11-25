@@ -44,6 +44,14 @@ describe("SignIn", () => {
     expect(html).toContain(`>${en.signIn.haveInvitation}</a>`);
   });
 
+  it("tells an invitation holder to open the link itself and where the code is in it", () => {
+    // The office hands out a link of the form /redeem#<code>; there is no separate code to type in.
+    const guide = en.signIn.firstTimeGuide;
+    expect(guide).toMatch(/open that link/);
+    expect(guide).toContain("after the # sign");
+    expect(guide).not.toMatch(/enter your invitation/);
+  });
+
   it("keeps the first-time guidance when Google sign-in is not configured", () => {
     session.signInAvailable = false;
     const html = render();
