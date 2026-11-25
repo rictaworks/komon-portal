@@ -13,6 +13,8 @@ export function Setup() {
   const { api, config, me, refresh } = useSession();
   const [setupToken, setSetupToken] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  // Turnstile tokens are single use: after every attempt the widget is rendered again for a fresh token.
+  const [widgetKey, setWidgetKey] = useState(0);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const onToken = useCallback((value: string | null) => setToken(value), []);
@@ -27,6 +29,8 @@ export function Setup() {
       setError(reason);
     } finally {
       setBusy(false);
+      setToken(null);
+      setWidgetKey((key) => key + 1);
     }
   };
 
@@ -49,7 +53,7 @@ export function Setup() {
             </label>
             <input id="setup-token" className="input mono" type="password" value={setupToken} autoComplete="off" onChange={(event) => setSetupToken(event.target.value)} />
           </div>
-          {config.turnstileSiteKey === null ? <Notice tone="review">{t("redeem.turnstileMissing")}</Notice> : <Turnstile siteKey={config.turnstileSiteKey} onToken={onToken} />}
+          {config.turnstileSiteKey === null ? <Notice tone="review">{t("redeem.turnstileMissing")}</Notice> : <Turnstile key={widgetKey} siteKey={config.turnstileSiteKey} onToken={onToken} />}
           <button type="button" className="button button--primary button--block" disabled={busy || setupToken === "" || token === null} onClick={() => void submit()}>
             {t("setup.submit")}
           </button>

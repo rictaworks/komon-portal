@@ -6,6 +6,7 @@ import { Redeem } from "./pages/common/Redeem";
 import { Setup } from "./pages/common/Setup";
 import { SignIn } from "./pages/common/SignIn";
 import { landingOf, useSession } from "./session";
+import { returnTarget } from "./return-target";
 
 /** Sends a visitor to the place that fits their role. */
 function Start() {
@@ -28,7 +29,7 @@ export function RequireSession({ children }: { children: ReactNode }) {
   const { me } = useSession();
   const location = useLocation();
   if (me === null) {
-    return <Navigate to={`/sign-in?return=${encodeURIComponent(location.pathname)}`} replace />;
+    return <Navigate to={`/sign-in?return=${encodeURIComponent(returnTarget(location.pathname, location.search))}`} replace />;
   }
   return <>{children}</>;
 }

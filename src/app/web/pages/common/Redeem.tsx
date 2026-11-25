@@ -25,6 +25,8 @@ export function Redeem() {
   const { api, config, me, refresh } = useSession();
   const [code, setCode] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  // Turnstile tokens are single use: after every attempt the widget is rendered again for a fresh token.
+  const [widgetKey, setWidgetKey] = useState(0);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const onToken = useCallback((value: string | null) => setToken(value), []);
@@ -44,6 +46,8 @@ export function Redeem() {
       setError(reason);
     } finally {
       setBusy(false);
+      setToken(null);
+      setWidgetKey((key) => key + 1);
     }
   };
 
@@ -67,7 +71,7 @@ export function Redeem() {
             </label>
             <input id="invitation-code" className="input mono" value={code} autoComplete="off" onChange={(event) => setCode(event.target.value.trim())} />
           </div>
-          {config.turnstileSiteKey === null ? <Notice tone="review">{t("redeem.turnstileMissing")}</Notice> : <Turnstile siteKey={config.turnstileSiteKey} onToken={onToken} />}
+          {config.turnstileSiteKey === null ? <Notice tone="review">{t("redeem.turnstileMissing")}</Notice> : <Turnstile key={widgetKey} siteKey={config.turnstileSiteKey} onToken={onToken} />}
           <button type="button" className="button button--primary button--block" disabled={busy || code === "" || token === null} onClick={() => void submit()}>
             {t("redeem.submit")}
           </button>
