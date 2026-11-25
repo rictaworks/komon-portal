@@ -7,7 +7,8 @@ export interface Session {
   config: PublicConfig;
   /** Null when nobody is signed in. */
   me: Me | null;
-  refresh(): Promise<void>;
+  /** Re-reads the signed-in user. A failure is thrown to the caller; the app keeps its current state. */
+  refresh(): Promise<Me | null>;
   signOut(): Promise<void>;
 }
 
@@ -40,6 +41,7 @@ export function SessionProvider({ children, loading, failed }: SessionProviderPr
   const api = useMemo(() => new ApiClient(), []);
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
+  // Only the first load can fail the whole application; later failures belong to the request that caused them.
   const load = useCallback(async () => {
     try {
       const config = await api.get<PublicConfig>("/api/config");
@@ -49,6 +51,12 @@ export function SessionProvider({ children, loading, failed }: SessionProviderPr
     }
   }, [api]);
 
+  const refresh = useCallback(async (): Promise<Me | null> => {
+    const me = await loadMe(api);
+    setState((current) => (current.status === "ready" ? { ...current, me } : current));
+    return me;
+  }, [api]);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -56,8 +64,8 @@ export function SessionProvider({ children, loading, failed }: SessionProviderPr
   const signOut = useCallback(async () => {
     await api.post("/api/auth/logout");
     api.setCsrfToken(null);
-    await load();
-  }, [api, load]);
+    await refresh();
+  }, [api, refresh]);
 
   if (state.status === "loading") {
     return <>{loading}</>;
@@ -65,7 +73,7 @@ export function SessionProvider({ children, loading, failed }: SessionProviderPr
   if (state.status === "failed") {
     return <>{failed(state.error)}</>;
   }
-  return <SessionContext.Provider value={{ api, config: state.config, me: state.me, refresh: load, signOut }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ api, config: state.config, me: state.me, refresh, signOut }}>{children}</SessionContext.Provider>;
 }
 
 /** Where a signed-in user belongs. */

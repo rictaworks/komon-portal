@@ -1,20 +1,40 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
-import { errorText, Notice } from "../../components/Notice";
+import { useState } from "react";
+import { ErrorNotice, errorText, Notice } from "../../components/Notice";
 import { useT } from "../../i18n";
 import { PublicLayout } from "../../layouts/PublicLayout";
-import { useSession } from "../../session";
+import { landingOf, useSession } from "../../session";
 
 /** Shown after an invitation was used and before the office approved it. Nothing else is visible until then. */
 export function Pending() {
   const t = useT();
+  const navigate = useNavigate();
   const { me, signOut, refresh } = useSession();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  // Once the office has approved the visitor, the start page sends them to their area.
+  const check = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const current = await refresh();
+      if (current === null || landingOf(current).kind !== "pending") {
+        navigate("/", { replace: true });
+      }
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <PublicLayout>
       <h1 className="title">{t("pending.title")}</h1>
       <Notice tone="info">{t("pending.lead", { name: me?.user.displayName ?? "" })}</Notice>
       <p className="muted">{t("pending.note")}</p>
-      <button type="button" className="button button--primary button--block" onClick={() => void refresh()}>
+      <ErrorNotice error={error} />
+      <button type="button" className="button button--primary button--block" disabled={busy} onClick={() => void check()}>
         {t("pending.check")}
       </button>
       <button type="button" className="button button--block" onClick={() => void signOut()}>
