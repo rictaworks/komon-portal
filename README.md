@@ -134,7 +134,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | DELETE | `/api/office/doc-rules/{id}` | Removes a keyword rule. 404 when the rule does not exist. | staff |
 | POST | `/api/office/doc-types` | Adds a document type. | staff |
 | PUT | `/api/office/doc-types/{id}` | Updates a document type. | staff |
-| GET | `/api/office/files` | Lists files with filters (direction, states, client, case, document type, month, review reason) and paging. | staff |
+| GET | `/api/office/files` | Lists files with filters (direction, states, client, case, document type or none, month, review reason) and paging. | staff |
 | GET | `/api/office/files/{id}` | One file with its readers. | staff |
 | POST | `/api/office/files/{id}/assign` | Assigns a file to a client (and optionally a case and document type) during review. | staff |
 | POST | `/api/office/files/{id}/doc-type` | Sets the document type of a file. | staff |

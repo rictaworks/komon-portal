@@ -353,6 +353,7 @@ export class MemoryRepository implements Repository {
       (filter.clientId === undefined || row.clientId === filter.clientId) &&
       (filter.caseId === undefined || row.caseId === filter.caseId) &&
       (filter.docTypeId === undefined || row.docTypeId === filter.docTypeId) &&
+      (filter.untyped !== true || row.docTypeId === null) &&
       (filter.targetMonth === undefined || row.targetMonth === filter.targetMonth) &&
       (filter.reviewReason === undefined || row.reviewReason === filter.reviewReason) &&
       (filter.incidentOnly !== true || row.incidentFlag)

@@ -681,7 +681,7 @@
     },
     "/api/office/files": {
       "get": {
-        "summary": "Lists files with filters (direction, states, client, case, document type, month, review reason) and paging.",
+        "summary": "Lists files with filters (direction, states, client, case, document type or none, month, review reason) and paging.",
         "tags": [
           "office"
         ],

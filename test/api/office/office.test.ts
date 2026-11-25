@@ -179,6 +179,21 @@ describe("office API", () => {
     expect((await staff.call("GET", "/api/office/files?states=Bogus")).status).toBe(400);
   });
 
+  it("lists the files of one document type, or the files with none, on the server", async () => {
+    const ids_ = async (query: string) => {
+      const listed = await json(await staff.call("GET", `/api/office/files?direction=Outbound&states=Staged&${query}`));
+      return { ids: (listed.items as Json[]).map((item) => item.id), total: listed.total };
+    };
+    expect(await ids_(`docTypeId=${ids.d1}`)).toEqual({ ids: [ids.f1], total: 1 });
+    // "No type" is a filter of its own, so a file without a type is found however many typed files are listed before it.
+    expect(await ids_("untyped=true&limit=1")).toEqual({ ids: [ids.f2], total: 1 });
+    for (const query of ["untyped=yes", "untyped=false", "untyped=1", `untyped=true&docTypeId=${ids.d1}`]) {
+      const response = await staff.call("GET", `/api/office/files?${query}`);
+      expect([query, response.status]).toEqual([query, 400]);
+      expect(await json(response)).toEqual({ error: "invalid_input", detail: "untyped" });
+    }
+  });
+
   it("publishes with one result per file and withdraws with a reason", async () => {
     const published = await json(await staff.call("POST", "/api/office/publish", { body: { items: [{ fileId: ids.f1, version: 1 }, { fileId: ids.f2, version: 1 }, { fileId: "missing", version: 1 }] } }));
     expect(published.results).toEqual([

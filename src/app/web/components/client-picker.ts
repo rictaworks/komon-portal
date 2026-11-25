@@ -47,3 +47,15 @@ export function moveActive(key: MoveKey, active: number, count: number): number 
       return count - 1;
   }
 }
+
+/** The key code browsers report for a key press that the input method has taken. */
+const IME_KEY_CODE = 229;
+
+/**
+ * True while an input method (Japanese, for example) is composing text. Such a key press belongs to the input method:
+ * Enter confirms the conversion and the arrow keys move through its candidates, so the list must not act on it.
+ * Safari sends the confirming key press after the composition has ended, marked only by the key code.
+ */
+export function isComposing(event: { isComposing: boolean; keyCode: number }): boolean {
+  return event.isComposing || event.keyCode === IME_KEY_CODE;
+}

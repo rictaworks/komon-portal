@@ -15,7 +15,7 @@ vi.mock("../../src/app/web/session", () => ({
 }));
 
 import { ClientPicker } from "../../src/app/web/components/ClientPicker";
-import { clientLabel, clientSearchPath, moveActive } from "../../src/app/web/components/client-picker";
+import { clientLabel, clientSearchPath, isComposing, moveActive } from "../../src/app/web/components/client-picker";
 
 function ignore(): void {
   // The markup test never chooses a client.
@@ -56,6 +56,17 @@ describe("client picker keyboard", () => {
   it("has no active option when there is nothing to choose", () => {
     expect(moveActive("ArrowDown", -1, 0)).toBe(-1);
     expect(moveActive("ArrowUp", 0, 0)).toBe(-1);
+  });
+});
+
+describe("client picker and Japanese input", () => {
+  it("leaves a key press to the input method while text is being composed", () => {
+    // Enter that confirms a kana-to-kanji conversion must not choose the active client, and arrows belong to the candidate window.
+    expect(isComposing({ isComposing: true, keyCode: 13 })).toBe(true);
+    // Safari reports the confirming key press after the composition ended, with key code 229.
+    expect(isComposing({ isComposing: false, keyCode: 229 })).toBe(true);
+    expect(isComposing({ isComposing: false, keyCode: 13 })).toBe(false);
+    expect(isComposing({ isComposing: false, keyCode: 40 })).toBe(false);
   });
 });
 

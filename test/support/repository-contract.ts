@@ -317,6 +317,14 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.files.count({ clientId: company.id, targetMonth: "2026-11" })).toBe(1);
       expect(await repo.files.count({ clientId: company.id, states: [] })).toBe(0);
       expect(await repo.files.count({ caseId: linked.id, incidentOnly: true })).toBe(0);
+      // Files with no document type are found by the store itself, not picked out of one page of a longer list.
+      const typed = docType({ id: id("d-untyped"), shortCode: `U${Date.now().toString(36)}`.toUpperCase().slice(0, 16) });
+      expect(await repo.docTypes.insert(typed)).toBe(true);
+      const withType = await seedFile(company.id, "f6", { docTypeId: typed.id, typeSource: "Staff" });
+      expect((await repo.files.list({ clientId: company.id, states: ["Staged"], untyped: true }, { limit: 1, offset: 0 })).map((row) => row.id)).toEqual([staged.id]);
+      expect(await repo.files.count({ clientId: company.id, states: ["Staged"], untyped: true })).toBe(1);
+      expect((await repo.files.list({ clientId: company.id, docTypeId: typed.id }, PAGE)).map((row) => row.id)).toEqual([withType.id]);
+      expect(await repo.files.count({ clientId: company.id, docTypeId: typed.id, untyped: true })).toBe(0);
       expect(await repo.receipts.hasOpened(opened.id, viewer.id)).toBe(true);
       expect(await repo.receipts.hasOpened(staged.id, viewer.id)).toBe(false);
       expect((await repo.receipts.listByFile(opened.id)).map((row) => row.id)).toEqual([id("x1")]);

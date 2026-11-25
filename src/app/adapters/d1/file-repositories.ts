@@ -115,6 +115,9 @@ function fileWhere(filter: FileFilter): Where | null {
   equals("client_id", filter.clientId);
   equals("case_id", filter.caseId);
   equals("doc_type_id", filter.docTypeId);
+  if (filter.untyped === true) {
+    where.clauses.push("doc_type_id IS NULL");
+  }
   equals("target_month", filter.targetMonth);
   equals("review_reason", filter.reviewReason);
   if (filter.incidentOnly === true) {

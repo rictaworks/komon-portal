@@ -12,10 +12,8 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { stagedFilesPath, UNCLASSIFIED } from "./staged-filter";
 import { useSettings } from "./useMasterData";
-
-/** The type filter value for documents that have no type yet. */
-const UNCLASSIFIED = "unclassified";
 
 interface Group {
   client: ClientRef;
@@ -42,17 +40,14 @@ export function Staged() {
   const [client, setClient] = useState<ClientRef | null>(null);
   const [docType, setDocType] = useState("");
   const clientId = client?.id ?? "";
-  // The server narrows by a document type. It has no filter for "no type", so those are picked from the staged documents it lists.
-  const docTypeId = docType === UNCLASSIFIED ? "" : docType;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [results, setResults] = useState<{ result: PublishResult; name: string }[] | null>(null);
-  const files = useLoad<FileView[]>(
-    async () => (await api.get<{ items: FileView[] }>(`/api/office/files?direction=Outbound&states=Staged&limit=200${clientId === "" ? "" : `&clientId=${clientId}`}${docTypeId === "" ? "" : `&docTypeId=${docTypeId}`}`)).items,
-    [clientId, docTypeId],
-  );
+  // The server narrows by client and by type, "no type" included, so the list is never a part picked out of another list.
+  const path = stagedFilesPath({ clientId, docType });
+  const files = useLoad<FileView[]>(async () => (await api.get<{ items: FileView[] }>(path)).items, [path]);
   // Only documents that are listed can be selected, published or sent back.
-  const visible = useMemo(() => (files.data ?? []).filter((file) => docType !== UNCLASSIFIED || file.docType === null), [files.data, docType]);
+  const visible = useMemo(() => files.data ?? [], [files.data]);
   const groups = useMemo(() => groupByClient(visible), [visible]);
   const selected = visible.filter((file) => checked.has(file.id));
   const outbound = (settings.data?.docTypes ?? []).filter((type) => type.direction !== "Inbound");

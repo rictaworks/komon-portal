@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent
 import type { ClientRef } from "../api/office-types";
 import { useT } from "../i18n";
 import { useSession } from "../session";
-import { clientLabel, clientSearchPath, isMoveKey, moveActive } from "./client-picker";
+import { clientLabel, clientSearchPath, isComposing, isMoveKey, moveActive } from "./client-picker";
 import { Icon } from "./Icon";
 import { ErrorNotice } from "./Notice";
 import { useLoad } from "./useLoad";
@@ -104,6 +104,10 @@ export function ClientPicker({ label, value, onChange, emptyLabel, status = "Act
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    // A key pressed while Japanese text is being composed is the input method's, not the list's.
+    if (isComposing(event.nativeEvent)) {
+      return;
+    }
     if (isMoveKey(event.key) && (event.key === "ArrowDown" || event.key === "ArrowUp" || open)) {
       event.preventDefault();
       if (!open) {
