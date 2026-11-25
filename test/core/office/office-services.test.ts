@@ -132,6 +132,17 @@ describe("SettingsService", () => {
     expect(repo.docTypeRows.find((row) => row.id === linked.id)?.caseTypeId).toBeNull();
   });
 
+  it("accepts only a monthly (Payroll) case type for a document type", async () => {
+    repo.caseTypeRows.push(caseType({ id: "t1", kind: "Procedure" }), caseType({ id: "t2", kind: "Payroll", label: "Payroll" }), caseType({ id: "t9", kind: "Other", label: "Other" }));
+    for (const caseTypeId of ["t1", "t9"]) {
+      await expect(service.addDocType(staff, { label: "Material", shortCode: "MAT", direction: "Inbound", caseTypeId })).rejects.toThrow("invalid_input: case_type");
+    }
+    expect(repo.docTypeRows).toEqual([]);
+    const created = await service.addDocType(staff, { label: "Material", shortCode: "MAT", direction: "Inbound", caseTypeId: "t2" });
+    await expect(service.updateDocType(staff, created.id, { label: "Material", shortCode: "MAT", direction: "Inbound", caseTypeId: "t1" })).rejects.toThrow("invalid_input: case_type");
+    expect(repo.docTypeRows.find((row) => row.id === created.id)?.caseTypeId).toBe("t2");
+  });
+
   it("lets staff add and rename case types without changing the kind", async () => {
     repo.docTypeRows.push(docType());
     repo.caseTypeRows.push(caseType({ id: "t1", kind: "Procedure" }));

@@ -1,3 +1,5 @@
+import type { DocTypeRecord, SettingsView } from "../../api/office-types";
+
 /** The range the server accepts for the Jev confidence threshold (see the settings service). */
 export const JEV_THRESHOLD_MIN = 0.8;
 export const JEV_THRESHOLD_MAX = 1;
@@ -29,4 +31,19 @@ export async function copyText(clipboard: Pick<Clipboard, "writeText"> | undefin
   } catch {
     return false;
   }
+}
+
+/** A client can submit a file of this document type, so its case type matters. */
+export function takesSubmissions(docType: Pick<DocTypeRecord, "direction">): boolean {
+  return docType.direction !== "Outbound";
+}
+
+/** The choices for a document type's case type: none, then the monthly (Payroll) case types, the only ones the server accepts. */
+export function submissionCaseTypeOptions(caseTypes: SettingsView["caseTypes"], noneLabel: string): { value: string; label: string }[] {
+  return [{ value: "", label: noneLabel }, ...caseTypes.filter((type) => type.kind === "Payroll").map((type) => ({ value: type.id, label: type.label }))];
+}
+
+/** The body that sets or removes (empty choice) the case type of an existing document type; the update replaces every field. */
+export function docTypeUpdate(docType: DocTypeRecord, choice: string): { label: string; shortCode: string; direction: DocTypeRecord["direction"]; caseTypeId: string | null } {
+  return { label: docType.label, shortCode: docType.shortCode, direction: docType.direction, caseTypeId: choice === "" ? null : choice };
 }

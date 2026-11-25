@@ -124,11 +124,21 @@ describe("SubmissionService.submit", () => {
 
   it("decides by the linked case type and not by the names", async () => {
     // The names contain each other, but the document type is linked to the other case type.
-    kit.repo.caseTypeRows.push(caseType({ id: "t4", kind: "Other", label: "Tax" }), caseType({ id: "t5", kind: "Other", label: "Expenses" }));
+    kit.repo.caseTypeRows.push(caseType({ id: "t4", kind: "Payroll", label: "Tax" }), caseType({ id: "t5", kind: "Payroll", label: "Expenses" }));
     kit.repo.docTypeRows.push(docType({ id: "d5", shortCode: "TAXI", label: "Taxi receipts", direction: "Inbound", caseTypeId: "t5" }));
     kit.repo.caseRows.push(caseRecord({ id: "k1", caseTypeId: "t4" }), caseRecord({ id: "k2", caseTypeId: "t5" }));
     const result = await kit.submissions.submit(member, { ...input, docTypeId: "d5" }, { fileName: "a.pdf", bytes: pdf("a") });
     expect(result.outcome === "stored" && result.file.caseId).toBe("k2");
+  });
+
+  it.each(["Procedure", "Other"] as const)("links only to a monthly case: a document type that names a %s case type is left to staff", async (kind) => {
+    kit.repo.caseTypeRows.push(caseType({ id: "t6", kind, label: "Not monthly" }));
+    kit.repo.docTypeRows.push(docType({ id: "d6", shortCode: "ETC", label: "Other material", direction: "Inbound", caseTypeId: "t6" }));
+    kit.repo.caseRows.push(caseRecord({ id: "k1", caseTypeId: "t6" }));
+    const result = await kit.submissions.submit(member, { ...input, docTypeId: "d6" }, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBeNull();
+    expect(kit.repo.caseRows[0]?.state).toBe("Open");
+    expect(kit.repo.metricRows.at(-1)).toMatchObject({ name: "submission.received", attributes: { linked: false } });
   });
 });
 

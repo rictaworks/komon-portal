@@ -68,19 +68,23 @@ describe("office API", () => {
     expect((await staff.call("POST", "/api/office/doc-rules", { body: { docTypeId: ids.d1, keyword: "shaho" } })).status).toBe(201);
     ids.t1 = String((await json(await staff.call("POST", "/api/office/case-types", { body: { kind: "Procedure", label: "Social insurance" } }))).id);
 
-    const linkedType = await staff.call("POST", "/api/office/doc-types", { body: { label: "Procedure material", shortCode: "TETSU", direction: "Inbound", caseTypeId: ids.t1 } });
+    const payrollTypeId = String((await json(await staff.call("POST", "/api/office/case-types", { body: { kind: "Payroll", label: "Monthly payroll" } }))).id);
+    const linkedType = await staff.call("POST", "/api/office/doc-types", { body: { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound", caseTypeId: payrollTypeId } });
     expect(linkedType.status).toBe(201);
     const linkedId = String((await json(linkedType)).id);
-    const unknownCaseType = await staff.call("POST", "/api/office/doc-types", { body: { label: "X", shortCode: "XX", direction: "Inbound", caseTypeId: "missing" } });
-    expect(unknownCaseType.status).toBe(400);
-    expect(await unknownCaseType.json()).toEqual({ error: "invalid_input", detail: "case_type" });
+    for (const caseTypeId of ["missing", ids.t1]) {
+      // A case type that does not exist, and one that is not a monthly (Payroll) case type.
+      const refused = await staff.call("POST", "/api/office/doc-types", { body: { label: "X", shortCode: "XX", direction: "Inbound", caseTypeId } });
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toEqual({ error: "invalid_input", detail: "case_type" });
+    }
     const typesNow = (await json(await staff.call("GET", "/api/office/settings"))).docTypes as Json[];
-    expect(typesNow.find((row) => row.id === linkedId)).toMatchObject({ shortCode: "TETSU", caseTypeId: ids.t1 });
+    expect(typesNow.find((row) => row.id === linkedId)).toMatchObject({ shortCode: "KYUYO", caseTypeId: payrollTypeId });
     expect(typesNow.find((row) => row.id === ids.d1)).toMatchObject({ caseTypeId: null });
-    const unlinked = await staff.call("PUT", `/api/office/doc-types/${linkedId}`, { body: { label: "Procedure material", shortCode: "TETSU", direction: "Inbound" } });
+    const unlinked = await staff.call("PUT", `/api/office/doc-types/${linkedId}`, { body: { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound" } });
     expect(await json(unlinked)).toMatchObject({ id: linkedId, caseTypeId: null });
-    const relinked = await staff.call("PUT", `/api/office/doc-types/${linkedId}`, { body: { label: "Procedure material", shortCode: "TETSU", direction: "Inbound", caseTypeId: ids.t1 } });
-    expect(await json(relinked)).toMatchObject({ id: linkedId, caseTypeId: ids.t1 });
+    const relinked = await staff.call("PUT", `/api/office/doc-types/${linkedId}`, { body: { label: "Payroll material", shortCode: "KYUYO", direction: "Inbound", caseTypeId: payrollTypeId } });
+    expect(await json(relinked)).toMatchObject({ id: linkedId, caseTypeId: payrollTypeId });
 
     const listed = await json(await staff.call("GET", "/api/office/clients?query=C0031"));
     expect((listed.items as Json[]).map((item) => item.code)).toEqual(["C0031"]);

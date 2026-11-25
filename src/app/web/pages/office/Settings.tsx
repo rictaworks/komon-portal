@@ -10,7 +10,7 @@ import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import { isFixedModelName, loadJevSettings, removeJevSettings, saveJevSettings } from "./jev-settings";
-import { JEV_THRESHOLD_MAX, JEV_THRESHOLD_MIN, JEV_THRESHOLD_STEP, copyText, parseJevThreshold } from "./settings-input";
+import { JEV_THRESHOLD_MAX, JEV_THRESHOLD_MIN, JEV_THRESHOLD_STEP, copyText, docTypeUpdate, parseJevThreshold, submissionCaseTypeOptions, takesSubmissions } from "./settings-input";
 
 const DIRECTIONS = ["Outbound", "Inbound", "Both"] as const;
 const CASE_KINDS = ["Procedure", "Payroll", "Other"] as const;
@@ -215,6 +215,10 @@ export function Settings() {
       });
   };
 
+  const setDocTypeCaseType = (docType: DocTypeRecord) => (choice: string) => {
+    void action.run(() => api.put(`/api/office/doc-types/${docType.id}`, docTypeUpdate(docType, choice))).then((ok) => ok && refresh());
+  };
+
   const addRule = () => {
     void action
       .run(() => api.post("/api/office/doc-rules", { docTypeId: ruleDocType, keyword: ruleKeyword }))
@@ -267,6 +271,7 @@ export function Settings() {
   const current = settings.data;
   const docTypeById = new Map(current.docTypes.map((type) => [type.id, type]));
   const caseTypeById = new Map(current.caseTypes.map((type) => [type.id, type]));
+  const docCaseTypeOptions = submissionCaseTypeOptions(current.caseTypes, t("office.settings.docCaseTypeNone"));
 
   return (
     <div className="page">
@@ -282,7 +287,21 @@ export function Settings() {
             <li key={type.id} className="list__item">
               <span className="code">{type.shortCode}</span>
               <span className="grow">{type.label}</span>
-              {type.caseTypeId === null ? null : (
+              {takesSubmissions(type) ? (
+                <select
+                  className="input input--inline"
+                  aria-label={t("office.settings.docCaseTypeFor", { docType: type.label })}
+                  value={type.caseTypeId ?? ""}
+                  disabled={action.busy}
+                  onChange={(event) => setDocTypeCaseType(type)(event.target.value)}
+                >
+                  {docCaseTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : type.caseTypeId === null ? null : (
                 <span className="muted">
                   {t("office.settings.docCaseTypeLinked", { caseType: caseTypeById.get(type.caseTypeId)?.label ?? t("office.settings.docCaseTypeUnknown") })}
                 </span>
@@ -301,7 +320,7 @@ export function Settings() {
             label={t("office.settings.docCaseType")}
             hint={t("office.settings.docCaseTypeHint")}
             value={docCaseType}
-            options={[{ value: "", label: t("office.settings.docCaseTypeNone") }, ...current.caseTypes.map((type) => ({ value: type.id, label: type.label }))]}
+            options={docCaseTypeOptions}
             onChange={setDocCaseType}
           />
         </div>

@@ -175,6 +175,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field__error { font-size: 13px; color: var(--danger-fg); font-weight: 500; }
 .input { min-height: 44px; width: 100%; padding: 0 12px; border: 1px solid var(--slate-muted); border-radius: var(--radius-control); background: var(--white); }
 .input--narrow { width: 160px; }
+.input--inline { width: auto; max-width: 280px; flex-shrink: 1; }
 .input--invalid { border: 2px solid var(--danger-fg); }
 .input[readonly] { background: var(--gray-light); }
 .check { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--slate-muted); border-radius: var(--radius-control); font-size: 13px; }

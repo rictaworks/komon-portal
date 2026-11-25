@@ -29,6 +29,8 @@ const TARGET_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FILE_TARGET = "file";
 const CLIENT_TARGET = "client";
 const OPEN_CASE_STATES = CASE_STATES.filter((state) => !TERMINAL_CASE_STATES.includes(state));
+/** The monthly case of instructions.md 1.6.7: the only kind a submission moves on (MaterialsReceived). */
+const MONTHLY_CASE_KIND = "Payroll";
 /** Two rows are enough to tell "exactly one" from "several". */
 const CASE_PAGE = { limit: 2, offset: 0 };
 
@@ -159,15 +161,15 @@ export class SubmissionService {
   }
 
   /**
-   * Linked only when the document type names a case type and exactly one open case of that client,
-   * that month and that case type exists (instructions.md 1.6.7); otherwise staff decide.
+   * Linked only when the document type names a case type and exactly one open monthly (Payroll) case of
+   * that client, that month and that case type exists (instructions.md 1.6.7); otherwise staff decide.
    */
   private async matchingCase(input: SubmissionInput, docType: DocType): Promise<Id | null> {
     if (docType.caseTypeId === null) {
       return null;
     }
     const candidates = await this.deps.repository.cases.list(
-      { clientId: input.clientId, caseTypeId: docType.caseTypeId, targetMonth: input.targetMonth, states: OPEN_CASE_STATES },
+      { clientId: input.clientId, caseTypeId: docType.caseTypeId, kind: MONTHLY_CASE_KIND, targetMonth: input.targetMonth, states: OPEN_CASE_STATES },
       CASE_PAGE,
     );
     const [only, ...others] = candidates;

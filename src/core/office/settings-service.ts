@@ -26,7 +26,7 @@ export interface DocTypeInput {
   label: string;
   shortCode: string;
   direction: DocTypeDirection;
-  /** The case type submissions of this document type belong to. Omitted or null: none. */
+  /** The monthly (Payroll) case type submissions of this document type belong to. Omitted or null: none. */
   caseTypeId?: Id | null;
 }
 
@@ -134,7 +134,10 @@ export class SettingsService {
     await this.deps.guard.require(actor, "staff.operate", { type: MASTER_TARGET, id });
   }
 
-  /** The case type is optional; when given it must exist. Without one, submissions of the type are never linked automatically. */
+  /**
+   * The case type is optional; when given it must be an existing monthly (Payroll) case type, the only kind a
+   * submission is linked to (instructions.md 1.6.7). Without one, submissions of the type are never linked automatically.
+   */
   private async validDocType(input: DocTypeInput): Promise<Omit<DocType, "id">> {
     if (input.label.trim() === "" || input.label.length > MAX_LABEL_LENGTH) {
       throw invalidInput("label");
@@ -146,8 +149,11 @@ export class SettingsService {
       throw invalidInput("direction");
     }
     const caseTypeId = input.caseTypeId ?? null;
-    if (caseTypeId !== null && (await this.deps.repository.caseTypes.findById(caseTypeId)) === null) {
-      throw invalidInput("case_type");
+    if (caseTypeId !== null) {
+      const caseType = await this.deps.repository.caseTypes.findById(caseTypeId);
+      if (caseType === null || caseType.kind !== "Payroll") {
+        throw invalidInput("case_type");
+      }
     }
     return { label: input.label, shortCode: input.shortCode, direction: input.direction, caseTypeId };
   }
