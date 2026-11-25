@@ -1,5 +1,5 @@
 import type { AuditRecorder } from "../audit/recorders";
-import { invalidInput, invalidState } from "../model/errors";
+import { invalidInput } from "../model/errors";
 import type { User } from "../model/types";
 import type { Repository } from "../ports/repository";
 import type { AccessPolicy } from "./access-policy";
@@ -37,15 +37,13 @@ export class SetupService {
       await this.deps.audit.record(actor, "setup.claim_owner", USER_TARGET, user.id, "denied");
       throw invalidInput("setup_token");
     }
-    if (!this.deps.policy.canJoin(actor, "Office")) {
-      throw invalidState("not_eligible");
-    }
-    const owner: User = { ...user, officeRole: "Owner", officeStatus: "Active" };
-    if (!(await this.deps.repository.users.transitionOffice(owner, user.officeStatus))) {
-      throw invalidState("not_eligible");
+    // Every refusal looks the same from outside, so a correct token cannot be confirmed by an ineligible account.
+    if (!this.deps.policy.canJoin(actor, "Office") || !(await this.deps.repository.users.claimOwnerIfNone(user.id))) {
+      await this.deps.audit.record(actor, "setup.claim_owner", USER_TARGET, user.id, "denied");
+      throw invalidInput("setup_token");
     }
     await this.deps.audit.record(actor, "setup.claim_owner", USER_TARGET, user.id);
-    return owner;
+    return { ...user, officeRole: "Owner", officeStatus: "Active" };
   }
 
   private tokenConfigured(): boolean {

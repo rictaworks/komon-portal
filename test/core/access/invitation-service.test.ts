@@ -111,21 +111,33 @@ describe("InvitationService", () => {
       const clientInvite = await service.issue(staff, { type: "Client", clientId: "c1" });
       const staffUser = await repo.users.findById("u-staff");
       if (staffUser === null) throw new Error("setup");
-      await expect(service.redeem(staffUser, clientInvite.code)).rejects.toThrow("invalid_state: not_eligible");
+      await expect(service.redeem(staffUser, clientInvite.code)).rejects.toThrow("invalid_input: invitation");
       expect(repo.invitationRows[0]?.status).toBe("Issued");
       await service.redeem(await newcomer(), clientInvite.code);
       const officeInvite = await service.issue(owner, { type: "Office", role: "Staff" });
-      await expect(service.redeem(await newcomer(), officeInvite.code)).rejects.toThrow("invalid_state: not_eligible");
+      await expect(service.redeem(await newcomer(), officeInvite.code)).rejects.toThrow("invalid_input: invitation");
     });
 
     it("refuses a second ongoing membership for the same client but allows another client", async () => {
       const first = await service.issue(staff, { type: "Client", clientId: "c1" });
       await service.redeem(await newcomer(), first.code);
       const again = await service.issue(staff, { type: "Client", clientId: "c1" });
-      await expect(service.redeem(await newcomer(), again.code)).rejects.toThrow("invalid_state: not_eligible");
+      await expect(service.redeem(await newcomer(), again.code)).rejects.toThrow("invalid_input: invitation");
       const second = await service.issue(staff, { type: "Client", clientId: "c2" });
       await service.redeem(await newcomer(), second.code);
       expect(repo.membershipRows.map((row) => row.clientId)).toEqual(["c1", "c2"]);
+    });
+
+    it("does not consume the invitation when the pending record cannot be created", async () => {
+      const { code } = await service.issue(staff, { type: "Client", clientId: "c1" });
+      const original = repo.memberships.insert;
+      repo.memberships.insert = async () => {
+        throw new Error("database unavailable");
+      };
+      await expect(service.redeem(await newcomer(), code)).rejects.toThrow("database unavailable");
+      repo.memberships.insert = original;
+      expect(repo.invitationRows[0]).toMatchObject({ status: "Issued", redeemedBy: null });
+      await expect(service.redeem(await newcomer(), code)).resolves.toMatchObject({ status: "Redeemed" });
     });
 
     it("audits refused attempts without the code", async () => {
@@ -140,6 +152,14 @@ describe("InvitationService", () => {
       const { code } = await service.issue(staff, { type: "Client", clientId: "c1" });
       await service.redeem(await newcomer(), code);
       const id = repo.membershipRows[0]?.id;
+      if (id === undefined) throw new Error("setup");
+      return id;
+    }
+
+    async function pendingMembershipFor(clientId: string) {
+      const { code } = await service.issue(staff, { type: "Client", clientId });
+      await service.redeem(await newcomer(), code);
+      const id = repo.membershipRows.find((row) => row.clientId === clientId)?.id;
       if (id === undefined) throw new Error("setup");
       return id;
     }
@@ -176,12 +196,28 @@ describe("InvitationService", () => {
       expect(repo.membershipRows[0]?.status).toBe("Pending");
     });
 
+    it("ends the sessions on a second attempt when the first one failed after the status change", async () => {
+      const id = await pendingMembership();
+      await service.approveMembership(staff, id);
+      const original = repo.sessions.revokeAllForUser;
+      repo.sessions.revokeAllForUser = async () => {
+        throw new Error("database unavailable");
+      };
+      await expect(service.revokeMembership(staff, id)).rejects.toThrow("database unavailable");
+      repo.sessions.revokeAllForUser = original;
+      await service.revokeMembership(staff, id);
+      expect(repo.revokedSessionsOf).toEqual(["u-new"]);
+      const pendingOnly = await pendingMembershipFor("c2");
+      await expect(service.revokeMembership(staff, pendingOnly)).rejects.toThrow("invalid_state: membership_not_active");
+    });
+
     it("revokes at once and ends every session of that user", async () => {
       const id = await pendingMembership();
       await service.approveMembership(staff, id);
       expect(await service.revokeMembership(staff, id)).toMatchObject({ status: "Revoked" });
       expect(repo.revokedSessionsOf).toEqual(["u-new"]);
-      await expect(service.revokeMembership(staff, id)).rejects.toThrow("invalid_state: membership_not_active");
+      await service.revokeMembership(staff, id);
+      expect(repo.revokedSessionsOf).toEqual(["u-new", "u-new"]);
     });
   });
 
@@ -195,9 +231,25 @@ describe("InvitationService", () => {
       await pendingStaff();
       await expect(service.approveOffice(staff, "u-new")).rejects.toThrow("forbidden: office.staff.manage");
       await expect(service.listOfficeMembers(staff)).rejects.toThrow("forbidden");
-      expect((await service.listOfficeMembers(owner)).find((view) => view.user.id === "u-new")).toMatchObject({ redeemedAt: kit.clock.now() });
+      const listed = await service.listOfficeMembers(owner);
+      expect(listed.find((view) => view.userId === "u-new")).toEqual({ userId: "u-new", displayName: "K. Tanabe", officeRole: "Staff", officeStatus: "Pending", redeemedAt: kit.clock.now() });
+      expect(JSON.stringify(listed)).not.toContain("s-new");
       expect(await service.approveOffice(owner, "u-new")).toMatchObject({ officeRole: "Staff", officeStatus: "Active" });
       await expect(service.rejectOffice(owner, "u-new")).rejects.toThrow("invalid_state: office_not_pending");
+    });
+
+    it("does not approve someone who also has a client membership", async () => {
+      await pendingStaff();
+      repo.membershipRows.push({ id: "m-x", userId: "u-new", clientId: "c1", status: "Pending", approvedBy: null, approvedAt: null, createdAt: new Date() });
+      await expect(service.approveOffice(owner, "u-new")).rejects.toThrow("invalid_state: not_eligible");
+      expect(await newcomer()).toMatchObject({ officeStatus: "Pending" });
+    });
+
+    it("ends the sessions again when an office revocation is repeated", async () => {
+      await service.revokeOffice(owner, "u-staff");
+      await service.revokeOffice(owner, "u-staff");
+      expect(repo.revokedSessionsOf).toEqual(["u-staff", "u-staff"]);
+      await expect(service.revokeOffice(owner, "u-new")).rejects.toThrow("invalid_state: office_not_active");
     });
 
     it("rejects a pending office member", async () => {
@@ -222,7 +274,8 @@ describe("InvitationService", () => {
   describe("cancel", () => {
     it("cancels an issued invitation once, by the right role", async () => {
       const office = await service.issue(owner, { type: "Office", role: "Staff" });
-      await expect(service.cancel(staff, office.invitation.id)).rejects.toThrow("forbidden");
+      await expect(service.cancel(staff, office.invitation.id)).rejects.toThrow("not_found: invitation");
+      await expect(service.cancel(memberActor(), office.invitation.id)).rejects.toThrow("forbidden");
       await service.cancel(owner, office.invitation.id);
       await expect(service.cancel(owner, office.invitation.id)).rejects.toThrow("invalid_state: invitation_not_issued");
       await expect(service.cancel(staff, "missing")).rejects.toThrow("not_found: invitation");
@@ -272,9 +325,20 @@ describe("SetupService", () => {
     await expect(service.claimOwner(user({ id: "u1", googleSub: "s1" }), configured ?? "")).rejects.toThrow("invalid_input: setup_token");
   });
 
-  it("refuses a client member", async () => {
+  it("refuses a client member with the same error as a wrong token", async () => {
     repo.clientRows.push(client({ id: "c1" }));
     repo.membershipRows.push({ id: "m1", userId: "u1", clientId: "c1", status: "Active", approvedBy: null, approvedAt: null, createdAt: new Date() });
-    await expect(setup(SETUP_TOKEN).claimOwner(user({ id: "u1", googleSub: "s1" }), SETUP_TOKEN)).rejects.toThrow("invalid_state: not_eligible");
+    await expect(setup(SETUP_TOKEN).claimOwner(user({ id: "u1", googleSub: "s1" }), SETUP_TOKEN)).rejects.toThrow("invalid_input: setup_token");
+    expect(repo.auditRows.at(-1)).toMatchObject({ result: "denied" });
+  });
+
+  it("creates exactly one Owner when two users present the token at the same moment", async () => {
+    const service = setup(SETUP_TOKEN);
+    const outcomes = await Promise.allSettled([
+      service.claimOwner(user({ id: "u1", googleSub: "s1" }), SETUP_TOKEN),
+      service.claimOwner(user({ id: "u2", googleSub: "s2" }), SETUP_TOKEN),
+    ]);
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(await repo.users.countActiveOwners()).toBe(1);
   });
 });
