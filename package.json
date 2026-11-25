@@ -13,9 +13,9 @@
     "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
     "build": "npm run build:web && npm run build:worker",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json && tsc -p tsconfig.tools.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json && tsc -p tsconfig.tools.json && tsc -p test/e2e/tsconfig.json",
     "test": "vitest run",
-    "test:e2e": "for f in test/e2e/*.e2e.mjs; do node \"$f\" || exit 1; done"
+    "test:e2e": "npm run build:web && node test/e2e/run.mjs"
   },
   "dependencies": {
     "@fontsource/montserrat": "^5.3.0",
@@ -34,6 +34,7 @@
     "@cloudflare/vitest-plugin": "^1.9.2",
     "@cloudflare/workers-types": "^5.20261124.2",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.63.0",
     "@types/node": "^26.6.7",
     "@types/react": "^19.3.1",
     "@types/react-dom": "^19.3.0",
