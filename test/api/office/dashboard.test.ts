@@ -99,7 +99,7 @@ describe("office dashboard: mis-deliveries and submissions", () => {
     expect(after.submissions).toEqual([{ id: submissionId, displayName: expect.any(String), receivedAt: expect.any(String), client: expect.objectContaining({ id: OWN, code: "DEMO01" }) }]);
     expect(after.truncated).toMatchObject({ submissions: false });
     // Once the office has opened it, it no longer waits.
-    await staff.call("GET", `/api/files/${submissionId}/content?mode=view`);
+    await staff.call("POST", `/api/files/${submissionId}/open`, { body: { mode: "view" } });
     expect(await json(await staff.call("GET", "/api/office/dashboard"))).toMatchObject({ submitted: 0, submissions: [] });
   });
 });
