@@ -205,6 +205,14 @@
       "trash": "Move to trash"
     },
     "allClients": "All clients",
+    "clientPicker": {
+      "hint": "Type part of a client code or name.",
+      "searching": "Searching for clients.",
+      "none": "No client matches.",
+      "found": "{count} client(s) found. Use the arrow keys to choose.",
+      "more": "Showing the first {count} clients. Type more to narrow the list.",
+      "clear": "Clear the chosen client"
+    },
     "unclassified": "Unclassified",
     "columns": {
       "case": "Case",
@@ -287,6 +295,8 @@
     "staged": {
       "title": "Staged",
       "list": "Staged documents",
+      "type": "Type",
+      "allTypes": "All types",
       "empty": "No staged documents.",
       "confirmation": "Confirmation",
       "publish": "Publish to {count} client(s)",
@@ -332,11 +342,9 @@
       "openCases": "Open cases",
       "kind": "Kind",
       "allKinds": "All kinds",
-      "clientCode": "Client code",
-      "search": "Search",
       "empty": "No cases match.",
-      "moreCases": "More cases match than the {count} shown. The oldest ones are missing: show more, or narrow the search by client code, kind or state.",
-      "moreCasesMax": "More cases match than the {count} shown, and no more can be listed at once. The oldest ones are missing: narrow the search by client code, kind or state.",
+      "moreCases": "More cases match than the {count} shown. The oldest ones are missing: show more, or narrow the search by client, kind or state.",
+      "moreCasesMax": "More cases match than the {count} shown, and no more can be listed at once. The oldest ones are missing: narrow the search by client, kind or state.",
       "showMore": "Show more cases",
       "reference": "Reference",
       "due": "Due",

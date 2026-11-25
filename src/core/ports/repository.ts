@@ -168,6 +168,8 @@ export interface FileFilter {
   clientId?: Id;
   caseId?: Id;
   docTypeId?: Id;
+  /** Only files that have no document type. */
+  untyped?: boolean;
   targetMonth?: YearMonth;
   reviewReason?: ReviewReason;
   incidentOnly?: boolean;

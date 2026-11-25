@@ -1,8 +1,8 @@
 import { faUpload } from "@fortawesome/free-solid-svg-icons";
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Link } from "react-router-dom";
-import type { ClassificationResult, FileView, IntakeResult } from "../../api/office-types";
-import { SelectField } from "../../components/Form";
+import type { ClassificationResult, ClientRef, FileView, IntakeResult } from "../../api/office-types";
+import { ClientPicker } from "../../components/ClientPicker";
 import { Icon } from "../../components/Icon";
 import { ErrorNotice, IndividualNumberNotice, Notice } from "../../components/Notice";
 import { Badge, FileStateBadge } from "../../components/StatusBadge";
@@ -10,7 +10,6 @@ import { useAction } from "../../components/useAction";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { loadJevSettings } from "./jev-settings";
-import { clientOptions, useClients } from "./useMasterData";
 
 interface Row {
   key: string;
@@ -29,10 +28,9 @@ function fileOf(row: Row): FileView | null {
 export function Intake() {
   const t = useT();
   const { api } = useSession();
-  const clients = useClients();
   const upload = useAction();
   const classify = useAction();
-  const [hint, setHint] = useState("");
+  const [hint, setHint] = useState<ClientRef | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -47,7 +45,7 @@ export function Intake() {
     }
     setClassified(null);
     void upload.run(async () => {
-      const batch = await api.post<{ id: string }>("/api/office/batches", hint === "" ? {} : { hintClientId: hint });
+      const batch = await api.post<{ id: string }>("/api/office/batches", hint === null ? {} : { hintClientId: hint.id });
       setRows([]);
       // One file per request, in order, so that every file gets its own result.
       for (const [index, file] of files.entries()) {
@@ -134,13 +132,7 @@ export function Intake() {
             />
           </div>
           <div className="split__side stack">
-            <SelectField
-              label={t("office.intake.destination")}
-              value={hint}
-              options={[{ value: "", label: t("office.intake.noDestination") }, ...clientOptions(clients.data)]}
-              onChange={setHint}
-              hint={t("office.intake.destinationHint")}
-            />
+            <ClientPicker label={t("office.intake.destination")} emptyLabel={t("office.intake.noDestination")} value={hint} onChange={setHint} hint={t("office.intake.destinationHint")} />
           </div>
         </div>
       </section>
