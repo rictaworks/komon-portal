@@ -6,6 +6,7 @@ import { SetupService } from "../../core/access/setup-service";
 import { AuditRecorder, MetricRecorder } from "../../core/audit/recorders";
 import { CaseService } from "../../core/cases/case-service";
 import { DeadlineCalculator } from "../../core/cases/deadline-calculator";
+import { ClassificationService } from "../../core/intake/classification-service";
 import { FileWriter } from "../../core/intake/file-writer";
 import { IntakeService } from "../../core/intake/intake-service";
 import { ReviewService } from "../../core/intake/review-service";
@@ -13,6 +14,7 @@ import { SubmissionService } from "../../core/intake/submission-service";
 import { TrashService } from "../../core/intake/trash-service";
 import { ClientService } from "../../core/office/client-service";
 import { SettingsService } from "../../core/office/settings-service";
+import type { ClassifierPort } from "../../core/ports/classifier";
 import type { Clock } from "../../core/ports/clock";
 import type { FileStore } from "../../core/ports/file-store";
 import type { IdGenerator } from "../../core/ports/id-generator";
@@ -22,6 +24,7 @@ import { ViewService } from "../../core/publish/view-service";
 import { DashboardQueries } from "../adapters/d1/dashboard-queries";
 import { D1Repository } from "../adapters/d1/d1-repository";
 import { GoogleOidc } from "../adapters/google-oidc";
+import { JevClassifier } from "../adapters/jev-classifier";
 import type { HumanVerifier, IdentityProvider } from "../adapters/identity-provider";
 import { R2FileStore } from "../adapters/r2-file-store";
 import { SessionStore } from "../adapters/session-store";
@@ -39,6 +42,7 @@ export interface AdapterOverrides {
   notifier?: Notifier | undefined;
   store?: FileStore | undefined;
   fetcher?: typeof fetch | undefined;
+  classifier?: ClassifierPort | undefined;
 }
 
 export interface Services {
@@ -70,6 +74,7 @@ export interface Services {
   clients: ClientService;
   settings: SettingsService;
   dashboard: DashboardQueries;
+  classification: ClassificationService;
 }
 
 /** Used until Web Push is wired in: publishing must work without any notification channel. */
@@ -124,6 +129,7 @@ export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Se
     clients: new ClientService(shared),
     settings: new SettingsService(shared),
     dashboard: new DashboardQueries(env.DB),
+    classification: new ClassificationService({ ...shared, classifier: overrides.classifier ?? new JevClassifier(fetcher) }),
     setup: new SetupService({ repository, policy, audit, setupToken: config.setupToken }),
   };
 }
