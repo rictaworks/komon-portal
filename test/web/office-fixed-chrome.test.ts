@@ -34,6 +34,13 @@ describe("office sidebar", () => {
     expect(phone).toMatch(/overflow:\s*visible|overflow-y:\s*visible/);
   });
 
+  it("is not a full-viewport row at the width where the office row wraps (below 780px, 220px sidebar + 560px content)", () => {
+    const wrapped = [...CSS.matchAll(/@media \(max-width: 779px\) \{\s*\.sidebar \{([^}]*)\}/g)].map((match) => match[1] ?? "");
+    expect(wrapped).toHaveLength(1);
+    expect(wrapped[0]).toMatch(/height:\s*auto/);
+    expect(wrapped[0]).toMatch(/position:\s*static/);
+  });
+
   it("is the nav element the layout renders", () => {
     expect(LAYOUT).toMatch(/<nav className="sidebar"/);
   });
@@ -60,6 +67,10 @@ describe("fixed client banner", () => {
 
   it("a card with overflow hidden never clips the sticky banner: the cards holding fixed banners are card--open", () => {
     expect(firstRule(CSS, ".card--open")).toMatch(/overflow:\s*visible/);
+  });
+
+  it("a banner that is the first child of a card--open keeps the card's rounded top corners", () => {
+    expect(CSS).toMatch(/\.card--open > \.banner--fixed:first-child \{[^}]*border-radius:\s*var\(--radius\) var\(--radius\) 0 0/);
   });
 });
 

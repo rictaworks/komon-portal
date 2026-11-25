@@ -60,6 +60,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .sidebar { max-width: none; height: auto; position: static; overflow: visible; }
   .page { padding: 20px 16px; }
 }
+/* Below 780px (sidebar 220px basis + content 560px basis) the row wraps: the sidebar keeps its own row, so it must not be a full viewport tall. */
+@media (max-width: 779px) {
+  .sidebar { height: auto; position: static; overflow: visible; }
+}
 
 /* Layout: client (single column, phone first) */
 .client { min-height: 100vh; display: flex; flex-direction: column; }
@@ -140,6 +144,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 720px) {
   .banner--fixed { padding: 12px 16px; }
 }
+/* card--open lets the banner stick, so the banner rounds its own top corners to match the card */
+.card--open > .banner--fixed:first-child { border-radius: var(--radius) var(--radius) 0 0; }
 .stat { padding: 20px; background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; color: var(--navy); text-decoration: none; }
 .stat__value { font-family: var(--font-display); font-size: 44px; font-weight: 800; line-height: 1; }
 
