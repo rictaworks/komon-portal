@@ -73,14 +73,18 @@ describe("SubmissionService.submit", () => {
   it("does not store the same content twice and points to the earlier submission", async () => {
     const first = await kit.submissions.submit(member, input, { fileName: "a.pdf", bytes: pdf("same") });
     const again = await kit.submissions.submit(member, input, { fileName: "b.pdf", bytes: pdf("same") });
-    expect(again).toEqual({ outcome: "duplicate", existingFileId: first.outcome === "stored" ? first.file.id : "" });
+    expect(again).toEqual({
+      outcome: "duplicate",
+      existingFileId: first.outcome === "stored" ? first.file.id : "",
+      existingDisplayName: first.outcome === "stored" ? first.file.displayName : "",
+    });
     expect(kit.repo.fileRows).toHaveLength(1);
   });
 
   it("does not reveal an unpublished office document with the same content", async () => {
     const office = await kit.intake.accept(staff, (await kit.intake.openBatch(staff, "c1")).id, { fileName: "x.pdf", bytes: pdf("same") });
     expect(office.outcome).toBe("stored");
-    expect(await kit.submissions.submit(member, input, { fileName: "b.pdf", bytes: pdf("same") })).toEqual({ outcome: "duplicate", existingFileId: null });
+    expect(await kit.submissions.submit(member, input, { fileName: "b.pdf", bytes: pdf("same") })).toEqual({ outcome: "duplicate", existingFileId: null, existingDisplayName: null });
   });
 
   it("links the only open case of that month whose case type is the document type's, and moves it to MaterialsReceived", async () => {

@@ -2,7 +2,7 @@ import { faDownload, faEye, faFileLines } from "@fortawesome/free-solid-svg-icon
 import { Link } from "react-router-dom";
 import type { OpenMode } from "../../api/client";
 import type { ClientCase, ClientDocument, DocTypeRef, Submission } from "../../api/client-types";
-import { formatDate, formatDateTime, formatMonth } from "../../components/format";
+import { formatDate, formatDateTime, formatMonth, formatSize } from "../../components/format";
 import { Icon } from "../../components/Icon";
 import { errorText } from "../../components/Notice";
 import { Badge, CaseStateBadge, FileStateBadge, ReadBadge } from "../../components/StatusBadge";
@@ -123,8 +123,9 @@ export function SubmissionCard({ submission, busy, onCancel }: SubmissionCardPro
 
 export interface SendRow {
   key: string;
-  /** The name the member chose the file by. Shown on this screen only; never sent for storage or logged. */
-  fileName: string;
+  /** Where the file stood among the files sent, from 1. The file's own name is not shown: it may name an employee. */
+  position: number;
+  size: number;
   outcome: SendOutcome;
 }
 
@@ -133,7 +134,7 @@ function sendReason(t: Translator, outcome: SendOutcome): string {
     case "stored":
       return t("client.send.storedReason");
     case "duplicate":
-      return t("client.send.duplicate");
+      return outcome.existingDisplayName ? t("client.send.duplicateOf", { name: outcome.existingDisplayName }) : t("client.send.duplicate");
     case "rejected":
       if (outcome.reason === undefined) {
         throw new Error("a rejected file carries no reason");
@@ -144,6 +145,26 @@ function sendReason(t: Translator, outcome: SendOutcome): string {
   }
 }
 
+/** The existing copy a duplicate points to, when the member may open it. */
+function existingFileOf(outcome: SendOutcome): string | null {
+  return outcome.outcome === "duplicate" && outcome.existingFileId ? outcome.existingFileId : null;
+}
+
+/** The link to the existing copy of a duplicate; nothing when the member may not open it. */
+function ExistingCopy({ outcome, busy, onOpen }: { outcome: SendOutcome; busy: boolean; onOpen(fileId: string): void }) {
+  const t = useT();
+  const fileId = existingFileOf(outcome);
+  if (fileId === null) {
+    return null;
+  }
+  return (
+    <button type="button" className="button button--small" disabled={busy} onClick={() => onOpen(fileId)}>
+      <Icon icon={faFileLines} />
+      {t("client.send.openExisting")}
+    </button>
+  );
+}
+
 function SendBadge({ outcome }: { outcome: SendOutcome }) {
   const t = useT();
   if (outcome.outcome === "stored") {
@@ -152,8 +173,15 @@ function SendBadge({ outcome }: { outcome: SendOutcome }) {
   return <Badge tone={outcome.outcome === "duplicate" ? "neutral" : "danger"} label={t("client.send.result.notSent")} />;
 }
 
+export interface SendResultsProps {
+  rows: readonly SendRow[];
+  /** Opens the existing copy a duplicate points to. Called only for a file the member may open. */
+  onOpenExisting(fileId: string): void;
+  busy: boolean;
+}
+
 /** The result of the last send, one line per file with its reason. Never a single "done". */
-export function SendResults({ rows }: { rows: readonly SendRow[] }) {
+export function SendResults({ rows, onOpenExisting, busy }: SendResultsProps) {
   const t = useT();
   if (rows.length === 0) {
     return null;
@@ -167,8 +195,10 @@ export function SendResults({ rows }: { rows: readonly SendRow[] }) {
         {rows.map((row) => (
           <li key={row.key} className="list__item list__item--top">
             <span className="grow stack stack--tight">
-              <strong className="wrap">{row.fileName}</strong>
+              <strong>{t("client.send.fileNumber", { number: row.position })}</strong>
+              <span className="muted">{formatSize(row.size)}</span>
               <span className="muted">{sendReason(t, row.outcome)}</span>
+              <ExistingCopy outcome={row.outcome} busy={busy} onOpen={onOpenExisting} />
             </span>
             <SendBadge outcome={row.outcome} />
           </li>
