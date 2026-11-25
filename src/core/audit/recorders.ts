@@ -13,16 +13,22 @@ export class AuditRecorder {
     private readonly ids: IdGenerator,
   ) {}
 
-  async record(actor: Actor, action: string, targetType: string, targetId: Id, result: AuditEntry["result"] = "ok"): Promise<void> {
-    await this.audit.append({
+  /** Appends an entry. `actor` is null for a request that nobody is signed in for. */
+  async record(actor: Actor | null, action: string, targetType: string, targetId: Id, result: AuditEntry["result"] = "ok"): Promise<void> {
+    await this.audit.append(this.entry(actor, action, targetType, targetId, result));
+  }
+
+  /** Builds an entry without writing it, for a repository write that stores it together with the change it describes. */
+  entry(actor: Actor | null, action: string, targetType: string, targetId: Id, result: AuditEntry["result"] = "ok"): AuditEntry {
+    return {
       id: this.ids.newId(),
-      actorUserId: actorUserId(actor),
+      actorUserId: actor === null ? null : actorUserId(actor),
       action,
       targetType,
       targetId,
       result,
       occurredAt: this.clock.now(),
-    });
+    };
   }
 }
 

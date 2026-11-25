@@ -116,6 +116,14 @@ describe("client API and file delivery", () => {
     expect((await member.call("POST", path, { body: {} })).status).toBe(400);
     expect((await kit.client().call("POST", path, { body: { mode: "view" } })).status).toBe(401);
     expect(await repository.receipts.listByFile(ids.published ?? "")).toEqual([]);
+    const denied = await env.DB.prepare("SELECT action, target_type, target_id, result FROM audit_log WHERE action LIKE 'request.%' ORDER BY action").all();
+    expect(denied.results).toEqual([
+      { action: "request.bad_csrf", target_type: "request", target_id: "state_change", result: "denied" },
+      { action: "request.bad_csrf", target_type: "request", target_id: "state_change", result: "denied" },
+      { action: "request.bad_origin", target_type: "request", target_id: "state_change", result: "denied" },
+      { action: "request.bad_origin", target_type: "request", target_id: "state_change", result: "denied" },
+      { action: "request.unauthenticated", target_type: "request", target_id: "state_change", result: "denied" },
+    ]);
   });
 
   it("records the first open of a member once and never a staff view", async () => {

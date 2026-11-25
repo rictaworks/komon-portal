@@ -238,6 +238,35 @@ export class D1FileRepository implements FileRepository {
     }
   }
 
+  async updateWithAudit(file: FileRecord, expectedVersion: number, audit: AuditEntry): Promise<FileWriteResult> {
+    // One transaction. The audit row is written only while the file still has the expected
+    // version, and the same condition guards the update, so either both happen or neither does.
+    // A statement that fails (the entry cannot be stored, or the change hits a constraint) rolls
+    // the whole batch back.
+    const current = `id = ? AND version = ? AND ${NOT_PURGING}`;
+    try {
+      const results = await this.db.batch([
+        this.db
+          .prepare(
+            `INSERT INTO audit_log (id, actor_user_id, action, target_type, target_id, result, occurred_at)
+             SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM file_records WHERE ${current})`,
+          )
+          .bind(audit.id, audit.actorUserId, audit.action, audit.targetType, audit.targetId, audit.result, toIso(audit.occurredAt), file.id, expectedVersion),
+        this.db
+          .prepare(`UPDATE file_records SET ${MUTABLE_COLUMNS.map((column) => `${column} = ?`).join(", ")} WHERE ${current}`)
+          .bind(...MUTABLE_COLUMNS.map((column) => columnValue(file, column)), file.id, expectedVersion),
+      ]);
+      const updated = results[1];
+      return updated !== undefined && changes(updated) === 1 ? "ok" : "stale";
+    } catch (error) {
+      const conflict = uniqueConflict(error);
+      if (conflict !== null) {
+        return conflict;
+      }
+      throw error;
+    }
+  }
+
   async summarizeForCase(caseId: Id): Promise<CaseFileSummary> {
     const row = await this.db
       .prepare(
