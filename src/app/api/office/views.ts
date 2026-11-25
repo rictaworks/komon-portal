@@ -120,6 +120,7 @@ export async function fileView(lookups: Lookups, file: FileRecord, receipts: rea
     publishedAt: file.publishedAt,
     acknowledgedAt: file.acknowledgedAt,
     trashedAt: file.trashedAt,
+    trashedFrom: file.trashedFrom,
     readers,
     version: file.version,
   };

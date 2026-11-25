@@ -1,9 +1,9 @@
 import type {
   AuditEntry, CaseArrival, CaseRecord, CaseType, Client, DocRule, DocType, FileReceipt, FileRecord, Id, Invitation,
-  InvitationStatus, LocalDate, Membership, MembershipStatus, MetricEvent, OfficeSetting, UploadBatch, User, YearMonth,
+  InvitationStatus, LocalDate, Membership, MembershipStatus, MetricEvent, OfficeSetting, PendingPurge, UploadBatch, User, YearMonth,
 } from "../../src/core/model/types";
 import type {
-  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, Page, Repository,
+  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, MemberCounts, Page, Repository,
 } from "../../src/core/ports/repository";
 
 function copy<T>(value: T): T {
@@ -12,6 +12,11 @@ function copy<T>(value: T): T {
 
 function paged<T>(rows: T[], page: Page): T[] {
   return rows.slice(page.offset, page.offset + page.limit).map(copy);
+}
+
+/** SQLite lower() folds ASCII letters only; the memory search does the same. */
+function asciiLower(value: string): string {
+  return value.replaceAll(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 const ONGOING: readonly MembershipStatus[] = ["Pending", "Active"];
@@ -36,6 +41,8 @@ export class MemoryRepository implements Repository {
   docTypeRows: DocType[] = [];
   ruleRows: DocRule[] = [];
   fileRows: FileRecord[] = [];
+  /** Mirrors file_records.purging_at: when the purge of a file began. */
+  purgingSince = new Map<Id, Date>();
   batchRows: UploadBatch[] = [];
   receiptRows: FileReceipt[] = [];
   auditRows: AuditEntry[] = [];
@@ -114,7 +121,7 @@ export class MemoryRepository implements Repository {
         this.clientRows.filter(
           (row) =>
             (filter.status === undefined || row.status === filter.status) &&
-            (filter.query === undefined || row.code.startsWith(filter.query) || row.corporateName.includes(filter.query)),
+            (filter.query === undefined || asciiLower(row.code).includes(asciiLower(filter.query)) || asciiLower(row.corporateName).includes(asciiLower(filter.query))),
         ),
         page,
       ),
@@ -148,6 +155,18 @@ export class MemoryRepository implements Repository {
     listByUser: async (userId: Id): Promise<Membership[]> => this.membershipRows.filter((row) => row.userId === userId).map(copy),
     listByClient: async (clientId: Id): Promise<Membership[]> =>
       this.membershipRows.filter((row) => row.clientId === clientId).map(copy),
+    countOngoingByClients: async (clientIds: readonly Id[]): Promise<Map<Id, MemberCounts>> => {
+      const counts = new Map<Id, MemberCounts>();
+      for (const clientId of [...clientIds].sort()) {
+        const rows = this.membershipRows.filter((row) => row.clientId === clientId);
+        const active = rows.filter((row) => row.status === "Active").length;
+        const pending = rows.filter((row) => row.status === "Pending").length;
+        if (active + pending > 0) {
+          counts.set(clientId, { active, pending });
+        }
+      }
+      return counts;
+    },
     insert: async (membership: Membership): Promise<boolean> => {
       if (ONGOING.includes(membership.status) && (await this.memberships.findOngoing(membership.userId, membership.clientId)) !== null) {
         return false;
@@ -328,6 +347,7 @@ export class MemoryRepository implements Repository {
 
   private matchesFile(row: FileRecord, filter: FileFilter): boolean {
     return (
+      !this.purgingSince.has(row.id) &&
       (filter.direction === undefined || row.direction === filter.direction) &&
       (filter.states === undefined || filter.states.includes(row.state)) &&
       (filter.clientId === undefined || row.clientId === filter.clientId) &&
@@ -366,6 +386,10 @@ export class MemoryRepository implements Repository {
     return `${code}_`;
   }
 
+  private isDue(row: FileRecord, threshold: Date): boolean {
+    return row.state === "Trashed" && row.trashedAt !== null && row.trashedAt.getTime() <= threshold.getTime();
+  }
+
   private fileConflict(file: FileRecord): FileWriteResult {
     this.assertFileConstraints(file);
     const others = this.fileRows.filter((row) => row.id !== file.id);
@@ -380,7 +404,7 @@ export class MemoryRepository implements Repository {
   }
 
   files = {
-    findById: async (id: Id): Promise<FileRecord | null> => copy(this.fileRows.find((row) => row.id === id) ?? null),
+    findById: async (id: Id): Promise<FileRecord | null> => copy(this.fileRows.find((row) => row.id === id && !this.purgingSince.has(row.id)) ?? null),
     findActiveBySha256: async (sha256: string): Promise<FileRecord[]> =>
       this.fileRows.filter((row) => row.sha256 === sha256 && row.state !== "Trashed").map(copy),
     list: async (filter: FileFilter, page: Page): Promise<FileRecord[]> =>
@@ -408,7 +432,7 @@ export class MemoryRepository implements Repository {
     },
     update: async (file: FileRecord, expectedVersion: number): Promise<FileWriteResult> => {
       const index = this.fileRows.findIndex((row) => row.id === file.id);
-      if (index < 0 || this.fileRows[index]?.version !== expectedVersion) {
+      if (index < 0 || this.fileRows[index]?.version !== expectedVersion || this.purgingSince.has(file.id)) {
         return "stale";
       }
       const conflict = this.fileConflict(file);
@@ -429,16 +453,33 @@ export class MemoryRepository implements Repository {
     },
     listTrashedBefore: async (threshold: Date, page: Page): Promise<FileRecord[]> =>
       paged(
-        this.fileRows.filter((row) => row.state === "Trashed" && row.trashedAt !== null && row.trashedAt.getTime() <= threshold.getTime()),
+        this.fileRows.filter((row) => this.isDue(row, threshold) && !this.purgingSince.has(row.id)),
         page,
       ),
-    purge: async (id: Id, trashedBefore: Date, audit: AuditEntry): Promise<boolean> => {
+    beginPurge: async (id: Id, trashedBefore: Date, at: Date): Promise<boolean> => {
       const row = this.fileRows.find((candidate) => candidate.id === id);
-      if (row === undefined || row.state !== "Trashed" || row.trashedAt === null || row.trashedAt.getTime() > trashedBefore.getTime()) {
+      if (row === undefined || !this.isDue(row, trashedBefore) || this.purgingSince.has(id)) {
+        return false;
+      }
+      this.purgingSince.set(id, new Date(at.getTime()));
+      this.receiptRows = this.receiptRows.filter((candidate) => candidate.fileId !== id);
+      return true;
+    },
+    listPurging: async (page: Page): Promise<PendingPurge[]> =>
+      paged(
+        this.fileRows
+          .filter((row) => this.purgingSince.has(row.id))
+          .sort((a, b) => (this.purgingSince.get(a.id)?.getTime() ?? 0) - (this.purgingSince.get(b.id)?.getTime() ?? 0))
+          .map((row) => ({ id: row.id, clientId: row.clientId, r2Key: row.r2Key })),
+        page,
+      ),
+    completePurge: async (id: Id, audit: AuditEntry): Promise<boolean> => {
+      if (!this.purgingSince.has(id) || !this.fileRows.some((candidate) => candidate.id === id)) {
         return false;
       }
       this.fileRows = this.fileRows.filter((candidate) => candidate.id !== id);
       this.receiptRows = this.receiptRows.filter((candidate) => candidate.fileId !== id);
+      this.purgingSince.delete(id);
       this.auditRows.push(copy(audit));
       return true;
     },

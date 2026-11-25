@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { ClientMembers, ClientRecord, InvitationView } from "../../api/office-types";
+import type { ClientListItem, ClientMembers, ClientRecord, InvitationView } from "../../api/office-types";
 import { Field, SelectField, TextField } from "../../components/Form";
+import { formatDateTime } from "../../components/format";
 import { ErrorNotice, Notice } from "../../components/Notice";
 import { Badge } from "../../components/StatusBadge";
 import { useAction } from "../../components/useAction";
@@ -9,25 +10,62 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { clientListPath, rowsFor, type ClientListPage } from "./client-list";
 
 const CLIENT_STATUSES = ["Active", "Archived", "Closed"] as const;
 
+const ALL_STATUSES = "All";
+/** Clients shown per page. The API counts members for at most 50 clients in one request. */
+const PAGE_SIZE = 25;
+const SEARCH_DELAY_MS = 300;
+
 function inviteLink(code: string): string {
   return `${window.location.origin}/redeem#${code}`;
+}
+
+function memberCountKey(members: ClientListItem["members"]): string {
+  if (members.active > 0 && members.pending > 0) {
+    return "office.clients.memberCounts.both";
+  }
+  if (members.pending > 0) {
+    return "office.clients.memberCounts.pending";
+  }
+  return members.active > 0 ? "office.clients.memberCounts.active" : "office.clients.memberCounts.none";
 }
 
 /** Client list with a register form. */
 export function Clients() {
   const t = useT();
   const { api } = useSession();
-  const list = useLoad<{ items: ClientRecord[] }>(() => api.get<{ items: ClientRecord[] }>("/api/office/clients"), []);
   const action = useAction();
   const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<string>("Active");
+  const [offset, setOffset] = useState(0);
+  const path = clientListPath({ status: status === ALL_STATUSES ? null : status, search, offset, pageSize: PAGE_SIZE });
+  // The rows are kept with the request they answer, so rows of an earlier filter are never shown under a new one.
+  const list = useLoad<ClientListPage<ClientListItem>>(async () => ({ path, items: (await api.get<{ items: ClientListItem[] }>(path)).items }), [path]);
   const [code, setCode] = useState("");
   const [corporateName, setCorporateName] = useState("");
   const [corporateNumber, setCorporateNumber] = useState("");
-  const needle = query.trim().toLowerCase();
-  const visible = (list.data?.items ?? []).filter((client) => needle === "" || `${client.code} ${client.corporateName}`.toLowerCase().includes(needle));
+  // Null while the list for the chosen filters and page is loading, or when loading it failed.
+  const current = rowsFor(list.data, path, PAGE_SIZE);
+  const visible = current === null ? [] : current.rows;
+  const hasNext = current !== null && current.hasNext;
+
+  // The server does the search; typing waits a moment so that each keystroke is not a request.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(query.trim());
+      setOffset(0);
+    }, SEARCH_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  const chooseStatus = (value: string) => {
+    setStatus(value);
+    setOffset(0);
+  };
 
   const register = (event: FormEvent) => {
     event.preventDefault();
@@ -48,20 +86,58 @@ export function Clients() {
         <section className="card split__main" aria-label={t("office.clients.list")}>
           <div className="card__head">
             <TextField label={t("office.clients.search")} type="search" value={query} onChange={setQuery} />
+            <SelectField
+              label={t("office.clients.statusFilter")}
+              value={status}
+              options={[...CLIENT_STATUSES.map((value) => ({ value, label: t(`clientStatus.${value}`) })), { value: ALL_STATUSES, label: t("office.clients.allStatuses") }]}
+              onChange={chooseStatus}
+            />
           </div>
-          {list.loading && list.data === null ? <Loading /> : null}
-          {list.data !== null && visible.length === 0 ? <p className="empty">{t("office.clients.empty")}</p> : null}
-          <ul className="list">
-            {visible.map((client) => (
-              <li key={client.id}>
-                <Link className="list__item" to={`/office/clients/${client.id}`}>
-                  <span className="code">{client.code}</span>
-                  <span className="grow">{client.corporateName}</span>
-                  <Badge tone={client.status === "Active" ? "published" : "neutral"} label={t(`clientStatus.${client.status}`)} />
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {current === null && list.loading ? <Loading /> : null}
+          {current !== null && visible.length === 0 ? <p className="empty">{t("office.clients.empty")}</p> : null}
+          {visible.length === 0 ? null : (
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{t("office.clients.columns.code")}</th>
+                    <th>{t("office.clients.columns.corporateName")}</th>
+                    <th>{t("office.clients.columns.corporateNumber")}</th>
+                    <th>{t("office.clients.columns.status")}</th>
+                    <th>{t("office.clients.columns.members")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((client) => (
+                    <tr key={client.id}>
+                      <td>
+                        <Link className="code" to={`/office/clients/${client.id}`}>
+                          {client.code}
+                        </Link>
+                      </td>
+                      <td>{client.corporateName}</td>
+                      <td className="muted">{client.corporateNumber ?? t("office.clients.notRegistered")}</td>
+                      <td>
+                        <Badge tone={client.status === "Active" ? "published" : "neutral"} label={t(`clientStatus.${client.status}`)} />
+                      </td>
+                      <td>{t(memberCountKey(client.members), client.members)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {offset === 0 && !hasNext ? null : (
+            <div className="card__head">
+              <span className="grow muted">{visible.length === 0 ? "" : t("office.clients.pageRange", { first: offset + 1, last: offset + visible.length })}</span>
+              <button type="button" className="button" disabled={list.loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+                {t("office.clients.previousPage")}
+              </button>
+              <button type="button" className="button" disabled={list.loading || !hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
+                {t("office.clients.nextPage")}
+              </button>
+            </div>
+          )}
         </section>
         <form className="card card--pad split__side stack" onSubmit={register} aria-label={t("office.clients.register")}>
           <h2 className="subtitle">{t("office.clients.register")}</h2>
@@ -90,6 +166,7 @@ export function ClientDetail() {
   const [corporateNumber, setCorporateNumber] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [issued, setIssued] = useState<InvitationView | null>(null);
+  const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
 
   if (client.data === null) {
     return <div className="page">{client.error === null ? <Loading /> : <ErrorNotice error={client.error} />}</div>;
@@ -122,7 +199,20 @@ export function ClientDetail() {
   };
 
   const invite = () => {
+    setCopied(null);
     void action.run(async () => setIssued(await api.post<InvitationView>(`/api/office/clients/${clientId}/invitations`, {}))).then(() => members.reload());
+  };
+
+  const copyLink = (link: string) => () => {
+    // The clipboard is unavailable outside a secure context or when the browser refuses; both are reported.
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(link);
+        setCopied("copied");
+      } catch {
+        setCopied("failed");
+      }
+    })();
   };
 
   const membership = (id: string, verb: "approve" | "reject" | "revoke") => () => {
@@ -168,13 +258,30 @@ export function ClientDetail() {
             <Field label={t("office.clients.inviteLink")} hint={t("office.clients.inviteHint")}>
               {(id) => <input id={id} className="input input--mono" readOnly value={issued.code === undefined ? "" : inviteLink(issued.code)} />}
             </Field>
+            {issued.code === undefined ? null : (
+              <div className="row">
+                <button type="button" className="button" onClick={copyLink(inviteLink(issued.code))}>
+                  {t("office.clients.copyLink")}
+                </button>
+              </div>
+            )}
+            {copied === "copied" ? <Notice tone="success">{t("office.clients.linkCopied")}</Notice> : null}
+            {copied === "failed" ? <Notice tone="danger">{t("office.clients.linkCopyFailed")}</Notice> : null}
           </div>
         )}
         {members.data === null ? <Loading /> : null}
         <ul className="list">
           {(members.data?.members ?? []).map((member) => (
             <li key={member.membershipId} className="list__item">
-              <span className="grow">{member.displayName}</span>
+              <span className="grow stack stack--tight">
+                <strong>{member.displayName}</strong>
+                {member.status === "Pending" ? (
+                  <span className="muted">
+                    {member.redeemedAt === null ? t("office.clients.useTimeUnknown") : t("office.clients.usedInvitation", { when: formatDateTime(member.redeemedAt) })} {t("office.clients.approveHint")}
+                  </span>
+                ) : null}
+                {member.status === "Active" && member.approvedAt !== null ? <span className="muted">{t("office.clients.activeSince", { when: formatDateTime(member.approvedAt) })}</span> : null}
+              </span>
               <Badge tone={member.status === "Active" ? "published" : "neutral"} label={t(`membership.${member.status}`)} />
               {member.status === "Pending" ? (
                 <>

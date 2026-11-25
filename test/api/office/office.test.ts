@@ -73,6 +73,15 @@ describe("office API", () => {
     const settings = await json(await staff.call("GET", "/api/office/settings"));
     expect(settings.canEditOffice).toBe(false);
     expect((settings.docRules as Json[]).map((rule) => rule.keyword)).toContain("shaho");
+    expect(settings.docRules).toEqual(expect.arrayContaining([expect.objectContaining({ docTypeId: ids.d1, keyword: "shaho" })]));
+    expect(settings.notifications).toEqual({ pushConfigured: false });
+    const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"])) as CryptoKeyPair;
+    const publicKey = btoa(String.fromCharCode(...new Uint8Array((await crypto.subtle.exportKey("raw", pair.publicKey)) as ArrayBuffer)));
+    const privateKey = ((await crypto.subtle.exportKey("jwk", pair.privateKey)) as JsonWebKey).d ?? "";
+    const withPush = { VAPID_PUBLIC_KEY: publicKey.replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", ""), VAPID_PRIVATE_KEY: privateKey, VAPID_SUBJECT: "mailto:info@rictaworks.jp" };
+    const configured = await json(await staff.call("GET", "/api/office/settings", { env: withPush }));
+    expect(configured.notifications).toEqual({ pushConfigured: true });
+    expect(JSON.stringify(configured)).not.toContain(privateKey);
   });
 
   it("keeps Owner-only actions from staff", async () => {
@@ -98,6 +107,13 @@ describe("office API", () => {
     expect(await stale.json()).toEqual({ error: "conflict", detail: "stale" });
     const tooLow = await owner.call("PUT", "/api/office/settings/office", { body: { ...change, jevThreshold: 0.5, version: Number(office.version) + 1 } });
     expect(tooLow.status).toBe(400);
+    expect(await tooLow.json()).toEqual({ error: "invalid_input", detail: "jev_threshold" });
+    const tooHigh = await owner.call("PUT", "/api/office/settings/office", { body: { ...change, jevThreshold: 1.01, version: Number(office.version) + 1 } });
+    expect(tooHigh.status).toBe(400);
+    expect(await tooHigh.json()).toEqual({ error: "invalid_input", detail: "jev_threshold" });
+    const missing = await owner.call("PUT", "/api/office/settings/office", { body: { ...change, jevThreshold: undefined, version: Number(office.version) + 1 } });
+    expect(missing.status).toBe(400);
+    expect((await json(await owner.call("GET", "/api/office/settings"))).office).toMatchObject({ jevThreshold: 0.95, version: Number(office.version) + 1 });
     expect((await json(await owner.call("GET", "/api/office/staff"))).members).toEqual(expect.arrayContaining([expect.objectContaining({ officeRole: "Owner" })]));
     const invited = await json(await owner.call("POST", "/api/office/staff/invitations", { body: { role: "Staff" } }));
     expect(String(invited.code).length).toBeGreaterThanOrEqual(32);
@@ -178,9 +194,9 @@ describe("office API", () => {
     const noReason = await staff.call("POST", `/api/office/files/${ids.f1}/withdraw`, { body: { next: "NeedsReview", version: 2 } });
     expect(noReason.status).toBe(400);
     const withdrawn = await json(await staff.call("POST", `/api/office/files/${ids.f1}/withdraw`, { body: { reason: "Superseded", next: "Trashed", version: 2 } }));
-    expect(withdrawn).toMatchObject({ state: "Trashed", withdrawReason: "Superseded", incident: false });
+    expect(withdrawn).toMatchObject({ state: "Trashed", trashedFrom: "Withdrawn", withdrawReason: "Superseded", incident: false });
     const restored = await json(await staff.call("POST", `/api/office/files/${ids.f1}/restore`, { body: { version: Number(withdrawn.version) } }));
-    expect(restored).toMatchObject({ state: "NeedsReview", reviewReason: "Restored" });
+    expect(restored).toMatchObject({ state: "NeedsReview", trashedFrom: null, reviewReason: "Restored" });
     expect((await json(await owner.call("GET", "/api/office/incidents"))).items).toEqual([]);
   });
 
@@ -232,6 +248,15 @@ describe("office API", () => {
     expect((await json(skipped)).results).toEqual([{ fileId: ids.f2, outcome: "skipped", reason: "client_not_active" }]);
   });
 
+  it("refuses a target month filter that is not a month instead of answering with an empty list", async () => {
+    for (const month of ["11/2026", "2026/11", "2026-1", "2026-13"]) {
+      const response = await staff.call("GET", `/api/office/files?targetMonth=${encodeURIComponent(month)}`);
+      expect([month, response.status]).toEqual([month, 400]);
+      expect(await json(response)).toEqual({ error: "invalid_input", detail: "targetMonth" });
+    }
+    expect((await staff.call("GET", "/api/office/files?targetMonth=2026-11")).status).toBe(200);
+  });
+
   it("refuses malformed or out-of-range paging instead of replacing it with defaults", async () => {
     for (const query of ["limit=abc", "limit=0", "limit=201", "offset=-5", "offset=1.5"]) {
       const response = await staff.call("GET", `/api/office/clients?${query}`);
@@ -251,5 +276,63 @@ describe("office API", () => {
     expect(entries.some((entry) => entry.result === "denied")).toBe(true);
     expect(entries.find((entry) => entry.action === "client.register")).toMatchObject({ actorDisplayName: "Dev staff", result: "ok" });
     expect(JSON.stringify(entries)).not.toContain("Yamada");
+  });
+
+  it("narrows the client list by status and by code or name on the server", async () => {
+    const codes = async (query: string) => ((await json(await staff.call("GET", `/api/office/clients?${query}`))).items as Json[]).map((item) => item.code);
+    // DEMO01 is the client of the development member.
+    expect(await codes("status=Active")).toEqual(["C0031", "DEMO01"]);
+    expect(await codes("status=Closed")).toEqual(["C0142"]);
+    expect(await codes("status=Archived")).toEqual([]);
+    expect(await codes("status=Active&query=Hinode")).toEqual(["C0031"]);
+    expect(await codes("status=Active&query=Kita")).toEqual([]);
+    expect(await codes("query=C01")).toEqual(["C0142"]);
+    // Staff type in any case and may know only the middle of a code or a name.
+    expect(await codes("query=hinode")).toEqual(["C0031"]);
+    expect(await codes("query=demo")).toEqual(["DEMO01"]);
+    expect(await codes("query=c0031")).toEqual(["C0031"]);
+    expect(await codes("query=0142")).toEqual(["C0142"]);
+    expect(await codes("query=142")).toEqual(["C0142"]);
+    expect(await codes("status=Active&query=142")).toEqual([]);
+    const unknown = await staff.call("GET", "/api/office/clients?status=Open");
+    expect(unknown.status).toBe(400);
+    expect(await json(unknown)).toEqual({ error: "invalid_input", detail: "status" });
+  });
+
+  it("lists the corporate number and the member counts of each client on request", async () => {
+    const plain = (await json(await staff.call("GET", "/api/office/clients"))).items as Json[];
+    expect(plain.every((item) => !("members" in item))).toBe(true);
+
+    const invitation = await json(await staff.call("POST", `/api/office/clients/${ids.c1}/invitations`));
+    const guest = kit.client();
+    kit.identity.identity = { sub: "office-test-second-guest", displayName: "M. Sato" };
+    const start = await guest.call("GET", "/api/auth/login");
+    await guest.call("GET", `/api/auth/callback?code=c&state=${new URL(start.headers.get("Location") ?? "").searchParams.get("state")}`);
+    guest.csrfToken = String((await json(await guest.call("GET", "/api/me"))).csrfToken);
+    expect((await guest.call("POST", "/api/invitations/redeem", { body: { code: invitation.code, turnstileToken: "ok" } })).status).toBe(200);
+
+    const rows = async () => ((await json(await staff.call("GET", "/api/office/clients?include=members"))).items as Json[]).map((item) => [item.code, item.corporateNumber, item.members]);
+    // The membership revoked earlier is not counted.
+    expect(await rows()).toEqual([
+      ["C0031", CORPORATE_NUMBER, { active: 0, pending: 1 }],
+      ["C0142", null, { active: 0, pending: 0 }],
+      ["DEMO01", null, { active: 1, pending: 0 }],
+    ]);
+    const members = (await json(await staff.call("GET", `/api/office/clients/${ids.c1}/members`))).members as Json[];
+    const pending = members.find((entry) => entry.status === "Pending") ?? {};
+    expect(pending.redeemedAt).toBeTruthy();
+    expect((await staff.call("POST", `/api/office/memberships/${String(pending.membershipId)}/approve`)).status).toBe(200);
+    expect((await rows())[0]).toEqual(["C0031", CORPORATE_NUMBER, { active: 1, pending: 0 }]);
+  });
+
+  it("refuses an unknown include value, and member counts for more than 50 clients at once", async () => {
+    const unknown = await staff.call("GET", "/api/office/clients?include=everything");
+    expect(unknown.status).toBe(400);
+    expect(await json(unknown)).toEqual({ error: "invalid_input", detail: "include" });
+    const wide = await staff.call("GET", "/api/office/clients?include=members&limit=51");
+    expect(wide.status).toBe(400);
+    expect(await json(wide)).toEqual({ error: "invalid_input", detail: "limit" });
+    expect((await staff.call("GET", "/api/office/clients?include=members&limit=50")).status).toBe(200);
+    expect((await member.call("GET", "/api/office/clients?include=members")).status).toBe(404);
   });
 });

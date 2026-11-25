@@ -21,6 +21,20 @@ function statusFilter(c: AppContext): (typeof CLIENT_STATUSES)[number] | undefin
   return match;
 }
 
+/** Member counts are one extra grouped lookup with one bound value per listed client, so they are opt-in and limited to a small page. */
+const MEMBER_COUNT_PAGE_LIMIT = 50;
+
+function includesMemberCounts(c: AppContext): boolean {
+  const value = c.req.query("include");
+  if (value === undefined || value === "") {
+    return false;
+  }
+  if (value !== "members") {
+    throw invalidInput("include");
+  }
+  return true;
+}
+
 export function clientRoutes(): Hono<AppBindings> {
   const routes = new Hono<AppBindings>();
 
@@ -30,11 +44,21 @@ export function clientRoutes(): Hono<AppBindings> {
     await services.guard.require(actor, "staff.operate", { type: "client", id: "list" });
     const status = statusFilter(c);
     const query = c.req.query("query");
+    const withMembers = includesMemberCounts(c);
+    const page = pageOf(c);
+    if (withMembers && page.limit > MEMBER_COUNT_PAGE_LIMIT) {
+      throw invalidInput("limit");
+    }
     const items = await services.repository.clients.list(
       { ...(status === undefined ? {} : { status }), ...(query === undefined || query === "" ? {} : { query }) },
-      pageOf(c),
+      page,
     );
-    return c.json({ items });
+    if (!withMembers) {
+      return c.json({ items });
+    }
+    const counts = await services.repository.memberships.countOngoingByClients(items.map((client) => client.id));
+    // A client without an entry has no active or pending member.
+    return c.json({ items: items.map((client) => ({ ...client, members: counts.get(client.id) ?? { active: 0, pending: 0 } })) });
   });
 
   routes.post("/clients", async (c) => {

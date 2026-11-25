@@ -120,8 +120,12 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect((await repo.clients.list({ query: first.code }, PAGE)).map((row) => row.id)).toEqual([first.id]);
       expect((await repo.clients.list({ query: `Hinode ${tag}` }, PAGE)).map((row) => row.id)).toEqual([first.id]);
       expect((await repo.clients.list({ query: "%" }, PAGE)).map((row) => row.id)).not.toContain(first.id);
-      expect(await repo.clients.list({ query: first.code.toLowerCase() }, PAGE)).toEqual([]);
-      expect(await repo.clients.list({ query: `hinode ${tag}` }, PAGE)).toEqual([]);
+      // The search ignores the case of ASCII letters and matches any part of the code or the name.
+      expect((await repo.clients.list({ query: first.code.toLowerCase() }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect((await repo.clients.list({ query: `hinode ${tag}`.toUpperCase() }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect((await repo.clients.list({ query: first.code.slice(1) }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect((await repo.clients.list({ query: `node ${tag}` }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect(await repo.clients.list({ query: `${first.code}-` }, PAGE)).toEqual([]);
       const longName = "\u682a\u5f0f\u4f1a\u793e".repeat(8) + tag;
       const wide = await seedClient("w", { corporateName: longName });
       expect((await repo.clients.list({ query: longName }, PAGE)).map((row) => row.id)).toEqual([wide.id]);
@@ -148,6 +152,25 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.memberships.insert({ id: id("m3"), status: "Pending", ...base })).toBe(true);
       expect((await repo.memberships.listByUser(member.id)).map((row) => row.id)).toEqual([id("m1"), id("m3")]);
       expect((await repo.memberships.listByClient(company.id)).map((row) => row.status)).toEqual(["Revoked", "Pending"]);
+    });
+
+    it("counts the active and pending members of several clients at once", async () => {
+      const busy = await seedClient("busy");
+      const quiet = await seedClient("quiet");
+      const other = await seedClient("other");
+      const add = async (label: string, clientId: string, status: "Pending" | "Active" | "Revoked" | "Rejected") => {
+        const member = await seedUser(label);
+        expect(await repo.memberships.insert({ id: id(`n-${label}`), userId: member.id, clientId, status, approvedBy: null, approvedAt: null, createdAt: T0 })).toBe(true);
+      };
+      await add("a1", busy.id, "Active");
+      await add("a2", busy.id, "Active");
+      await add("p1", busy.id, "Pending");
+      await add("r1", busy.id, "Revoked");
+      await add("j1", quiet.id, "Rejected");
+      await add("o1", other.id, "Active");
+      const counts = await repo.memberships.countOngoingByClients([busy.id, quiet.id, id("missing")]);
+      expect([...counts.entries()]).toEqual([[busy.id, { active: 2, pending: 1 }]]);
+      expect((await repo.memberships.countOngoingByClients([])).size).toBe(0);
     });
 
     it("guards invitation transitions, expires old ones and finds the latest redemption", async () => {
@@ -301,26 +324,54 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.receipts.listByFiles([])).toEqual([]);
     });
 
-    it("lists trashed files that are due and purges them with their receipts", async () => {
+    it("lists trashed files that are due and purges them with their receipts in two steps", async () => {
       const company = await seedClient();
       const old = await seedFile(company.id, "f1", { state: "Trashed", trashedFrom: "Staged", trashedAt: new Date("2020-01-01T00:00:00.000Z") });
       const recent = await seedFile(company.id, "f2", { state: "Trashed", trashedFrom: "Staged", trashedAt: T0 });
       const viewer = await seedUser("viewer");
       await repo.receipts.insertIfAbsent({ id: id("x1"), fileId: old.id, userId: viewer.id, firstViewedAt: T0 });
-      const due = (await repo.files.listTrashedBefore(new Date("2020-01-01T00:00:00.000Z"), { limit: 500, offset: 0 })).map((row) => row.id);
-      expect(due).toContain(old.id);
-      expect(due).not.toContain(recent.id);
+      const threshold = new Date("2020-01-01T00:00:00.000Z");
+      const dueIds = async () => (await repo.files.listTrashedBefore(threshold, { limit: 500, offset: 0 })).map((row) => row.id);
+      const purgingIds = async () => (await repo.files.listPurging({ limit: 500, offset: 0 })).map((row) => row.id);
+      expect(await dueIds()).toContain(old.id);
+      expect(await dueIds()).not.toContain(recent.id);
+      expect(await purgingIds()).not.toContain(old.id);
       const entry = (label: string, targetId: string) => ({
         id: id(label), actorUserId: null, action: "file.purge", targetType: "file", targetId, result: "ok" as const, occurredAt: T0,
       });
-      const threshold = new Date("2020-01-01T00:00:00.000Z");
-      expect(await repo.files.purge(recent.id, threshold, entry("pl1", recent.id))).toBe(false);
-      expect(await repo.files.purge(id("no-file"), threshold, entry("pl2", id("no-file")))).toBe(false);
-      expect(await repo.files.purge(old.id, threshold, entry("pl3", old.id))).toBe(true);
-      expect(await repo.files.purge(old.id, threshold, entry("pl4", old.id))).toBe(false);
+      // Nothing can be completed that was not begun.
+      expect(await repo.files.completePurge(old.id, entry("pl0", old.id))).toBe(false);
+      expect(await repo.files.findById(old.id)).not.toBeNull();
+
+      expect(await repo.files.beginPurge(recent.id, threshold, T0)).toBe(false);
+      expect(await repo.files.beginPurge(id("no-file"), threshold, T0)).toBe(false);
+      expect(await repo.files.beginPurge(old.id, threshold, T0)).toBe(true);
+      expect(await repo.files.beginPurge(old.id, threshold, T0)).toBe(false);
+
+      // Being purged: found only by the purge job, with what it needs to remove the body.
+      expect((await repo.files.listPurging({ limit: 500, offset: 0 })).find((row) => row.id === old.id)).toEqual({ id: old.id, clientId: company.id, r2Key: old.r2Key });
+      expect(await purgingIds()).not.toContain(recent.id);
+      expect(await dueIds()).not.toContain(old.id);
       expect(await repo.files.findById(old.id)).toBeNull();
+      expect((await repo.files.list({ clientId: company.id }, PAGE)).map((row) => row.id)).toEqual([recent.id]);
+      expect(await repo.files.count({ clientId: company.id })).toBe(1);
+      expect(await repo.files.count({ clientId: company.id, states: ["Trashed"] })).toBe(1);
       expect(await repo.receipts.listByFile(old.id)).toEqual([]);
+      // A restore that read the record before the purge began cannot bring it back.
+      expect(await repo.files.update({ ...old, state: "Staged", trashedFrom: null, trashedAt: null, version: 2 }, 1)).toBe("stale");
+      expect(await repo.files.findById(old.id)).toBeNull();
+      expect(await purgingIds()).toContain(old.id);
+      // Its display name stays taken until the record is erased.
+      expect(await repo.files.insert(fileRecord({ ...old, id: id("f3"), r2Key: `files/${id("f3")}`, sha256: "9".repeat(64), state: "Staged", trashedFrom: null, trashedAt: null }))).toBe("name_taken");
+
+      expect(await repo.files.completePurge(recent.id, entry("pl1", recent.id))).toBe(false);
+      expect(await repo.files.completePurge(id("no-file"), entry("pl2", id("no-file")))).toBe(false);
+      expect(await repo.files.completePurge(old.id, entry("pl3", old.id))).toBe(true);
+      expect(await repo.files.completePurge(old.id, entry("pl4", old.id))).toBe(false);
+      expect(await purgingIds()).not.toContain(old.id);
+      expect(await repo.files.findById(old.id)).toBeNull();
       expect(await repo.files.findById(recent.id)).not.toBeNull();
+      expect(await repo.files.insert(fileRecord({ ...old, id: id("f3"), r2Key: `files/${id("f3")}`, sha256: "9".repeat(64), state: "Staged", trashedFrom: null, trashedAt: null }))).toBe("ok");
       const purges = (await repo.audit.list({ limit: 500, offset: 0 })).filter((row) => row.action === "file.purge" && [old.id, recent.id, id("no-file")].includes(row.targetId));
       expect(purges.map((row) => [row.id, row.targetId])).toEqual([[id("pl3"), old.id]]);
     });

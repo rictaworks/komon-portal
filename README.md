@@ -12,13 +12,11 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 
 **Known gaps:**
 
-- A document whose stored body cannot be removed after its record was erased is left without a row, so it cannot be retried. Fixing it needs a purge state.
 - A publish whose follow-up writes (audit, metric or case update) fail is still published; its result carries a warning.
 - The Owner dashboard's mis-delivery count and the incidents list both show at most 100 items, with no truncation flag yet.
 - The Owner dashboard shows a count of mis-deliveries; the spec asks for the readers and times, which are in the incidents list.
 - The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).
 - The weekly count of staff using the portal is not measured: events do not record the acting staff member.
-- The Settings page fetches the staff list for Staff as well; the server still refuses the Owner-only actions.
 - The client pickers and the document list load a first page only (200 clients; documents are not paged in the screen yet).
 - Browser checks are manual in this version: there is no automated end-to-end run in CI yet.
 
@@ -77,7 +75,8 @@ npm run build
 | `/office/review` | active staff | Decide the client of files the system could not place |
 | `/office/staged` | active staff | Publish by client, with a confirmation and per-file results |
 | `/office/clients` | active staff | Clients, and `/office/clients/:clientId` for one client's members and invitations |
-| `/office/shelf/:clientId` | active staff | One client's published, withdrawn and trashed documents |
+| `/office/shelf` | active staff | Choose the client whose shelf to open |
+| `/office/shelf/:clientId` | active staff | One client's shelf: documents sent to the client (published, withdrawn, trash) and submissions from the client, with type, month and case filters |
 | `/office/cases` | active staff | Cases: register, submit with arrival numbers, close or cancel |
 | `/office/settings` | active staff | Office settings, document and case types, staff, the Jev key (browser only) |
 | `/office/audit` | Owner | The audit log and incidents |
@@ -117,14 +116,14 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | POST | `/api/office/batches/{batchId}/files` | Uploads one file into a batch and returns its result (stored, duplicate or rejected). | staff |
 | POST | `/api/office/case-types` | Adds a case type. | staff |
 | PUT | `/api/office/case-types/{id}` | Updates a case type. | staff |
-| GET | `/api/office/cases` | Cases, optionally for one client. | staff |
+| GET | `/api/office/cases` | Cases, optionally for one client; `truncated` tells whether more match than the page holds. | staff |
 | POST | `/api/office/cases` | Registers a case for a client, case type and target month. | staff |
 | GET | `/api/office/cases/{id}` | One case with its arrival numbers and deadlines. | staff |
 | POST | `/api/office/cases/{id}/cancel` | Cancels a case (version required). | staff |
 | POST | `/api/office/cases/{id}/close` | Closes a confirmed case (version required). | staff |
 | POST | `/api/office/cases/{id}/submit` | Records the submission of a case with its arrival numbers. | staff |
 | POST | `/api/office/classify` | Asks Jev to suggest document types. The key is sent in the X-Jev-Key header and never stored. | staff |
-| GET | `/api/office/clients` | Lists clients, optionally filtered by status. | staff |
+| GET | `/api/office/clients` | Lists clients, optionally filtered by `status` and by `query` (any part of the code or name, ASCII case ignored), paged with `limit` (1 to 200, default 50) and `offset`. `include=members` adds the active and pending member counts and allows a `limit` of at most 50. | staff |
 | POST | `/api/office/clients` | Registers a client. | staff |
 | GET | `/api/office/clients/{id}` | One client. | staff |
 | PATCH | `/api/office/clients/{id}` | Updates a client's name or number (version required). Setting the status to Closed is Owner only. | staff |
@@ -150,8 +149,8 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | POST | `/api/office/memberships/{id}/reject` | Rejects a client member. | staff |
 | POST | `/api/office/memberships/{id}/revoke` | Revokes a client member's access. | staff |
 | POST | `/api/office/publish` | Publishes staged files, one result per file. | staff |
-| GET | `/api/office/settings` | Office settings, document and case types, and rules. | staff |
-| PUT | `/api/office/settings/office` | Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing). | owner |
+| GET | `/api/office/settings` | Office settings (including the Jev confidence threshold), document and case types, rules, and whether Web Push is configured. | staff |
+| PUT | `/api/office/settings/office` | Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing, Jev confidence threshold). | owner |
 | GET | `/api/office/staff` | Staff members and open staff invitations. | owner |
 | POST | `/api/office/staff/invitations` | Issues a staff invitation for the Staff or Owner role. | owner |
 | POST | `/api/office/staff/{userId}/approve` | Approves a staff member. | owner |

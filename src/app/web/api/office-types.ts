@@ -41,6 +41,8 @@ export interface FileView {
   publishedAt: string | null;
   acknowledgedAt: string | null;
   trashedAt: string | null;
+  /** The state the file had when it went to the trash. */
+  trashedFrom: string | null;
   readers: Reader[];
   version: number;
 }
@@ -68,6 +70,14 @@ export interface CaseView {
   version: number;
 }
 
+/** The case list, with the active office users a case can be assigned to. */
+export interface CaseList {
+  items: CaseView[];
+  /** True when more cases match than the requested page holds. */
+  truncated: boolean;
+  assignees: { id: string; displayName: string }[];
+}
+
 export interface Dashboard {
   today: string;
   needsReview: number;
@@ -86,6 +96,11 @@ export interface ClientRecord {
   corporateNumber: string | null;
   status: "Active" | "Archived" | "Closed";
   version: number;
+}
+
+/** A client in the list, with its member counts (`include=members`). */
+export interface ClientListItem extends ClientRecord {
+  members: { active: number; pending: number };
 }
 
 export interface InvitationView {
@@ -127,6 +142,7 @@ export interface SettingsView {
   docTypes: DocTypeRecord[];
   docRules: { id: string; docTypeId: string; keyword: string }[];
   caseTypes: { id: string; kind: "Procedure" | "Payroll" | "Other"; label: string }[];
+  notifications: { pushConfigured: boolean };
 }
 
 export type IntakeResult =

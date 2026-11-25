@@ -17,6 +17,8 @@ export function settingsRoutes(): Hono<AppBindings> {
       docTypes: await services.repository.docTypes.list(),
       docRules: await services.repository.docTypes.listRules(),
       caseTypes: await services.repository.caseTypes.list(),
+      // Only the on/off state: the VAPID keys themselves never leave the server through this route.
+      notifications: { pushConfigured: services.pushConfigured },
     });
   });
 

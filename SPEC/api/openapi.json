@@ -413,7 +413,7 @@
     },
     "/api/office/cases": {
       "get": {
-        "summary": "Cases, optionally for one client.",
+        "summary": "Cases, optionally for one client; `truncated` tells whether more match than the page holds.",
         "tags": [
           "office"
         ],
@@ -479,12 +479,72 @@
     },
     "/api/office/clients": {
       "get": {
-        "summary": "Lists clients, optionally filtered by status.",
+        "summary": "Lists clients, optionally filtered by status and by code or name, with member counts on request.",
         "tags": [
           "office"
         ],
         "description": "Active office staff (Owner or Staff). Denials look like not found.",
         "x-access": "staff",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Lists only clients of this status. Another value is refused with 400 invalid_input.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Active",
+                "Archived",
+                "Closed"
+              ]
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "description": "Lists only clients whose code or corporate name contains this text. The case of ASCII letters is ignored.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "description": "With members, each client carries members.active and members.pending, the numbers of active and pending members. Another value is refused with 400 invalid_input.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "members"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Number of clients to return. With include=members a value above 50 is refused with 400 invalid_input.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Number of clients to skip, in code order.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
         "responses": {
           "default": {
             "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
@@ -685,7 +745,7 @@
     },
     "/api/office/settings": {
       "get": {
-        "summary": "Office settings, document and case types, and rules.",
+        "summary": "Office settings (including the Jev confidence threshold), document and case types, rules, and whether Web Push is configured.",
         "tags": [
           "office"
         ],
@@ -1693,7 +1753,7 @@
     },
     "/api/office/settings/office": {
       "put": {
-        "summary": "Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing).",
+        "summary": "Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing, Jev confidence threshold).",
         "tags": [
           "office"
         ],
