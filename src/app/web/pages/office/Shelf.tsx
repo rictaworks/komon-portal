@@ -14,8 +14,8 @@ import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import {
   cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_DIRECTIONS, SHELF_VIEWS, shelfActions,
-  shelfCountPath, shelfDirectionOf, shelfListPath, shownList, sortedReaders, WITHDRAW_REASON_CHOICES, withdrawReasonOf,
-  type ShelfDirection, type ShelfList, type ShelfView,
+  shelfCountPath, shelfDirectionOf, shelfListPath, shownCounts, shownList, sortedReaders, WITHDRAW_REASON_CHOICES, withdrawReasonOf,
+  type ShelfCounts, type ShelfDirection, type ShelfList, type ShelfView,
 } from "./shelf-view";
 import { useSettings } from "./useMasterData";
 
@@ -101,14 +101,17 @@ export function Shelf() {
   // The answer is kept with its question, so rows are never shown under another direction, view or filter.
   const files = useLoad<{ path: string; list: ShelfList }>(async () => ({ path: listPath, list: await api.get<ShelfList>(listPath) }), [listPath]);
   // The direction tabs show how many documents each direction holds for this client and filters.
-  const counts = useLoad<Record<ShelfDirection, number>>(async () => {
+  // The totals are kept with the filters they were counted for, so a total is never shown for another selection.
+  const countKey = JSON.stringify([clientId, docTypeId, month.value, filterCaseId]);
+  const counts = useLoad<ShelfCounts>(async () => {
     const filters = { clientId, docTypeId, targetMonth: month.value, caseId: filterCaseId };
     const [outbound, inbound] = await Promise.all([
       api.get<ShelfList>(shelfCountPath({ ...filters, direction: "Outbound" })),
       api.get<ShelfList>(shelfCountPath({ ...filters, direction: "Inbound" })),
     ]);
-    return { Outbound: outbound.total, Inbound: inbound.total };
-  }, [clientId, docTypeId, month.value, filterCaseId]);
+    return { key: countKey, totals: { Outbound: outbound.total, Inbound: inbound.total } };
+  }, [countKey]);
+  const countsShown = shownCounts(counts.data, countKey, counts.error);
   const cases = useLoad<{ items: CaseView[] }>(
     () => api.get<{ items: CaseView[] }>(`/api/office/cases?clientId=${encodeURIComponent(clientId)}&limit=${CASE_LIMIT}`),
     [clientId],
@@ -255,9 +258,9 @@ export function Shelf() {
         <nav className="tabs" aria-label={t("office.shelf.directions")}>
           {SHELF_DIRECTIONS.map((value) => (
             <button key={value} type="button" className={`tab${direction === value ? " tab--active" : ""}`} aria-pressed={direction === value} onClick={() => chooseDirection(value)}>
-              {counts.data === null
+              {countsShown === null
                 ? t(`office.shelf.direction.${value}`)
-                : t("office.shelf.directionCount", { direction: t(`office.shelf.direction.${value}`), count: counts.data[value] })}
+                : t("office.shelf.directionCount", { direction: t(`office.shelf.direction.${value}`), count: countsShown[value] })}
             </button>
           ))}
         </nav>

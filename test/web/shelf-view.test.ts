@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CaseView, DocTypeRecord, FileView } from "../../src/app/web/api/office-types";
 import {
   cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_VIEWS, shelfActions, shelfCountPath, shelfDirectionOf, shelfListPath,
-  shelfPath, shownList, sortedReaders, withdrawReasonOf,
+  shelfPath, shownCounts, shownList, sortedReaders, withdrawReasonOf,
 } from "../../src/app/web/pages/office/shelf-view";
 
 describe("withdrawReasonOf", () => {
@@ -140,6 +140,21 @@ describe("shownList", () => {
   it("shows nothing after a failed load instead of the rows of the previous view", () => {
     expect(shownList({ path: "/a", list }, "/b", new Error("offline"))).toBeNull();
     expect(shownList({ path: "/a", list }, "/a", new Error("offline"))).toBeNull();
+  });
+});
+
+describe("shownCounts", () => {
+  const totals = { Outbound: 12, Inbound: 3 };
+
+  it("shows the totals only for the filters they were loaded for", () => {
+    expect(shownCounts({ key: "client-a", totals }, "client-a", null)).toBe(totals);
+    expect(shownCounts({ key: "client-a", totals }, "client-b", null)).toBeNull();
+    expect(shownCounts(null, "client-a", null)).toBeNull();
+  });
+
+  it("shows nothing after a failed reload, instead of the totals of the previous selection", () => {
+    expect(shownCounts({ key: "client-a", totals }, "client-b", new Error("offline"))).toBeNull();
+    expect(shownCounts({ key: "client-a", totals }, "client-a", new Error("offline"))).toBeNull();
   });
 });
 

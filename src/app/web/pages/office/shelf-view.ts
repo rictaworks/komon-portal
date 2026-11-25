@@ -144,6 +144,20 @@ export function shownList(loaded: { path: string; list: ShelfList } | null, path
   return loaded !== null && loaded.path === path && error === null ? loaded.list : null;
 }
 
+/** Direction totals, tagged with the filters they were counted for. */
+export interface ShelfCounts {
+  key: string;
+  totals: Record<ShelfDirection, number>;
+}
+
+/**
+ * The direction totals to show: only those counted for the filters on screen, and none after a failed load.
+ * Totals of a previous client or filter are never shown as the current count.
+ */
+export function shownCounts(loaded: ShelfCounts | null, key: string, error: unknown): Record<ShelfDirection, number> | null {
+  return loaded !== null && loaded.key === key && error === null ? loaded.totals : null;
+}
+
 const MONTH_TEXT = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**
