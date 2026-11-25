@@ -12,7 +12,7 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 
 **Known gaps:**
 
-- A publish is stored together with its audit entry, or not at all. What follows it is best-effort: when the measurement event or the update of the linked case (with that update's own audit entry) fails, the file is still published and its result carries a warning. For a withdrawal only the measurement event is best-effort.
+- A publish is stored together with its audit entry, or not at all; in a batch, a file whose entry cannot be stored stays staged, is reported for that file, and the other files are still published. A case state change made by the system is stored together with its audit entry in the same way. What follows it is best-effort: when the measurement event or the update of the linked case (with that update's own audit entry) fails, the file is still published and its result carries a warning. For a withdrawal only the measurement event is best-effort.
 - The Owner dashboard's mis-delivery count and the incidents list both show at most 100 items, with no truncation flag yet.
 - The Owner dashboard shows a count of mis-deliveries; the spec asks for the readers and times, which are in the incidents list.
 - The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).

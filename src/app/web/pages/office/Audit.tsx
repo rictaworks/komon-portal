@@ -8,6 +8,7 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { auditActorLabelKey } from "./audit-view";
 
 const VIEWS = ["audit", "incidents"] as const;
 type View = (typeof VIEWS)[number];
@@ -49,7 +50,7 @@ export function Audit() {
               {audit.data.items.map((entry) => (
                 <tr key={entry.id}>
                   <td>{formatDateTime(entry.occurredAt)}</td>
-                  <td>{entry.actorDisplayName ?? t("office.audit.system")}</td>
+                  <td>{entry.actorDisplayName ?? t(auditActorLabelKey(entry))}</td>
                   <td className="code">{entry.action}</td>
                   <td className="muted">{entry.targetType}</td>
                   <td>

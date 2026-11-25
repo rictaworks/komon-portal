@@ -34,8 +34,8 @@ export function loadSession(): MiddlewareHandler<AppBindings> {
 
 /**
  * State-changing requests must come from this origin, and, once signed in, carry the session's
- * CSRF token. A request without an Origin header is refused. The error handler writes every
- * refusal to the audit log, also when nobody is signed in.
+ * CSRF token. A request without an Origin header is refused. The error handler writes these
+ * refusals to the audit log, also when nobody is signed in.
  */
 export function protectStateChanges(): MiddlewareHandler<AppBindings> {
   return async (c, next) => {

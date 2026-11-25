@@ -134,6 +134,11 @@ export interface CaseRepository {
   insert(record: CaseRecord): Promise<boolean>;
   update(record: CaseRecord, expectedVersion: number): Promise<boolean>;
   /**
+   * Like `update`, and appends the audit entry in the same atomic step: the entry is stored only
+   * when the case changes, and a write whose entry cannot be stored rejects and changes nothing.
+   */
+  updateWithAudit(record: CaseRecord, expectedVersion: number, audit: AuditEntry): Promise<boolean>;
+  /**
    * Writes the case and adds the arrival numbers as one atomic step. Nothing is written when the
    * version is stale or any arrival number already belongs to a case.
    */

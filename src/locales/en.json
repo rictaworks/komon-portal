@@ -315,6 +315,7 @@
       "action": "Action",
       "target": "Target",
       "result": "Result",
+      "anonymous": "Not signed in",
       "system": "System",
       "results": {
         "ok": "OK",
@@ -640,6 +641,7 @@
   "publishSkip": {
     "not_found": "the file no longer exists",
     "not_staged": "it is no longer staged",
+    "not_recorded": "it could not be recorded, so it was not published; try again",
     "client_not_active": "the client is not active",
     "stale": "it was changed by someone else"
   },

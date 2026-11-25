@@ -389,6 +389,34 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await entriesForFile()).toEqual([id("wa-ok")]);
     });
 
+    it("changes a case and appends its audit entry together, or does neither", async () => {
+      const company = await seedClient();
+      const record = await seedCase(company.id, "k-wa");
+      const entry = (label: string) => ({
+        id: id(label), actorUserId: null, action: "case.state_change", targetType: "case", targetId: record.id, result: "ok" as const, occurredAt: T0,
+      });
+      const entriesForCase = async () => (await repo.audit.list({ limit: 500, offset: 0 })).filter((row) => row.targetId === record.id).map((row) => row.id);
+      const received = { ...record, state: "DocumentReceived" as const, version: 2 };
+
+      // A stale version writes neither the state nor the entry.
+      expect(await repo.cases.updateWithAudit({ ...received, version: 6 }, 5, entry("ka-stale"))).toBe(false);
+      expect(await repo.cases.findById(record.id)).toMatchObject({ state: "Open", version: 1 });
+      expect(await entriesForCase()).toEqual([]);
+
+      // An entry that cannot be written (its id is taken) stops the change.
+      await repo.audit.append({ ...entry("ka-taken"), targetId: id("other-case") });
+      await expect(repo.cases.updateWithAudit(received, 1, entry("ka-taken"))).rejects.toThrow();
+      expect(await repo.cases.findById(record.id)).toMatchObject({ state: "Open", version: 1 });
+      expect(await entriesForCase()).toEqual([]);
+
+      expect(await repo.cases.updateWithAudit(received, 1, entry("ka-ok"))).toBe(true);
+      expect(await repo.cases.findById(record.id)).toMatchObject({ state: "DocumentReceived", version: 2 });
+      expect(await entriesForCase()).toEqual([id("ka-ok")]);
+      // The same write again is stale and adds nothing.
+      expect(await repo.cases.updateWithAudit(received, 1, entry("ka-again"))).toBe(false);
+      expect(await entriesForCase()).toEqual([id("ka-ok")]);
+    });
+
     it("appends audit entries and metric events", async () => {
       const actor = await seedUser();
       await repo.audit.append({ id: id("l1"), actorUserId: actor.id, action: "file.publish", targetType: "file", targetId: id("f"), result: "ok", occurredAt: new Date("2099-01-01T00:00:00.000Z") });

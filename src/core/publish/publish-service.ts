@@ -17,7 +17,8 @@ export interface PublishRequest {
   version: number;
 }
 
-export const PUBLISH_SKIP_REASONS = ["not_found", "not_staged", "client_not_active", "stale"] as const;
+/** `not_recorded`: the state and its audit entry could not be stored, so the file stays staged. */
+export const PUBLISH_SKIP_REASONS = ["not_found", "not_staged", "client_not_active", "stale", "not_recorded"] as const;
 export type PublishSkipReason = (typeof PUBLISH_SKIP_REASONS)[number];
 
 export type PublishResult =
@@ -62,13 +63,15 @@ export class PublishService implements AutoPublisher {
   /**
    * Publishes the chosen files one by one. Each file is re-checked at the moment of publishing;
    * a file that fails the check is skipped with a reason and the others are still published.
+   * The same holds for a file whose write (state and audit entry together) cannot be stored: it
+   * stays staged, is reported as `not_recorded`, and the remaining files are still attempted.
    */
   async publish(actor: Actor, requests: readonly PublishRequest[]): Promise<PublishResult[]> {
     await this.deps.guard.require(actor, "staff.operate", { type: FILE_TARGET, id: "publish" });
     const results: PublishResult[] = [];
     try {
       for (const request of requests) {
-        results.push(await this.publishOne(actor, request, "file.publish"));
+        results.push(await this.publishOne(actor, request, "file.publish", "skip"));
       }
     } finally {
       // Also when a later file failed: the clients of the files published before it are told.
@@ -84,7 +87,7 @@ export class PublishService implements AutoPublisher {
     if (!setting.autoPublishEnabled || file === null || file.resolutionMethod !== "ArrivalNumber" || file.docTypeId === null) {
       return false;
     }
-    const result = await this.publishOne(systemActor(), { fileId, version: file.version }, "file.auto_publish");
+    const result = await this.publishOne(systemActor(), { fileId, version: file.version }, "file.auto_publish", "throw");
     await this.notifyClients([result]);
     return result.outcome === "published";
   }
@@ -142,7 +145,11 @@ export class PublishService implements AutoPublisher {
     return this.deps.writer.update(change, withdrawn.version);
   }
 
-  private async publishOne(actor: Actor, request: PublishRequest, action: string): Promise<PublishResult> {
+  /**
+   * `onWriteFailure` says what happens when the write itself fails (the database or the audit
+   * entry): a batch reports the file as skipped and goes on, a single automatic publish throws.
+   */
+  private async publishOne(actor: Actor, request: PublishRequest, action: string, onWriteFailure: "skip" | "throw"): Promise<PublishResult> {
     const skip = (reason: PublishSkipReason): PublishResult => ({ fileId: request.fileId, outcome: "skipped", reason });
     const file = await this.deps.repository.files.findById(request.fileId);
     if (file === null) {
@@ -165,7 +172,14 @@ export class PublishService implements AutoPublisher {
       if (error instanceof DomainError && error.detail === "stale") {
         return skip("stale");
       }
-      throw error;
+      if (error instanceof DomainError || onWriteFailure === "throw") {
+        throw error;
+      }
+      // Nothing was written: the file is still staged. The cause is kept as a measurement event.
+      await this.bestEffort(() =>
+        this.deps.metrics.record("publish.failed", file.clientId, { fileId: file.id, error: error instanceof Error ? error.name : "unknown" }),
+      );
+      return skip("not_recorded");
     }
     // The file is published and its audit entry is stored from here on. A failure in what
     // follows must not report the file as failed or stop the remaining files; it is returned as

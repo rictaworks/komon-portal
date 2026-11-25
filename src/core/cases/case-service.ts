@@ -141,9 +141,11 @@ export class CaseService {
         return record;
       }
       const updated: CaseRecord = { ...record, state: next, version: record.version + 1 };
-      if (await this.deps.repository.cases.update(updated, record.version)) {
-        // Nobody chose this change: it follows from the files, so the system is the actor.
-        await this.deps.audit.record(systemActor(), "case.state_change", CASE_TARGET, caseId);
+      // Nobody chose this change: it follows from the files, so the system is the actor. The
+      // entry is stored in the same atomic step as the new state: a later call sees no difference
+      // any more and could not add a missing entry, so the state must not change without it.
+      const entry = this.deps.audit.entry(systemActor(), "case.state_change", CASE_TARGET, caseId);
+      if (await this.deps.repository.cases.updateWithAudit(updated, record.version, entry)) {
         await this.recordStateChange(record, next);
       }
       // Loop again: the files may have changed while this write was in flight, so the stored

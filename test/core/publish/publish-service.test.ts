@@ -79,14 +79,35 @@ describe("PublishService.publish", () => {
     ]);
   });
 
-  it("does not publish a file whose audit entry cannot be written, and keeps what was already published", async () => {
-    kit.repo.failAuditFor = (entry) => entry.action === "file.publish" && entry.targetId === "f3";
-    await expect(kit.publish.publish(staff, [{ fileId: "f1", version: 1 }, { fileId: "f3", version: 1 }, { fileId: "f2", version: 1 }])).rejects.toThrow("audit unavailable");
-    expect(kit.repo.fileRows.map((row) => [row.id, row.state, row.version])).toEqual([["f1", "Published", 2], ["f2", "Staged", 1], ["f3", "Staged", 1]]);
-    expect(kit.repo.auditRows.filter((row) => row.action === "file.publish").map((row) => row.targetId)).toEqual(["f1"]);
-    expect(kit.repo.metricRows.filter((row) => row.name === "file.published").map((row) => row.attributes.fileId)).toEqual(["f1"]);
-    // The client of the file that was published is still told.
-    expect(kit.notifier.notified).toEqual(["c1"]);
+  it("does not publish a file whose audit entry cannot be written, reports it for that file and goes on", async () => {
+    kit.repo.failAuditFor = (entry) => entry.action === "file.publish" && entry.targetId === "f1";
+    const results = await kit.publish.publish(staff, [{ fileId: "f1", version: 1 }, { fileId: "f3", version: 1 }]);
+    expect(results).toEqual([
+      { fileId: "f1", outcome: "skipped", reason: "not_recorded" },
+      { fileId: "f3", outcome: "published", clientId: "c2" },
+    ]);
+    expect(kit.repo.fileRows.filter((row) => row.id === "f1" || row.id === "f3").map((row) => [row.id, row.state, row.version])).toEqual([
+      ["f1", "Staged", 1],
+      ["f3", "Published", 2],
+    ]);
+    expect(kit.repo.auditRows.filter((row) => row.action === "file.publish").map((row) => row.targetId)).toEqual(["f3"]);
+    expect(kit.repo.metricRows.filter((row) => row.name === "file.published").map((row) => row.attributes.fileId)).toEqual(["f3"]);
+    expect(kit.repo.metricRows.filter((row) => row.name === "publish.failed")).toEqual([
+      expect.objectContaining({ clientId: "c1", attributes: { fileId: "f1", error: "Error" } }),
+    ]);
+    // Only the client of the file that was published is told.
+    expect(kit.notifier.notified).toEqual(["c2"]);
+    // The file is still staged, so the same request succeeds once the entry can be written.
+    kit.repo.failAuditFor = null;
+    expect(await kit.publish.publish(staff, [{ fileId: "f1", version: 1 }])).toEqual([{ fileId: "f1", outcome: "published", clientId: "c1" }]);
+  });
+
+  it("does not hide a failed write from an automatic publish", async () => {
+    kit.repo.setting = { ...kit.repo.setting, autoPublishEnabled: true };
+    kit.repo.fileRows[0] = fileRecord({ id: "f1", clientId: "c1", resolutionMethod: "ArrivalNumber", docTypeId: "d1", typeSource: "Rule" });
+    kit.repo.failAuditFor = (entry) => entry.action === "file.auto_publish";
+    await expect(kit.publish.autoPublishIfEligible("f1")).rejects.toThrow("audit unavailable");
+    expect(kit.repo.fileRows[0]).toMatchObject({ state: "Staged", version: 1 });
   });
 
   it("still reports a file as published, with a warning, when the measurement or the case update fails, and goes on", async () => {

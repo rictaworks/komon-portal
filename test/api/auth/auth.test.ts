@@ -226,11 +226,24 @@ describe("authentication", () => {
       expect((await anonymous.call("POST", "/api/invitations/redeem", { body: { code: "x", turnstileToken: "t" }, csrf: null })).status).toBe(401);
       const stranger = kit.client();
       stranger.cookies.set("__Host-kp_session", "no-such-session");
-      expect((await stranger.call("GET", "/api/me")).status).toBe(401);
+      expect((await stranger.call("POST", "/api/invitations/redeem", { body: { code: "x", turnstileToken: "t" }, csrf: null })).status).toBe(401);
       expect((await auditRows("request.unauthenticated", "denied")).slice(before)).toEqual([
         { actor_user_id: null, target_type: "request", target_id: "state_change" },
-        { actor_user_id: null, target_type: "request", target_id: "read" },
+        { actor_user_id: null, target_type: "request", target_id: "state_change" },
       ]);
+    });
+
+    it("leave no audit row for a read refused because nobody is signed in", async () => {
+      const count = async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM audit_log").first<{ n: number }>())?.n;
+      const before = await count();
+      const anonymous = kit.client();
+      const stranger = kit.client();
+      stranger.cookies.set("__Host-kp_session", "no-such-session");
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        expect((await anonymous.call("GET", "/api/me")).status).toBe(401);
+        expect((await stranger.call("GET", "/api/office/audit")).status).toBe(401);
+      }
+      expect(await count()).toBe(before);
     });
 
     it("record a failed human check as denied for the signed-in user", async () => {

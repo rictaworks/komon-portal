@@ -198,18 +198,33 @@ describe("CaseService", () => {
       ]);
     });
 
+    it("does not change the state when the audit entry cannot be written, and records it on the next event", async () => {
+      repo.caseRows.push(caseRecord({ id: "k1", submittedOn: "2026-11-20", state: "Submitted" }));
+      repo.fileRows.push(fileRecord({ id: "f1", caseId: "k1", state: "Staged" }));
+      // A separate append would succeed or fail on its own; the entry must arrive with the new state.
+      repo.failAuditFor = (entry) => entry.action === "case.state_change";
+      await expect(service.onFileEvent("k1")).rejects.toThrow("audit unavailable");
+      expect(repo.caseRows[0]).toMatchObject({ state: "Submitted", version: 1 });
+      expect(repo.auditRows).toEqual([]);
+      expect(repo.metricRows).toEqual([]);
+      repo.failAuditFor = null;
+      expect((await service.onFileEvent("k1")).state).toBe("DocumentReceived");
+      expect(repo.auditRows.map((row) => [row.action, row.actorUserId, row.targetId])).toEqual([["case.state_change", null, "k1"]]);
+      expect(repo.metricRows.map((row) => row.attributes.to)).toEqual(["DocumentReceived"]);
+    });
+
     it("settles on the facts when the files change while a write is in flight", async () => {
       repo.caseRows.push(caseRecord({ id: "k1", submittedOn: "2026-11-20", state: "DocumentReceived" }));
       repo.fileRows.push(fileRecord({ id: "f1", caseId: "k1", state: "Published", publishedAt: new Date() }));
-      const original = repo.cases.update;
+      const original = repo.cases.updateWithAudit;
       let first = true;
-      repo.cases.update = async (record, expectedVersion) => {
+      repo.cases.updateWithAudit = async (record, expectedVersion, entry) => {
         if (first) {
           first = false;
           // The file is withdrawn right after the summary was read and before the state is written.
           repo.fileRows[0] = fileRecord({ id: "f1", caseId: "k1", state: "Withdrawn", withdrawReason: "WrongFile" });
         }
-        return original(record, expectedVersion);
+        return original(record, expectedVersion, entry);
       };
       expect((await service.onFileEvent("k1")).state).toBe("DocumentReceived");
       expect(repo.caseRows[0]?.state).toBe("DocumentReceived");

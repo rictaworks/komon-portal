@@ -42,6 +42,10 @@ function refusalAction(error: Error): string | null {
  * Writes a refusal to the audit log with result `denied`, also when nobody is signed in (the
  * actor is then empty). The entry holds the actor's ID and fixed words only: no address, no path
  * and nothing else the caller sent. Refusals decided inside the Domain Core are recorded there.
+ *
+ * A read refused because nobody is signed in is not recorded: it changes nothing, an expired
+ * session in an open tab produces it all the time, and the log can never be trimmed. Refused
+ * state changes and refused sign-ins are recorded for everyone.
  */
 async function recordRefusal(error: Error, c: AppContext): Promise<void> {
   const action = refusalAction(error);
@@ -49,6 +53,9 @@ async function recordRefusal(error: Error, c: AppContext): Promise<void> {
     return;
   }
   const actor = c.get("auth")?.actor ?? null;
+  if (actor === null && action !== SIGN_IN_ACTION && SAFE_METHODS.has(c.req.method)) {
+    return;
+  }
   const target = action === SIGN_IN_ACTION ? SIGN_IN_TARGET : SAFE_METHODS.has(c.req.method) ? "read" : "state_change";
   await c.get("services").audit.record(actor, action, REQUEST_TARGET, target, "denied");
 }

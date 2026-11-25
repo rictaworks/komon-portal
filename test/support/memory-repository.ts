@@ -279,6 +279,22 @@ export class MemoryRepository implements Repository {
       this.caseRows[index] = copy(record);
       return true;
     },
+    updateWithAudit: async (record: CaseRecord, expectedVersion: number, audit: AuditEntry): Promise<boolean> => {
+      const index = this.caseRows.findIndex((row) => row.id === record.id);
+      if (index < 0 || this.caseRows[index]?.version !== expectedVersion) {
+        return false;
+      }
+      // Mirrors the transaction: an entry that cannot be stored stops the change.
+      if (this.failAuditFor?.(audit) === true) {
+        throw new Error("audit unavailable");
+      }
+      if (this.auditRows.some((row) => row.id === audit.id)) {
+        throw new Error("audit_log is append-only");
+      }
+      this.caseRows[index] = copy(record);
+      this.auditRows.push(copy(audit));
+      return true;
+    },
     updateWithArrivals: async (record: CaseRecord, expectedVersion: number, arrivals: readonly CaseArrival[]): Promise<"ok" | "stale" | "arrival_taken"> => {
       const index = this.caseRows.findIndex((row) => row.id === record.id);
       if (index < 0 || this.caseRows[index]?.version !== expectedVersion) {

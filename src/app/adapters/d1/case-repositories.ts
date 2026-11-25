@@ -1,5 +1,5 @@
 import type {
-  CaseArrival, CaseKind, CaseRecord, CaseState, CaseType, DocRule, DocType, DocTypeDirection, Id, YearMonth,
+  AuditEntry, CaseArrival, CaseKind, CaseRecord, CaseState, CaseType, DocRule, DocType, DocTypeDirection, Id, YearMonth,
 } from "../../../core/model/types";
 import type { CaseFilter, CaseRepository, CaseTypeRepository, DocTypeRepository, Page } from "../../../core/ports/repository";
 import { changes, isUniqueViolation, placeholders, text, textOrNull, toIso, fromIso, whereSql, type Row, type Where } from "./sql";
@@ -132,6 +132,22 @@ export class D1CaseRepository implements CaseRepository {
 
   async update(record: CaseRecord, expectedVersion: number): Promise<boolean> {
     return changes(await this.updateStatement(record, expectedVersion).run()) === 1;
+  }
+
+  async updateWithAudit(record: CaseRecord, expectedVersion: number, audit: AuditEntry): Promise<boolean> {
+    // One transaction. The audit row is written only while the case still has the expected
+    // version, and the same condition guards the update, so either both happen or neither does.
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO audit_log (id, actor_user_id, action, target_type, target_id, result, occurred_at)
+           SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM case_records WHERE id = ? AND version = ?)`,
+        )
+        .bind(audit.id, audit.actorUserId, audit.action, audit.targetType, audit.targetId, audit.result, toIso(audit.occurredAt), record.id, expectedVersion),
+      this.updateStatement(record, expectedVersion),
+    ]);
+    const updated = results[1];
+    return updated !== undefined && changes(updated) === 1;
   }
 
   async updateWithArrivals(record: CaseRecord, expectedVersion: number, arrivals: readonly CaseArrival[]): Promise<"ok" | "stale" | "arrival_taken"> {
