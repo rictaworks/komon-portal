@@ -74,6 +74,22 @@ describe("browser notifications", () => {
     await staff.signIn("staff");
   });
 
+  it("never moves an endpoint that another user already holds", async () => {
+    const holder = (await env.DB.prepare("SELECT id FROM users WHERE google_sub = 'dev-member'").first<{ id: string }>())?.id ?? "";
+    const other = (await env.DB.prepare("SELECT id FROM users WHERE google_sub = 'dev-staff'").first<{ id: string }>())?.id ?? "";
+    expect(holder).not.toBe("");
+    expect(other).not.toBe("");
+    const endpoint = "https://updates.push.services.mozilla.com/wpush/v2/held-by-one-user";
+    const now = new Date("2026-11-25T00:00:00Z");
+    await store.save("held-1", holder, { endpoint, keys: KEYS }, now);
+    await expect(store.save("held-2", other, { endpoint, keys: { p256dh: "C".repeat(87), auth: "c".repeat(22) } }, now)).rejects.toThrow("conflict: subscription");
+    const rows = await env.DB.prepare("SELECT user_id, keys FROM push_subscriptions WHERE endpoint = ?").bind(endpoint).all<{ user_id: string; keys: string }>();
+    expect(rows.results.map((row) => row.user_id)).toEqual([holder]);
+    expect(JSON.parse(rows.results[0]?.keys ?? "{}")).toEqual(KEYS);
+    // Remove the rows this test created, so the other tests see the subscriptions they expect.
+    await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").bind(endpoint).run();
+  });
+
   it("tells the member whether notifications are available and gives the public key only", async () => {
     const status = (await (await member.call("GET", `/api/client/${OWN}/notifications`)).json()) as Json;
     expect(status).toEqual({ available: true, vapidPublicKey: vapid.publicKey, subscriptions: 0 });

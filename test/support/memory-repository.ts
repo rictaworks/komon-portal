@@ -319,8 +319,10 @@ export class MemoryRepository implements Repository {
     insertRule: async (rule: DocRule): Promise<void> => {
       this.ruleRows.push(copy(rule));
     },
-    deleteRule: async (id: Id): Promise<void> => {
+    deleteRule: async (id: Id): Promise<boolean> => {
+      const before = this.ruleRows.length;
       this.ruleRows = this.ruleRows.filter((row) => row.id !== id);
+      return this.ruleRows.length < before;
     },
   };
 

@@ -264,6 +264,30 @@ describe("TrashService", () => {
     expect(kit.repo.fileRows).toHaveLength(110);
   });
 
+  it("does not skip due files when the content of a few erased files cannot be removed", async () => {
+    kit.repo.fileRows = [];
+    for (let index = 0; index < 130; index += 1) {
+      const id = `q${String(index).padStart(3, "0")}`;
+      kit.repo.fileRows.push(fileRecord({
+        id, sha256: String(index + 300).padStart(64, "0"), displayName: `N_${id}`, state: "Trashed", trashedFrom: "Staged",
+        trashedAt: new Date(kit.clock.now().getTime() + index),
+      }));
+    }
+    kit.clock.advanceDays(31);
+    const original = kit.store.delete.bind(kit.store);
+    let calls = 0;
+    kit.store.delete = async (key: string) => {
+      calls += 1;
+      if (calls <= 3) {
+        throw new Error("object store unavailable");
+      }
+      return original(key);
+    };
+    // Three bodies could not be removed; their records were erased, so every due file is reached in this run.
+    expect(await kit.trash.purgeExpired(systemActor())).toEqual({ purged: 127, skipped: 0, failed: 3 });
+    expect(kit.repo.fileRows).toHaveLength(0);
+  });
+
   it("finishes the job even when a failure cannot be recorded", async () => {
     kit.clock.advanceDays(31);
     kit.repo.files.purge = async () => {
