@@ -17,7 +17,7 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 - The Owner dashboard shows a count of mis-deliveries; the spec asks for the readers and times, which are in the incidents list.
 - The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).
 - The weekly count of staff using the portal is not measured: events do not record the acting staff member.
-- The client pickers and the document list load a first page only (200 clients; documents are not paged in the screen yet).
+- The document list of a shelf loads a first page only (documents are not paged in the screen yet). The Review and Staged lists show at most 200 documents.
 - Browser checks are manual in this version: there is no automated end-to-end run in CI yet.
 
 ## Stack

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { fileContentUrl } from "../../api/client";
-import type { CaseView, FileView } from "../../api/office-types";
+import type { CaseView, ClientRef, FileView } from "../../api/office-types";
+import { ClientPicker } from "../../components/ClientPicker";
+import { clientLabel } from "../../components/client-picker";
 import { CheckField, SelectField } from "../../components/Form";
 import { formatDateTime, formatMonth, formatSize } from "../../components/format";
 import { ErrorNotice, Notice } from "../../components/Notice";
@@ -10,7 +12,7 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
-import { clientOptions, useClients, useSettings } from "./useMasterData";
+import { useSettings } from "./useMasterData";
 
 const REASONS = ["ConflictingKeys", "MultipleArrivalNumbers", "NoKey", "HintMismatch", "ClientNotActive", "CaseCancelled", "DuplicateAcrossClients", "Withdrawn", "Restored", "SentBack"] as const;
 const CONFIRM_REASONS: readonly string[] = ["DuplicateAcrossClients", "ConflictingKeys", "HintMismatch"];
@@ -23,10 +25,10 @@ function needsConfirmation(file: FileView): boolean {
 function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
   const t = useT();
   const { api } = useSession();
-  const clients = useClients();
   const settings = useSettings();
   const action = useAction();
-  const [clientId, setClientId] = useState(file.client?.id ?? "");
+  const [chosen, setChosen] = useState<ClientRef | null>(file.client);
+  const clientId = chosen?.id ?? "";
   const [caseId, setCaseId] = useState("");
   const [docTypeId, setDocTypeId] = useState(file.docType?.id ?? "");
   const [confirmed, setConfirmed] = useState(false);
@@ -34,7 +36,6 @@ function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
     async () => (clientId === "" ? [] : (await api.get<{ items: CaseView[] }>(`/api/office/cases?clientId=${clientId}&states=${OPEN_CASE_STATES}`)).items),
     [clientId],
   );
-  const chosen = clients.data?.find((client) => client.id === clientId);
   const outbound = (settings.data?.docTypes ?? []).filter((type) => type.direction !== "Inbound");
 
   const assign = (): void => {
@@ -71,7 +72,7 @@ function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
           {file.jev?.candidate ? <div>{t("office.review.jevCandidate", { type: file.jev.candidate.shortCode, confidence: (file.jev.confidence ?? 0).toFixed(2) })}</div> : null}
         </Notice>
         <ErrorNotice error={action.error} />
-        <SelectField label={t("office.review.client")} value={clientId} options={[{ value: "", label: t("office.review.chooseClient") }, ...clientOptions(clients.data)]} onChange={(value) => { setClientId(value); setCaseId(""); setConfirmed(false); }} />
+        <ClientPicker label={t("office.review.client")} emptyLabel={t("office.review.chooseClient")} value={chosen} onChange={(client) => { setChosen(client); setCaseId(""); setConfirmed(false); }} />
         <div className="grid2">
           <SelectField
             label={t("office.review.case")}
@@ -88,7 +89,7 @@ function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
         </div>
         {needsConfirmation(file) ? (
           <CheckField checked={confirmed} onChange={setConfirmed}>
-            {t("office.review.confirm", { client: chosen === undefined ? "" : `${chosen.code} ${chosen.corporateName}` })}
+            {t("office.review.confirm", { client: chosen === null ? "" : clientLabel(chosen) })}
           </CheckField>
         ) : null}
         <div className="row">
@@ -111,9 +112,9 @@ function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
 export function Review() {
   const t = useT();
   const { api } = useSession();
-  const clients = useClients();
   const [reason, setReason] = useState("");
-  const [clientId, setClientId] = useState("");
+  const [client, setClient] = useState<ClientRef | null>(null);
+  const clientId = client?.id ?? "";
   const [selected, setSelected] = useState<string | null>(null);
   const files = useLoad<FileView[]>(
     async () => (await api.get<{ items: FileView[] }>(`/api/office/files?direction=Outbound&states=NeedsReview&limit=200${reason === "" ? "" : `&reviewReason=${reason}`}${clientId === "" ? "" : `&clientId=${clientId}`}`)).items,
@@ -132,7 +133,7 @@ export function Review() {
       <div className="row row--end">
         <h1 className="title grow">{t("office.review.title")}</h1>
         <SelectField label={t("office.review.reason")} value={reason} options={[{ value: "", label: t("office.review.allReasons") }, ...REASONS.map((value) => ({ value, label: t(`reviewReason.${value}`) }))]} onChange={setReason} />
-        <SelectField label={t("office.columns.client")} value={clientId} options={[{ value: "", label: t("office.allClients") }, ...clientOptions(clients.data)]} onChange={setClientId} />
+        <ClientPicker label={t("office.columns.client")} emptyLabel={t("office.allClients")} value={client} onChange={setClient} status={null} compact />
       </div>
       <ErrorNotice error={files.error} />
       {files.loading && files.data === null ? <Loading /> : null}

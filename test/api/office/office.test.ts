@@ -335,4 +335,24 @@ describe("office API", () => {
     expect((await staff.call("GET", "/api/office/clients?include=members&limit=50")).status).toBe(200);
     expect((await member.call("GET", "/api/office/clients?include=members")).status).toBe(404);
   });
+
+  it("finds a client by code or name however many clients come before it in the list", async () => {
+    // The client picker shows a short first page; a client beyond it is reached by typing, never by loading every client.
+    for (let index = 0; index < 6; index += 1) {
+      const response = await staff.call("POST", "/api/office/clients", { body: { code: `B90${index}`, corporateName: `Picker Filler ${index}` } });
+      expect(response.status).toBe(201);
+    }
+    const created = await staff.call("POST", "/api/office/clients", { body: { code: "Z9001", corporateName: "Yotsuba Kensetsu" } });
+    expect(created.status).toBe(201);
+    const codes = async (query: string) => ((await json(await staff.call("GET", `/api/office/clients?${query}`))).items as Json[]).map((item) => item.code);
+    const firstPage = await codes("status=Active&limit=5&offset=0");
+    expect(firstPage).toHaveLength(5);
+    expect(firstPage).not.toContain("Z9001");
+    expect(await codes("status=Active&limit=5&offset=0&query=z90")).toEqual(["Z9001"]);
+    expect(await codes("status=Active&limit=5&offset=0&query=yotsuba")).toEqual(["Z9001"]);
+    expect(await codes("limit=5&offset=0&query=Yotsuba+Kensetsu")).toEqual(["Z9001"]);
+    // A search that matches many clients is still cut to the page asked for.
+    expect(await codes("status=Active&limit=5&offset=0&query=picker")).toEqual(["B900", "B901", "B902", "B903", "B904"]);
+    expect(await codes("status=Active&limit=5&offset=5&query=picker")).toEqual(["B905"]);
+  });
 });
