@@ -274,10 +274,18 @@ export interface AuditEntry {
   occurredAt: Date;
 }
 
+export const METRIC_ACTOR_KINDS = ["staff", "member", "system"] as const;
+/** Who caused a measured event: an office member, a client member, or a scheduled job. */
+export type MetricActorKind = (typeof METRIC_ACTOR_KINDS)[number];
+
 export interface MetricEvent {
   id: Id;
   name: string;
   clientId: Id | null;
+  /** Null when nobody identified caused the event (for example a user who holds no role yet). */
+  actorKind: MetricActorKind | null;
+  /** The internal ID of the acting user: set for staff and members, null otherwise. */
+  actorUserId: Id | null;
   attributes: Record<string, string | number | boolean | null>;
   occurredAt: Date;
 }

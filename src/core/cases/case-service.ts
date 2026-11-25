@@ -76,7 +76,7 @@ export class CaseService {
       };
       if (await this.deps.repository.cases.insert(record)) {
         await this.deps.audit.record(actor, "case.register", CASE_TARGET, record.id);
-        await this.deps.metrics.record("case.state_changed", record.clientId, { caseId: record.id, from: null, to: "Open" });
+        await this.deps.metrics.record(actor, "case.state_changed", record.clientId, { caseId: record.id, from: null, to: "Open" });
         return record;
       }
     }
@@ -105,7 +105,7 @@ export class CaseService {
     }
     await this.deps.audit.record(actor, "case.submit", CASE_TARGET, caseId);
     if (record.state !== updated.state) {
-      await this.recordStateChange(record, updated.state);
+      await this.recordStateChange(actor, record, updated.state);
     }
     return updated;
   }
@@ -146,7 +146,7 @@ export class CaseService {
       // any more and could not add a missing entry, so the state must not change without it.
       const entry = this.deps.audit.entry(systemActor(), "case.state_change", CASE_TARGET, caseId);
       if (await this.deps.repository.cases.updateWithAudit(updated, record.version, entry)) {
-        await this.recordStateChange(record, next);
+        await this.recordStateChange(systemActor(), record, next);
       }
       // Loop again: the files may have changed while this write was in flight, so the stored
       // state is only final once a fresh derivation agrees with it.
@@ -174,13 +174,13 @@ export class CaseService {
     }
     await this.deps.audit.record(actor, action, CASE_TARGET, changed.id);
     if (before.state !== state) {
-      await this.recordStateChange(before, state);
+      await this.recordStateChange(actor, before, state);
     }
     return updated;
   }
 
-  private async recordStateChange(before: CaseRecord, to: CaseState): Promise<void> {
-    await this.deps.metrics.record("case.state_changed", before.clientId, { caseId: before.id, from: before.state, to });
+  private async recordStateChange(actor: Actor, before: CaseRecord, to: CaseState): Promise<void> {
+    await this.deps.metrics.record(actor, "case.state_changed", before.clientId, { caseId: before.id, from: before.state, to });
   }
 
   private async validateRegistration(input: RegisterCaseInput): Promise<void> {

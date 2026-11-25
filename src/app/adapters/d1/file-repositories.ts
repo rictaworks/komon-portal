@@ -430,8 +430,16 @@ export class D1MetricRepository implements MetricRepository {
 
   async append(event: MetricEvent): Promise<void> {
     await this.db
-      .prepare("INSERT INTO metric_events (id, name, client_id, attributes, occurred_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(event.id, event.name, event.clientId, JSON.stringify(event.attributes), toIso(event.occurredAt))
+      .prepare("INSERT INTO metric_events (id, name, client_id, actor_kind, actor_user_id, attributes, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(event.id, event.name, event.clientId, event.actorKind, event.actorUserId, JSON.stringify(event.attributes), toIso(event.occurredAt))
       .run();
+  }
+
+  async hasCaseEvent(name: string, caseId: Id, submittedOn: string): Promise<boolean> {
+    const row = await this.db
+      .prepare("SELECT 1 AS found FROM metric_events WHERE name = ? AND json_extract(attributes, '$.caseId') = ? AND json_extract(attributes, '$.submittedOn') = ? LIMIT 1")
+      .bind(name, caseId, submittedOn)
+      .first<{ found: number }>();
+    return row !== null;
   }
 }
