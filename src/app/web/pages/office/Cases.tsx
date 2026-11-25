@@ -60,19 +60,18 @@ function RetrievalCell({ record }: { record: CaseView }) {
   return <span className="muted">{t(record.submittedOn === null ? "office.cases.notSubmitted" : "office.cases.retrieved")}</span>;
 }
 
-function Steps({ record }: { record: CaseView }) {
+/** The progress steps of a case: a date, a "not recorded" note, or the state note of a current or pending step. */
+export function Steps({ record }: { record: CaseView }) {
   const t = useT();
   if (record.caseType === null) {
     return null;
   }
   const steps = caseSteps(record.caseType.kind, record.state, record.submittedOn);
-  // A closed or cancelled case is on no step, so its steps get no state note.
-  const terminal = TERMINAL_STATES.includes(record.state);
   return (
     <ol className="steps" aria-label={t("office.cases.steps")}>
       {steps.map((step, index) => {
         const dated = step.state === "Submitted" && record.submittedOn !== null;
-        const noteKey = terminal ? null : stepNoteKey(step);
+        const noteKey = stepNoteKey(step);
         return (
           <li key={step.state} className={`step${step.status === "pending" ? "" : ` step--${step.status}`}`} aria-current={step.status === "current" ? "step" : undefined}>
             <span className="step__number">{index + 1}</span>

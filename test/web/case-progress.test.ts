@@ -1,5 +1,9 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { CaseView } from "../../src/app/web/api/office-types";
+import { englishTranslator, I18nContext } from "../../src/app/web/i18n";
+import { Steps } from "../../src/app/web/pages/office/Cases";
 import { caseSteps, freshestCase, parseArrivalNumbers, stepNoteKey, type CaseStep } from "../../src/app/web/pages/office/case-progress";
 
 function statuses(kind: "Procedure" | "Payroll" | "Other", state: string, submittedOn: string | null): string[] {
@@ -100,5 +104,61 @@ describe("parseArrivalNumbers", () => {
   it("splits on spaces, commas and line breaks and drops blanks", () => {
     expect(parseArrivalNumbers(" 12345678-01, 12345678-02\n12345678-03 ")).toEqual(["12345678-01", "12345678-02", "12345678-03"]);
     expect(parseArrivalNumbers("  ")).toEqual([]);
+  });
+});
+
+/** The text of each progress step as a reader sees it, one string per step. */
+function stepTexts(record: CaseView): string[] {
+  const html = renderToStaticMarkup(createElement(I18nContext.Provider, { value: englishTranslator() }, createElement(Steps, { record })));
+  return (html.match(/<li[\s\S]*?<\/li>/g) ?? []).map((item) => item.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+}
+
+function caseOf(kind: "Procedure" | "Payroll" | "Other", state: string, submittedOn: string | null): CaseView {
+  return { ...view("a", 1), caseType: { id: "type-1", kind, label: "Test" }, state, submittedOn };
+}
+
+describe("Steps", () => {
+  it("shows the state note of the current and of each pending step, and no note on a done step", () => {
+    const texts = stepTexts(caseOf("Other", "DocumentReceived", null));
+    expect(texts[0]).toBe("1 Open");
+    expect(texts[1]).toContain("Waiting for official document");
+    expect(texts[2]).toContain("Published to client");
+    expect(texts[3]).toContain("Opened by client");
+  });
+
+  it("shows the Waiting for filing note on a current Submitted step and the Not submitted note when no date is recorded", () => {
+    const texts = stepTexts(caseOf("Procedure", "Submitted", null));
+    expect(texts[1]).toContain("Submitted");
+    expect(texts[1]).toContain("Waiting for filing");
+    expect(texts[2]).toContain("Waiting for official document");
+    const unconfirmed = stepTexts(caseOf("Procedure", "DocumentReceived", null));
+    expect(unconfirmed[1]).toContain("Not submitted");
+    expect(unconfirmed[1]).not.toContain("Waiting for filing");
+  });
+
+  it("shows the submission date instead of the note on a dated Submitted step, and no note on a done step", () => {
+    const texts = stepTexts(caseOf("Procedure", "Delivered", "2026-11-02"));
+    expect(texts[1]).toContain("02 Nov 2026");
+    expect(texts[1]).not.toContain("Waiting for filing");
+    expect(texts[2]).not.toContain("Published to client");
+    expect(texts[3]).toContain("Published to client");
+    expect(texts[4]).toContain("Opened by client");
+  });
+
+  it("shows the Not recorded note on an unconfirmed step and the materials note on a current one", () => {
+    const past = stepTexts(caseOf("Payroll", "DocumentReceived", null));
+    expect(past[1]).toContain("Not recorded");
+    expect(past[1]).not.toContain("Waiting for materials");
+    const current = stepTexts(caseOf("Payroll", "MaterialsReceived", null));
+    expect(current[1]).toContain("Waiting for materials");
+  });
+
+  it("shows the state notes of every pending step on a closed or cancelled case", () => {
+    const closed = stepTexts(caseOf("Other", "Closed", null));
+    expect(closed[0]).toContain("Registered");
+    expect(closed[1]).toContain("Waiting for official document");
+    expect(closed[2]).toContain("Published to client");
+    expect(closed[3]).toContain("Opened by client");
+    expect(stepTexts(caseOf("Procedure", "Cancelled", null))[1]).toContain("Waiting for filing");
   });
 });
