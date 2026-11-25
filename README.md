@@ -77,7 +77,8 @@ npm run build
 | `/office/review` | active staff | Decide the client of files the system could not place |
 | `/office/staged` | active staff | Publish by client, with a confirmation and per-file results |
 | `/office/clients` | active staff | Clients, and `/office/clients/:clientId` for one client's members and invitations |
-| `/office/shelf/:clientId` | active staff | One client's published, withdrawn and trashed documents |
+| `/office/shelf` | active staff | Choose the client whose shelf to open |
+| `/office/shelf/:clientId` | active staff | One client's shelf: documents sent to the client (published, withdrawn, trash) and submissions from the client, with type, month and case filters |
 | `/office/cases` | active staff | Cases: register, submit with arrival numbers, close or cancel |
 | `/office/settings` | active staff | Office settings, document and case types, staff, the Jev key (browser only) |
 | `/office/audit` | Owner | The audit log and incidents |
