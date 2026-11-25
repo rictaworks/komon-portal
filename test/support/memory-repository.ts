@@ -3,7 +3,7 @@ import type {
   InvitationStatus, LocalDate, Membership, MembershipStatus, MetricEvent, OfficeSetting, UploadBatch, User, YearMonth,
 } from "../../src/core/model/types";
 import type {
-  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, Page, Repository,
+  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, MemberCounts, Page, Repository,
 } from "../../src/core/ports/repository";
 
 function copy<T>(value: T): T {
@@ -12,6 +12,11 @@ function copy<T>(value: T): T {
 
 function paged<T>(rows: T[], page: Page): T[] {
   return rows.slice(page.offset, page.offset + page.limit).map(copy);
+}
+
+/** SQLite lower() folds ASCII letters only; the memory search does the same. */
+function asciiLower(value: string): string {
+  return value.replaceAll(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 const ONGOING: readonly MembershipStatus[] = ["Pending", "Active"];
@@ -114,7 +119,7 @@ export class MemoryRepository implements Repository {
         this.clientRows.filter(
           (row) =>
             (filter.status === undefined || row.status === filter.status) &&
-            (filter.query === undefined || row.code.startsWith(filter.query) || row.corporateName.includes(filter.query)),
+            (filter.query === undefined || asciiLower(row.code).includes(asciiLower(filter.query)) || asciiLower(row.corporateName).includes(asciiLower(filter.query))),
         ),
         page,
       ),
@@ -148,6 +153,18 @@ export class MemoryRepository implements Repository {
     listByUser: async (userId: Id): Promise<Membership[]> => this.membershipRows.filter((row) => row.userId === userId).map(copy),
     listByClient: async (clientId: Id): Promise<Membership[]> =>
       this.membershipRows.filter((row) => row.clientId === clientId).map(copy),
+    countOngoingByClients: async (clientIds: readonly Id[]): Promise<Map<Id, MemberCounts>> => {
+      const counts = new Map<Id, MemberCounts>();
+      for (const clientId of [...clientIds].sort()) {
+        const rows = this.membershipRows.filter((row) => row.clientId === clientId);
+        const active = rows.filter((row) => row.status === "Active").length;
+        const pending = rows.filter((row) => row.status === "Pending").length;
+        if (active + pending > 0) {
+          counts.set(clientId, { active, pending });
+        }
+      }
+      return counts;
+    },
     insert: async (membership: Membership): Promise<boolean> => {
       if (ONGOING.includes(membership.status) && (await this.memberships.findOngoing(membership.userId, membership.clientId)) !== null) {
         return false;

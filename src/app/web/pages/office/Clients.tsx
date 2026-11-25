@@ -10,6 +10,7 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { clientListPath, rowsFor, type ClientListPage } from "./client-list";
 
 const CLIENT_STATUSES = ["Active", "Archived", "Closed"] as const;
 
@@ -41,23 +42,16 @@ export function Clients() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("Active");
   const [offset, setOffset] = useState(0);
-  // One more than a page is requested, which tells whether a next page exists.
-  const list = useLoad<{ items: ClientListItem[] }>(() => {
-    const parameters = new URLSearchParams({ include: "members", limit: String(PAGE_SIZE + 1), offset: String(offset) });
-    if (status !== ALL_STATUSES) {
-      parameters.set("status", status);
-    }
-    if (search !== "") {
-      parameters.set("query", search);
-    }
-    return api.get<{ items: ClientListItem[] }>(`/api/office/clients?${parameters.toString()}`);
-  }, [status, search, offset]);
+  const path = clientListPath({ status: status === ALL_STATUSES ? null : status, search, offset, pageSize: PAGE_SIZE });
+  // The rows are kept with the request they answer, so rows of an earlier filter are never shown under a new one.
+  const list = useLoad<ClientListPage<ClientListItem>>(async () => ({ path, items: (await api.get<{ items: ClientListItem[] }>(path)).items }), [path]);
   const [code, setCode] = useState("");
   const [corporateName, setCorporateName] = useState("");
   const [corporateNumber, setCorporateNumber] = useState("");
-  const loaded = list.data?.items ?? [];
-  const visible = loaded.slice(0, PAGE_SIZE);
-  const hasNext = loaded.length > PAGE_SIZE;
+  // Null while the list for the chosen filters and page is loading, or when loading it failed.
+  const current = rowsFor(list.data, path, PAGE_SIZE);
+  const visible = current === null ? [] : current.rows;
+  const hasNext = current !== null && current.hasNext;
 
   // The server does the search; typing waits a moment so that each keystroke is not a request.
   useEffect(() => {
@@ -99,8 +93,8 @@ export function Clients() {
               onChange={chooseStatus}
             />
           </div>
-          {list.loading && list.data === null ? <Loading /> : null}
-          {list.data !== null && visible.length === 0 ? <p className="empty">{t("office.clients.empty")}</p> : null}
+          {current === null && list.loading ? <Loading /> : null}
+          {current !== null && visible.length === 0 ? <p className="empty">{t("office.clients.empty")}</p> : null}
           {visible.length === 0 ? null : (
             <div className="table-wrap">
               <table className="table">

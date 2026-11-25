@@ -21,7 +21,7 @@ function statusFilter(c: AppContext): (typeof CLIENT_STATUSES)[number] | undefin
   return match;
 }
 
-/** Member counts cost one lookup per listed client, so they are opt-in and limited to a small page. */
+/** Member counts are one extra grouped lookup with one bound value per listed client, so they are opt-in and limited to a small page. */
 const MEMBER_COUNT_PAGE_LIMIT = 50;
 
 function includesMemberCounts(c: AppContext): boolean {
@@ -56,19 +56,9 @@ export function clientRoutes(): Hono<AppBindings> {
     if (!withMembers) {
       return c.json({ items });
     }
-    const counted = await Promise.all(
-      items.map(async (client) => {
-        const memberships = await services.repository.memberships.listByClient(client.id);
-        return {
-          ...client,
-          members: {
-            active: memberships.filter((membership) => membership.status === "Active").length,
-            pending: memberships.filter((membership) => membership.status === "Pending").length,
-          },
-        };
-      }),
-    );
-    return c.json({ items: counted });
+    const counts = await services.repository.memberships.countOngoingByClients(items.map((client) => client.id));
+    // A client without an entry has no active or pending member.
+    return c.json({ items: items.map((client) => ({ ...client, members: counts.get(client.id) ?? { active: 0, pending: 0 } })) });
   });
 
   routes.post("/clients", async (c) => {

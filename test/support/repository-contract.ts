@@ -120,8 +120,12 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect((await repo.clients.list({ query: first.code }, PAGE)).map((row) => row.id)).toEqual([first.id]);
       expect((await repo.clients.list({ query: `Hinode ${tag}` }, PAGE)).map((row) => row.id)).toEqual([first.id]);
       expect((await repo.clients.list({ query: "%" }, PAGE)).map((row) => row.id)).not.toContain(first.id);
-      expect(await repo.clients.list({ query: first.code.toLowerCase() }, PAGE)).toEqual([]);
-      expect(await repo.clients.list({ query: `hinode ${tag}` }, PAGE)).toEqual([]);
+      // The search ignores the case of ASCII letters and matches any part of the code or the name.
+      expect((await repo.clients.list({ query: first.code.toLowerCase() }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect((await repo.clients.list({ query: `hinode ${tag}`.toUpperCase() }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect((await repo.clients.list({ query: first.code.slice(1) }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect((await repo.clients.list({ query: `node ${tag}` }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect(await repo.clients.list({ query: `${first.code}-` }, PAGE)).toEqual([]);
       const longName = "\u682a\u5f0f\u4f1a\u793e".repeat(8) + tag;
       const wide = await seedClient("w", { corporateName: longName });
       expect((await repo.clients.list({ query: longName }, PAGE)).map((row) => row.id)).toEqual([wide.id]);
@@ -148,6 +152,25 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.memberships.insert({ id: id("m3"), status: "Pending", ...base })).toBe(true);
       expect((await repo.memberships.listByUser(member.id)).map((row) => row.id)).toEqual([id("m1"), id("m3")]);
       expect((await repo.memberships.listByClient(company.id)).map((row) => row.status)).toEqual(["Revoked", "Pending"]);
+    });
+
+    it("counts the active and pending members of several clients at once", async () => {
+      const busy = await seedClient("busy");
+      const quiet = await seedClient("quiet");
+      const other = await seedClient("other");
+      const add = async (label: string, clientId: string, status: "Pending" | "Active" | "Revoked" | "Rejected") => {
+        const member = await seedUser(label);
+        expect(await repo.memberships.insert({ id: id(`n-${label}`), userId: member.id, clientId, status, approvedBy: null, approvedAt: null, createdAt: T0 })).toBe(true);
+      };
+      await add("a1", busy.id, "Active");
+      await add("a2", busy.id, "Active");
+      await add("p1", busy.id, "Pending");
+      await add("r1", busy.id, "Revoked");
+      await add("j1", quiet.id, "Rejected");
+      await add("o1", other.id, "Active");
+      const counts = await repo.memberships.countOngoingByClients([busy.id, quiet.id, id("missing")]);
+      expect([...counts.entries()]).toEqual([[busy.id, { active: 2, pending: 1 }]]);
+      expect((await repo.memberships.countOngoingByClients([])).size).toBe(0);
     });
 
     it("guards invitation transitions, expires old ones and finds the latest redemption", async () => {

@@ -262,6 +262,13 @@ describe("office API", () => {
     expect(await codes("status=Active&query=Hinode")).toEqual(["C0031"]);
     expect(await codes("status=Active&query=Kita")).toEqual([]);
     expect(await codes("query=C01")).toEqual(["C0142"]);
+    // Staff type in any case and may know only the middle of a code or a name.
+    expect(await codes("query=hinode")).toEqual(["C0031"]);
+    expect(await codes("query=demo")).toEqual(["DEMO01"]);
+    expect(await codes("query=c0031")).toEqual(["C0031"]);
+    expect(await codes("query=0142")).toEqual(["C0142"]);
+    expect(await codes("query=142")).toEqual(["C0142"]);
+    expect(await codes("status=Active&query=142")).toEqual([]);
     const unknown = await staff.call("GET", "/api/office/clients?status=Open");
     expect(unknown.status).toBe(400);
     expect(await json(unknown)).toEqual({ error: "invalid_input", detail: "status" });
