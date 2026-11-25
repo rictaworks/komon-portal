@@ -71,8 +71,8 @@ export function clientPortalRoutes(): Hono<AppBindings> {
     const { actor, services } = await requireReach(c, c.req.param("clientId"));
     const clientId = c.req.param("clientId");
     // The database picks the documents this member has not opened, over the whole shelf, newest publication first.
-    const unreadRows = await services.repository.files.listUnreadPublished(clientId, actor.userId, { limit: HOME_WINDOW, offset: 0 });
-    const unreadTotal = await services.repository.files.countUnreadPublished(clientId, actor.userId);
+    // The page and the total come from one read, so `unreadTotal` and `truncated.documents` cannot contradict the list.
+    const { files: unreadRows, total: unreadTotal } = await services.repository.files.unreadPublished(clientId, actor.userId, { limit: HOME_WINDOW, offset: 0 });
     const lookups = new Lookups(services);
     const unread = [];
     for (const file of unreadRows) {

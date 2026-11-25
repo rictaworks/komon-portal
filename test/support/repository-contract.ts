@@ -314,6 +314,8 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       await seedFile(company.id, "f6", { state: "Withdrawn", withdrawReason: "Other", publishedAt: at(500) });
       await seedFile(company.id, "f7", { direction: "Inbound", state: "Submitted", targetMonth: "2026-11" });
       await seedFile(other.id, "f8", { state: "Published", publishedAt: at(600) });
+      // Only a trashed file can be purged (a CHECK constraint ties purging_at to state 'Trashed'), so
+      // this row is left out by its state; a published file being purged cannot exist.
       const purged = await seedFile(company.id, "f9", { state: "Trashed", trashedFrom: "Withdrawn", withdrawReason: "Other", publishedAt: at(700), trashedAt: T0 });
       const reader = await seedUser("reader");
       const colleague = await seedUser("colleague");
@@ -321,13 +323,15 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       await repo.receipts.insertIfAbsent({ id: id("x2"), fileId: late.id, userId: colleague.id, firstViewedAt: T0 });
       expect(await repo.files.beginPurge(purged.id, T0, T0)).toBe(true);
 
-      expect((await repo.files.listUnreadPublished(company.id, reader.id, PAGE)).map((row) => row.id)).toEqual([late.id, middle.id, early.id]);
-      expect((await repo.files.listUnreadPublished(company.id, reader.id, { limit: 1, offset: 1 })).map((row) => row.id)).toEqual([middle.id]);
-      expect(await repo.files.countUnreadPublished(company.id, reader.id)).toBe(3);
-      expect((await repo.files.listUnreadPublished(company.id, colleague.id, PAGE)).map((row) => row.id)).toEqual([opened.id, middle.id, early.id]);
-      expect(await repo.files.countUnreadPublished(company.id, colleague.id)).toBe(3);
-      expect(await repo.files.listUnreadPublished(id("no-client"), reader.id, PAGE)).toEqual([]);
-      expect(await repo.files.countUnreadPublished(id("no-client"), reader.id)).toBe(0);
+      const ids = async (clientId: string, userId: string, page = PAGE) => {
+        const view = await repo.files.unreadPublished(clientId, userId, page);
+        return { ids: view.files.map((row) => row.id), total: view.total };
+      };
+      expect(await ids(company.id, reader.id)).toEqual({ ids: [late.id, middle.id, early.id], total: 3 });
+      // The total counts every unread file, whatever the page.
+      expect(await ids(company.id, reader.id, { limit: 1, offset: 1 })).toEqual({ ids: [middle.id], total: 3 });
+      expect(await ids(company.id, colleague.id)).toEqual({ ids: [opened.id, middle.id, early.id], total: 3 });
+      expect(await ids(id("no-client"), reader.id)).toEqual({ ids: [], total: 0 });
     });
 
     it("lists trashed files that are due and purges them with their receipts in two steps", async () => {

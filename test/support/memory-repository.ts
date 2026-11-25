@@ -3,7 +3,7 @@ import type {
   InvitationStatus, LocalDate, Membership, MembershipStatus, MetricEvent, OfficeSetting, PendingPurge, UploadBatch, User, YearMonth,
 } from "../../src/core/model/types";
 import type {
-  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, Page, Repository,
+  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, Page, Repository, UnreadPublished,
 } from "../../src/core/ports/repository";
 
 function copy<T>(value: T): T {
@@ -407,8 +407,10 @@ export class MemoryRepository implements Repository {
         page,
       ),
     count: async (filter: FileFilter): Promise<number> => this.fileRows.filter((row) => this.matchesFile(row, filter)).length,
-    listUnreadPublished: async (clientId: Id, userId: Id, page: Page): Promise<FileRecord[]> => paged(this.unreadPublished(clientId, userId), page),
-    countUnreadPublished: async (clientId: Id, userId: Id): Promise<number> => this.unreadPublished(clientId, userId).length,
+    unreadPublished: async (clientId: Id, userId: Id, page: Page): Promise<UnreadPublished> => {
+      const all = this.unreadPublished(clientId, userId);
+      return { files: paged(all, page), total: all.length };
+    },
     nextDisplaySequence: async (clientId: Id | null, receivedOn: LocalDate): Promise<number> => {
       const compact = receivedOn.replaceAll("-", "");
       // Display names are unique across all files, so the sequence follows the name prefix, not the current client.

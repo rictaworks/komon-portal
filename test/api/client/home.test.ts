@@ -78,7 +78,7 @@ describe("client home: unread documents", () => {
     expect(view.unreadTotal).toBe(10);
   });
 
-  it("leaves out documents that were withdrawn, belong to another client or are being purged", async () => {
+  it("leaves out documents that were withdrawn, belong to another client or were trashed and are awaiting purge", async () => {
     await env.DB.prepare("INSERT INTO clients (id, code, corporate_name, status, version) VALUES ('home-other', 'HOME02', 'Other company', 'Active', 1)").run();
     expect(await repository.files.insert(fileRecord({
       id: "home-foreign", batchId: "home-batch", clientId: "home-other", displayName: "HOME02_UNCLASSIFIED_20261101_01",

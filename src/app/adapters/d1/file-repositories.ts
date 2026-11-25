@@ -4,7 +4,7 @@ import type {
   PendingPurge, ResolutionMethod, ReviewReason, TypeSource, UploadBatch, WithdrawReason,
 } from "../../../core/model/types";
 import type {
-  AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository,
+  AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository, UnreadPublished,
 } from "../../../core/ports/repository";
 import {
   changes, chunk, fromIso, fromIsoOrNull, IN_CHUNK, isUniqueViolation, numberOrNull, placeholders, text, textOrNull,
@@ -167,20 +167,20 @@ export class D1FileRepository implements FileRepository {
     return row?.n ?? 0;
   }
 
-  async listUnreadPublished(clientId: Id, userId: Id, page: Page): Promise<FileRecord[]> {
-    const rows = await this.db
-      .prepare(`SELECT * FROM file_records WHERE ${UNREAD_PUBLISHED} ORDER BY published_at DESC, id LIMIT ? OFFSET ?`)
-      .bind(clientId, userId, page.limit, page.offset)
-      .all<Row>();
-    return rows.results.map(toFile);
-  }
-
-  async countUnreadPublished(clientId: Id, userId: Id): Promise<number> {
-    const row = await this.db.prepare(`SELECT COUNT(*) AS n FROM file_records WHERE ${UNREAD_PUBLISHED}`).bind(clientId, userId).first<{ n: number }>();
-    if (row === null) {
-      throw new Error("the unread count returned no row");
+  async unreadPublished(clientId: Id, userId: Id, page: Page): Promise<UnreadPublished> {
+    // One batch is one transaction: the page and the total describe the same moment.
+    const results = await this.db.batch<Record<string, unknown>>([
+      this.db
+        .prepare(`SELECT * FROM file_records WHERE ${UNREAD_PUBLISHED} ORDER BY published_at DESC, id LIMIT ? OFFSET ?`)
+        .bind(clientId, userId, page.limit, page.offset),
+      this.db.prepare(`SELECT COUNT(*) AS n FROM file_records WHERE ${UNREAD_PUBLISHED}`).bind(clientId, userId),
+    ]);
+    const rows = results[0];
+    const total = results[1]?.results[0]?.["n"];
+    if (rows === undefined || typeof total !== "number") {
+      throw new Error("the unread query returned no page or no count");
     }
-    return row.n;
+    return { files: (rows.results as Row[]).map(toFile), total };
   }
 
   async nextDisplaySequence(clientId: Id | null, receivedOn: LocalDate): Promise<number> {
