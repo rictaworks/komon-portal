@@ -176,7 +176,7 @@ Counts and averages only: no names, file names or identifiers.
 
 Each deployment serves one office, in that office's own Cloudflare account.
 
-1. Create the database and bucket, then put the returned D1 ID into `wrangler.jsonc` and `wrangler.admin.jsonc` in place of the placeholder:
+1. Create the database and bucket. Keep the returned D1 ID for your own copies of the configuration in `ENV/` (see "Deploying a release"); do not commit it:
 
    ```bash
    npx wrangler d1 create komon-portal
@@ -201,20 +201,37 @@ Each deployment serves one office, in that office's own Cloudflare account.
    npx wrangler secret put VAPID_SUBJECT
    ```
 
-   `TURNSTILE_SITE_KEY` is public: add it to the `vars` block of `wrangler.jsonc` next to `ENVIRONMENT`. The three VAPID values must be set together; a partial set is refused. `ENVIRONMENT` must be `production`.
+   `TURNSTILE_SITE_KEY` is public: add it to the `vars` block of your copy `ENV/wrangler.jsonc`, next to `ENVIRONMENT`. The three VAPID values must be set together; a partial set is refused. `ENVIRONMENT` must be `production`.
 
-4. Create the Access application for the admin Worker, then set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` on `komon-portal-admin` and deploy it with `npx wrangler deploy --config wrangler.admin.jsonc`.
+4. Create the Access application for the admin Worker, then set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` on `komon-portal-admin` (as `vars` in `ENV/wrangler.admin.jsonc`, or as secrets). Deploy both Workers as described under "Deploying a release".
 
 5. Create the first Owner. Sign in with Google, then call `POST /api/setup/claim` with the `SETUP_TOKEN` and a Turnstile token (`{"token": "...", "turnstileToken": "..."}`). The token stops working once an Owner exists.
 
 ## Releases
 
-Versions have the form `01.01.00`. A published GitHub release with that tag runs `.github/workflows/release.yml`: it checks the tag format, runs lint, types, tests and the build, and then deploys the portal Worker and the admin Worker. The deploy job uses the `production` environment, which needs the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+Versions have the form `01.01.00`. A published GitHub release with that tag runs `.github/workflows/release.yml`, which checks the tag format and runs lint, types, tests and the build. A release publishes a version; it does not deploy anything, and the workflow reads no Cloudflare secret.
 
-To release:
+To release: create an annotated tag `01.01.00` on the commit to ship, push it, and publish a release for that tag.
 
-1. If the release adds migrations, apply them to the remote database first. The workflow deploys code only and does not run migrations: `npx wrangler d1 migrations apply komon-portal --remote`.
-2. Create an annotated tag `01.01.00` on the commit to ship, push it, and publish a release for that tag.
+### Deploying a release
+
+Each office deploys from its own machine. Production configuration is not committed: the `wrangler.jsonc` files in the repository keep placeholder IDs.
+
+1. Copy `wrangler.jsonc` and `wrangler.admin.jsonc` into the git-ignored `ENV/` directory and put the real D1 ID (and `TURNSTILE_SITE_KEY`) into the copies. In the copies, make the paths relative to `ENV/` (for example `"main": "../src/app/index.ts"`, the assets directory `../dist/client` and the migrations directory `../src/app/migrations`).
+2. If the release adds migrations, apply them first: `npx wrangler d1 migrations apply komon-portal --remote --config ENV/wrangler.jsonc`.
+3. Build and deploy both Workers:
+
+   ```bash
+   npm run build:web
+   ```
+
+   ```bash
+   npx wrangler deploy --config ENV/wrangler.jsonc
+   ```
+
+   ```bash
+   npx wrangler deploy --config ENV/wrangler.admin.jsonc
+   ```
 
 ## Security and personal data
 

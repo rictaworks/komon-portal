@@ -1,6 +1,7 @@
 name: Release
 
-# A published GitHub release (its tag is the version, for example 01.01.00) deploys both Workers.
+# A published GitHub release (its tag is the version, for example 01.01.00) is verified here.
+# Nothing is deployed from this repository: each office deploys from its own machine with its own configuration.
 on:
   release:
     types: [published]
@@ -36,30 +37,3 @@ jobs:
         run: timeout 900 npm test
       - name: Build
         run: npm run build
-
-  deploy:
-    needs: verify
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Two releases never deploy at the same time; a queued deploy waits instead of being cancelled.
-    concurrency:
-      group: production-deploy
-      cancel-in-progress: false
-    environment: production
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install
-        run: npm ci
-      - name: Build
-        run: npm run build
-      - name: Deploy the portal Worker
-        run: npx wrangler deploy
-      - name: Deploy the admin Worker
-        run: npx wrangler deploy --config wrangler.admin.jsonc
