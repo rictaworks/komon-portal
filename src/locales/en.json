@@ -202,6 +202,7 @@
       "staff": "Signed in as Staff"
     },
     "officeNameUnset": "Set the office name in Settings",
+    "officeNameLoadFailed": "The office name could not be loaded",
     "actions": {
       "open": "Open",
       "openShelf": "Open shelf",
@@ -470,7 +471,7 @@
       "jevThresholdHint": "Jev sets a document type only at or above this confidence. The value can be raised up to 1.00 and never set below 0.80.",
       "save": "Save",
       "docTypes": "Document types",
-      "ruleExplanation": "A file gets a type when its name (without the extension) contains a keyword of exactly one type that takes outbound files; letter case and full-width or half-width characters do not matter, and a name that matches two types or none is left unclassified.",
+      "ruleExplanation": "A file gets a type when its name (without the extension) contains a keyword of exactly one type that takes outbound files; letter case and full-width or half-width characters do not matter. A name that matches two types or none is left for the Jev classifier, which needs a Jev key saved in this browser and sets a type only at or above the confidence threshold; otherwise the file stays unclassified.",
       "label": "Label",
       "shortCode": "Short code",
       "direction": "Direction",

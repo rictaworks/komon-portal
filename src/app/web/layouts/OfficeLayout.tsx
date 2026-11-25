@@ -65,7 +65,9 @@ export function OfficeLayout() {
           </div>
           <div className="sidebar__foot">
             <span>{me?.user.displayName}</span>
-            {officeName === undefined ? null : officeName === null ? (
+            {officeSettings.error !== null ? (
+              <span className="sidebar__muted">{t("office.officeNameLoadFailed")}</span>
+            ) : officeName === undefined ? null : officeName === null ? (
               <span className="sidebar__muted">{t("office.officeNameUnset")}</span>
             ) : (
               <span>{officeName}</span>
