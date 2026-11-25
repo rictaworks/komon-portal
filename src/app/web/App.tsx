@@ -6,7 +6,7 @@ import { Redeem } from "./pages/common/Redeem";
 import { Setup } from "./pages/common/Setup";
 import { SignIn } from "./pages/common/SignIn";
 import { landingOf, useSession } from "./session";
-import { returnTarget } from "./return-target";
+import { signInPath } from "./return-target";
 
 /** Sends a visitor to the place that fits their role. */
 function Start() {
@@ -24,10 +24,14 @@ function Start() {
   return <Navigate to={landing.kind === "pending" ? "/pending" : "/no-access"} replace />;
 }
 
-/** Sends a visitor without a session to sign in; they come back to this page afterwards. */
+/**
+ * Sends a visitor without a session to sign in. They come back to this page afterwards, unless
+ * this tab has just signed out: then the next person starts from their own landing page.
+ */
 export function SignInFirst() {
+  const { signedOutHere } = useSession();
   const location = useLocation();
-  return <Navigate to={`/sign-in?return=${encodeURIComponent(returnTarget(location.pathname, location.search))}`} replace />;
+  return <Navigate to={signInPath(signedOutHere, location.pathname, location.search)} replace />;
 }
 
 /** Requires a session; a visitor without one is sent to sign in and comes back afterwards. */

@@ -7,7 +7,7 @@ export const DEMO_CLIENT = { id: "dev-client", code: "DEMO01", name: "Demo Clien
 /** @typedef {"owner" | "staff" | "member"} Role */
 
 /** @type {Readonly<Record<Role, { button: string; landing: RegExp }>>} */
-const ROLES = {
+export const ROLES = {
   owner: { button: "Test Owner", landing: /\/office\/dashboard$/ },
   staff: { button: "Test Staff", landing: /\/office\/dashboard$/ },
   member: { button: "Test Client Member", landing: new RegExp(`/client/${DEMO_CLIENT.id}/home$`) },

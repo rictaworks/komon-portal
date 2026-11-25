@@ -1,5 +1,5 @@
 // Each development role signs in through the sign-in screen and reaches its own area, and only that.
-import { DEMO_CLIENT, expect, test } from "./support.mjs";
+import { DEMO_CLIENT, ROLES, expect, test } from "./support.mjs";
 
 test("the owner lands on the dashboard and reaches the audit log", async ({ sessions }) => {
   const page = await sessions.as("owner");
@@ -43,20 +43,35 @@ test("signing out ends the session", async ({ sessions }) => {
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
 
-test("signing out in the office goes to Sign in, not to the no-access page", async ({ sessions }) => {
+test("signing out in the office goes to Sign in, and the next person lands on their own page", async ({ sessions }) => {
   const page = await sessions.as("staff");
   await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
-  await page.waitForURL(/\/sign-in\?return=%2Foffice%2Fdashboard$/);
+  await page.waitForURL(/\/sign-in$/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No access yet" })).toHaveCount(0);
+  // A client member signing in next in the same tab goes to the company, not to the office page left behind.
+  await page.getByRole("button", { name: ROLES.member.button, exact: true }).click();
+  await page.waitForURL(new RegExp(`/client/${DEMO_CLIENT.id}/home$`));
   await expect(page.getByRole("heading", { name: "No access yet" })).toHaveCount(0);
 });
 
-test("signing out in the client area goes to Sign in, not to the not-found page", async ({ sessions }) => {
+test("signing out in the client area goes to Sign in, and the next person lands on their own page", async ({ sessions }) => {
   const page = await sessions.as("member");
   await page.waitForURL(new RegExp(`/client/${DEMO_CLIENT.id}/home$`));
   await page.getByRole("button", { name: "Sign out" }).click();
-  await page.waitForURL(new RegExp(`/sign-in\\?return=%2Fclient%2F${DEMO_CLIENT.id}%2Fhome$`));
+  await page.waitForURL(/\/sign-in$/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Page not found" })).toHaveCount(0);
+  await page.getByRole("button", { name: ROLES.staff.button, exact: true }).click();
+  await page.waitForURL(/\/office\/dashboard$/);
+  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+});
+
+test("a page opened without a session is the page reached after signing in", async ({ sessions }) => {
+  const page = await sessions.anonymous();
+  await page.goto("/office/review");
+  await page.waitForURL(/\/sign-in\?return=%2Foffice%2Freview$/);
+  await page.getByRole("button", { name: ROLES.staff.button, exact: true }).click();
+  await page.waitForURL(/\/office\/review$/);
 });
