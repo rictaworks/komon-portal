@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { Route } from "react-router-dom";
+import { SignInFirst } from "../../App";
+import { areaGuard } from "../../area-guard";
 import { OfficeLayout } from "../../layouts/OfficeLayout";
 import { useSession } from "../../session";
 import { NoAccess } from "../common/Status";
@@ -13,22 +15,24 @@ import { Settings } from "./Settings";
 import { Shelf, ShelfChooser } from "./Shelf";
 import { Staged } from "./Staged";
 
-/** Only active office staff reach the office area; everyone else sees the no-access page. */
+/** Only active office staff reach the office area. Nobody signed in goes to sign in; anyone else sees the no-access page. */
 function RequireOffice({ children }: { children: ReactNode }) {
   const { me } = useSession();
-  if (me === null || me.user.officeStatus !== "Active") {
-    return <NoAccess />;
+  const guard = areaGuard(me !== null, me?.user.officeStatus === "Active");
+  if (guard === "sign-in") {
+    return <SignInFirst />;
   }
-  return <>{children}</>;
+  return guard === "allow" ? <>{children}</> : <NoAccess />;
 }
 
-/** Owner-only screens. Staff see the no-access page instead. */
+/** Owner-only screens. Nobody signed in goes to sign in; staff see the no-access page instead. */
 function RequireOwner({ children }: { children: ReactNode }) {
   const { me } = useSession();
-  if (me?.user.officeRole !== "Owner") {
-    return <NoAccess />;
+  const guard = areaGuard(me !== null, me?.user.officeRole === "Owner");
+  if (guard === "sign-in") {
+    return <SignInFirst />;
   }
-  return <>{children}</>;
+  return guard === "allow" ? <>{children}</> : <NoAccess />;
 }
 
 /** Routes of the office area, passed to App as `areas`. */

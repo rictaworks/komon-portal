@@ -7,12 +7,17 @@ export interface Session {
   config: PublicConfig;
   /** Null when nobody is signed in. */
   me: Me | null;
+  /** True once this tab signed out, until someone signs in again. */
+  signedOutHere: boolean;
   /** Re-reads the signed-in user. A failure is thrown to the caller; the app keeps its current state. */
   refresh(): Promise<Me | null>;
   signOut(): Promise<void>;
 }
 
-type LoadState = { status: "loading" } | { status: "ready"; config: PublicConfig; me: Me | null } | { status: "failed"; error: ApiError };
+type LoadState =
+  | { status: "loading" }
+  | { status: "ready"; config: PublicConfig; me: Me | null; signedOutHere: boolean }
+  | { status: "failed"; error: ApiError };
 
 const SessionContext = createContext<Session | null>(null);
 
@@ -45,7 +50,7 @@ export function SessionProvider({ children, loading, failed }: SessionProviderPr
   const load = useCallback(async () => {
     try {
       const config = await api.get<PublicConfig>("/api/config");
-      setState({ status: "ready", config, me: await loadMe(api) });
+      setState({ status: "ready", config, me: await loadMe(api), signedOutHere: false });
     } catch (error) {
       setState({ status: "failed", error: error instanceof ApiError ? error : new ApiError(0, "network_error", null) });
     }
@@ -53,7 +58,7 @@ export function SessionProvider({ children, loading, failed }: SessionProviderPr
 
   const refresh = useCallback(async (): Promise<Me | null> => {
     const me = await loadMe(api);
-    setState((current) => (current.status === "ready" ? { ...current, me } : current));
+    setState((current) => (current.status === "ready" ? { ...current, me, signedOutHere: me === null && current.signedOutHere } : current));
     return me;
   }, [api]);
 
@@ -64,8 +69,9 @@ export function SessionProvider({ children, loading, failed }: SessionProviderPr
   const signOut = useCallback(async () => {
     await api.post("/api/auth/logout");
     api.setCsrfToken(null);
-    await refresh();
-  }, [api, refresh]);
+    const me = await loadMe(api);
+    setState((current) => (current.status === "ready" ? { ...current, me, signedOutHere: me === null } : current));
+  }, [api]);
 
   if (state.status === "loading") {
     return <>{loading}</>;
@@ -73,7 +79,7 @@ export function SessionProvider({ children, loading, failed }: SessionProviderPr
   if (state.status === "failed") {
     return <>{failed(state.error)}</>;
   }
-  return <SessionContext.Provider value={{ api, config: state.config, me: state.me, refresh, signOut }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ api, config: state.config, me: state.me, signedOutHere: state.signedOutHere, refresh, signOut }}>{children}</SessionContext.Provider>;
 }
 
 /** Where a signed-in user belongs. */
