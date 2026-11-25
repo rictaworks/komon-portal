@@ -7,6 +7,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
+import { officeAreas } from "./pages/office/OfficeRoutes";
 import { englishTranslator, I18nContext } from "./i18n";
 import { Loading, StartupError } from "./pages/common/Status";
 import { SessionProvider } from "./session";
@@ -26,7 +27,7 @@ function mount(): void {
       <I18nContext.Provider value={t}>
         <SessionProvider loading={<Loading />} failed={(error) => <StartupError error={error} />}>
           <BrowserRouter>
-            <App />
+            <App areas={officeAreas()} />
           </BrowserRouter>
         </SessionProvider>
       </I18nContext.Provider>

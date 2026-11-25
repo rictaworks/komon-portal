@@ -195,6 +195,245 @@
     "role": {
       "owner": "Signed in as Owner",
       "staff": "Signed in as Staff"
+    },
+    "actions": {
+      "open": "Open",
+      "openShelf": "Open shelf",
+      "trash": "Move to trash"
+    },
+    "allClients": "All clients",
+    "unclassified": "Unclassified",
+    "columns": {
+      "case": "Case",
+      "client": "Client",
+      "deadline": "Deadline",
+      "decidedBy": "Decided by",
+      "document": "Document",
+      "documents": "Documents",
+      "reason": "Reason",
+      "result": "Result"
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "queue": "Work queue",
+      "needsReview": "documents need review",
+      "staged": "documents staged",
+      "retrieval": "cases awaiting retrieval",
+      "retrievalBadge": "Retrieval due",
+      "retrievalTitle": "Retrieval",
+      "retrievalEmpty": "Nothing to retrieve.",
+      "dueTitle": "Due soon",
+      "dueEmpty": "Nothing due soon.",
+      "unread": "client reads pending",
+      "unreadBadge": "Unread",
+      "unreadTitle": "Unread by clients",
+      "unreadEmpty": "No unread documents.",
+      "submitted": "{count} submission(s) waiting to be reviewed.",
+      "incidents": "{count} incident(s) need attention.",
+      "incidentsLink": "Open the audit log"
+    },
+    "intake": {
+      "title": "Intake",
+      "drop": "Drop files or folders here",
+      "formats": "PDF, ZIP, XML, CSV, XLSX, DOCX, TXT, PNG and JPEG, up to 50 MB each.",
+      "chooseFiles": "Choose files",
+      "chooseFolder": "Choose folder",
+      "destination": "Destination client",
+      "destinationHint": "Optional. Use it only when you know the files belong to one client.",
+      "noDestination": "Decide from the file",
+      "progress": "Storing {done} of {total} file(s)...",
+      "results": "Results",
+      "countStaged": "{count} staged",
+      "countReview": "{count} need review",
+      "countDuplicate": "{count} duplicate",
+      "countRejected": "{count} rejected",
+      "duplicate": "Duplicate",
+      "duplicateReason": "The same content is already stored.",
+      "rejected": "Rejected",
+      "fileNumber": "File {number}",
+      "notDecided": "Not decided",
+      "registerCase": "Arrival number {number} has no case yet. Register the case.",
+      "classify": "Classify with Jev",
+      "allClassified": "Every file has a document type.",
+      "unclassified": "{count} file(s) without a document type.",
+      "goToReview": "Go to review",
+      "jev": {
+        "classified": "Jev: classified",
+        "below_threshold": "Jev: low confidence, please confirm",
+        "skipped": "Jev: skipped"
+      }
+    },
+    "review": {
+      "title": "Review",
+      "reason": "Reason",
+      "allReasons": "All reasons",
+      "empty": "Nothing needs review.",
+      "list": "Files to review",
+      "decision": "Decision",
+      "assigningTo": "Assigning to",
+      "noClient": "No client chosen",
+      "client": "Client",
+      "chooseClient": "Choose a client",
+      "case": "Case",
+      "noCase": "No case",
+      "docType": "Document type",
+      "confirm": "I confirm that this document belongs to {client}.",
+      "stage": "Stage",
+      "jevCandidate": "Jev suggests {type} (confidence {confidence})."
+    },
+    "staged": {
+      "title": "Staged",
+      "list": "Staged documents",
+      "empty": "No staged documents.",
+      "confirmation": "Confirmation",
+      "publish": "Publish to {count} client(s)",
+      "publishCount": "{count} document(s) selected",
+      "check": "Check the client list before publishing. Published documents become visible to the client.",
+      "selectAll": "Select all for {client}",
+      "selectedOf": "{selected} of {total} selected",
+      "sendBack": "Send back to intake",
+      "lastPublish": "Last publish",
+      "published": "Published {name}.",
+      "publishedWithWarning": "Published {name}, with a warning. See the audit log.",
+      "skipped": "{name} was not published: {reason}.",
+      "dialogTitle": "Publish {count} document(s)?",
+      "dialogConfirm": "Publish",
+      "dialogLead": "These documents will become visible to the clients listed below.",
+      "dialogCount": "{count} document(s)"
+    },
+    "audit": {
+      "title": "Audit log",
+      "view": "View",
+      "views": {
+        "audit": "Audit log",
+        "incidents": "Incidents"
+      },
+      "empty": "Nothing to show.",
+      "when": "When",
+      "who": "Who",
+      "action": "Action",
+      "target": "Target",
+      "result": "Result",
+      "system": "System",
+      "results": {
+        "ok": "OK",
+        "denied": "Denied",
+        "failed": "Failed"
+      }
+    },
+    "cases": {
+      "title": "Cases",
+      "list": "Case list",
+      "state": "State",
+      "allStates": "All states",
+      "empty": "No cases yet.",
+      "month": "Month",
+      "register": "Register a case",
+      "registerAction": "Register case",
+      "caseType": "Case type",
+      "chooseCaseType": "Choose a case type",
+      "referenceCode": "Reference code",
+      "referenceHint": "Letters, digits and hyphens only. Never use a person's name.",
+      "dueOn": "Due on",
+      "submit": "Submit",
+      "submitAction": "Submit",
+      "submitTitle": "Submit to the authority",
+      "submitNote": "Enter the submission date and the arrival numbers from the receipt. Separate several numbers with spaces or commas.",
+      "submittedOn": "Submitted on",
+      "arrivalNumbers": "Arrival numbers",
+      "arrivalHint": "For example 12345678-01.",
+      "cancel": "Cancel case",
+      "close": "Close case"
+    },
+    "clients": {
+      "title": "Clients",
+      "list": "Client list",
+      "search": "Search by code or name",
+      "empty": "No clients match.",
+      "register": "Register a client",
+      "registerAction": "Register client",
+      "individualNote": "Enter the company name and code only. Do not enter a representative's name.",
+      "code": "Client code",
+      "codeHint": "Short code shown on documents.",
+      "corporateName": "Corporate name",
+      "corporateNumber": "Corporate number",
+      "corporateNumberHint": "Optional. 13 digits.",
+      "status": "Status",
+      "details": "Details",
+      "save": "Save",
+      "members": "Members and invitations",
+      "invite": "Issue invitation",
+      "inviteIssued": "Invitation issued. The link is shown once.",
+      "inviteLink": "Invitation link",
+      "inviteHint": "Send this link to the client contact. It works once.",
+      "pendingInvitation": "Invitation open until {expires}",
+      "cancelInvitation": "Cancel invitation",
+      "approve": "Approve",
+      "reject": "Reject",
+      "revoke": "Revoke"
+    },
+    "settings": {
+      "title": "Settings",
+      "office": "Office",
+      "ownerOnly": "Only the Owner can change office settings.",
+      "timezone": "Time zone",
+      "arrivalPattern": "Arrival number pattern",
+      "arrivalHint": "Pattern in the restricted syntax the portal accepts.",
+      "retrievalDays": "Retrieval deadline (days)",
+      "autoPublish": "Publish automatically when a document is matched with confidence",
+      "save": "Save",
+      "docTypes": "Document types",
+      "label": "Label",
+      "shortCode": "Short code",
+      "direction": "Direction",
+      "addDocType": "Add document type",
+      "rules": "Keyword rules",
+      "removeRule": "Remove",
+      "docType": "Document type",
+      "chooseDocType": "Choose a document type",
+      "keyword": "Keyword",
+      "addRule": "Add rule",
+      "caseTypes": "Case types",
+      "caseKind": "Kind",
+      "addCaseType": "Add case type",
+      "staff": "Staff",
+      "staffRole": "Role",
+      "inviteStaff": "Issue staff invitation",
+      "jev": {
+        "title": "Jev classifier (your own key)",
+        "note": "Your Jev key stays in this browser. It is sent only with a classification request and never stored on the server. Set your usage limit on TypeSafe's side.",
+        "pricing": "Models and pricing",
+        "model": "Jev model",
+        "modelHint": "A fixed version such as jev-1.14.0. Aliases such as jev-latest are refused.",
+        "key": "Jev API key",
+        "keyHint": "Kept in this browser only.",
+        "save": "Save in this browser",
+        "forget": "Forget key",
+        "aliasRejected": "Use a fixed model version, not an alias.",
+        "keyMissing": "Enter your Jev key."
+      }
+    },
+    "shelf": {
+      "fixedClient": "Client (fixed)",
+      "tabs": "Shelf tabs",
+      "tab": {
+        "Published": "Published",
+        "Withdrawn": "Withdrawn",
+        "Trashed": "Trash"
+      },
+      "empty": "No documents here.",
+      "linked": "Linked to a case",
+      "readers": "Opened by {count} reader(s)",
+      "unnamedReader": "Unnamed",
+      "linkCase": "Link case",
+      "linkAction": "Link",
+      "withdraw": "Withdraw",
+      "withdrawTitle": "Withdraw this document?",
+      "withdrawNote": "The client loses access at once. Wrong-client withdrawals are recorded as incidents.",
+      "withdrawConfirm": "Withdraw",
+      "reason": "Reason",
+      "next": "Then",
+      "restore": "Restore"
     }
   },
   "client": {
@@ -242,5 +481,77 @@
       "title": "Use of AI",
       "body": "Parts of this software and its interface texts were written with the help of AI and reviewed before release."
     }
+  },
+  "reviewReason": {
+    "ConflictingKeys": "Keys point to different clients",
+    "MultipleArrivalNumbers": "More than one arrival number",
+    "NoKey": "No client could be identified",
+    "HintMismatch": "Differs from the chosen client",
+    "ClientNotActive": "Client is not active",
+    "CaseCancelled": "The case was cancelled",
+    "DuplicateAcrossClients": "The same content belongs to another client",
+    "Withdrawn": "Withdrawn",
+    "Restored": "Restored from trash",
+    "SentBack": "Sent back for review"
+  },
+  "method": {
+    "ArrivalNumber": "Matched by arrival number",
+    "ClientCode": "Matched by client code",
+    "CorporateNumber": "Matched by corporate number",
+    "StaffSelected": "Chosen by staff"
+  },
+  "evidence": {
+    "ArrivalNumber": "Arrival number points to {client}.",
+    "ClientCode": "Client code points to {client}.",
+    "CorporateNumber": "Corporate number points to {client}.",
+    "StaffSelected": "Staff chose {client}.",
+    "ExistingCopy": "The same content is already held for {client}."
+  },
+  "rejection": {
+    "Empty": "The file is empty.",
+    "TooLarge": "The file is larger than 50 MB.",
+    "UnsupportedFormat": "This file format is not accepted.",
+    "ContentMismatch": "The content does not match the file extension."
+  },
+  "publishSkip": {
+    "not_found": "the file no longer exists",
+    "not_staged": "it is no longer staged",
+    "client_not_active": "the client is not active",
+    "stale": "it was changed by someone else"
+  },
+  "withdrawReason": {
+    "WrongClient": "Delivered to the wrong client",
+    "WrongFile": "Wrong file",
+    "Superseded": "Replaced by a newer file",
+    "Other": "Other"
+  },
+  "withdrawNext": {
+    "NeedsReview": "Send back to review",
+    "Trashed": "Move to trash"
+  },
+  "direction": {
+    "Outbound": "Outbound (office to client)",
+    "Inbound": "Inbound (client to office)",
+    "Both": "Both"
+  },
+  "membership": {
+    "Active": "Active",
+    "Pending": "Pending",
+    "Rejected": "Rejected",
+    "Revoked": "Revoked"
+  },
+  "clientStatus": {
+    "Active": "Active",
+    "Archived": "Archived",
+    "Closed": "Closed"
+  },
+  "caseKind": {
+    "Procedure": "Procedure",
+    "Payroll": "Payroll",
+    "Other": "Other"
+  },
+  "role": {
+    "Owner": "Owner",
+    "Staff": "Staff"
   }
 }
