@@ -29,7 +29,11 @@ export function createApp(overrides: AdapterOverrides = {}): Hono<AppBindings> {
 
   app.all("/api/*", (c) => c.json({ error: API_CODES.notFound }, 404));
   // Everything else is the single-page application, served through the Worker so that it carries the security headers.
-  app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
+  app.all("*", async (c) => {
+    const asset = await c.env.ASSETS.fetch(c.req.raw);
+    // Responses from the asset binding are immutable; copy so that the security headers can be added.
+    return new Response(asset.body, asset);
+  });
 
   app.onError(handleError);
   return app;

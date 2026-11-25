@@ -44,6 +44,12 @@ describe("classifierTitle", () => {
   it("limits the length", () => {
     expect(classifierTitle(`${"a".repeat(500)}.pdf`, options).length).toBe(120);
   });
+
+  it("removes client codes in any letter case and inside a longer word", () => {
+    expect(classifierTitle("c0031_notice.pdf", options)).toBe("notice");
+    expect(classifierTitle("C0031notice.pdf", options)).toBe("notice");
+    expect(classifierTitle("xC0142yz_kettei.pdf", options)).toBe("x yz kettei");
+  });
 });
 
 describe("isFixedModelName", () => {
@@ -51,7 +57,7 @@ describe("isFixedModelName", () => {
     expect(isFixedModelName(model)).toBe(true);
   });
 
-  it.each(["jev-latest", "jev-preview", "", "JEV-1.13.0", "jev 1.13", "../jev", "x".repeat(65)])("rejects %s", (model) => {
+  it.each(["jev-latest", "jev-preview", "jev-1.13-latest", "jev", "", "JEV-1.13.0", "jev 1.13", "../jev", "x".repeat(65)])("rejects %s", (model) => {
     expect(isFixedModelName(model)).toBe(false);
   });
 });
@@ -74,6 +80,36 @@ describe("ClassificationService", () => {
   function request(items = [{ fileId: "f1", fileName: "C0031_hyojun kettei.pdf" }], model = "jev-1.13.0") {
     return { model, credential: KEY, items };
   }
+
+  it("writes nothing when a later batch fails, so every file stays as it was", async () => {
+    kit.repo.fileRows = Array.from({ length: CLASSIFIER_BATCH_SIZE + 5 }, (_unused, index) =>
+      fileRecord({ id: `h${index}`, sha256: String(index + 500).padStart(64, "0"), displayName: `C0031_UNCLASSIFIED_20261124_${String(index + 10)}` }),
+    );
+    const items = kit.repo.fileRows.map((row) => ({ fileId: row.id, fileName: "notice.pdf" }));
+    let calls = 0;
+    classifier.respond = (request) => {
+      calls += 1;
+      if (calls === 2) {
+        throw new ClassifierError("limit_reached");
+      }
+      return { model: "jev-1.13.0", answers: request.items.map((item) => ({ itemId: item.id, choiceId: "d1", confidence: 0.97 })) };
+    };
+    await expect(service.classify(staff, { model: "jev-1.13.0", credential: KEY, items })).rejects.toThrow("classifier: limit_reached");
+    expect(kit.repo.fileRows.every((row) => row.docTypeId === null)).toBe(true);
+  });
+
+  it("writes nothing when one answer in a late batch is invalid", async () => {
+    kit.repo.fileRows = Array.from({ length: CLASSIFIER_BATCH_SIZE + 2 }, (_unused, index) =>
+      fileRecord({ id: `k${index}`, sha256: String(index + 900).padStart(64, "0"), displayName: `C0031_UNCLASSIFIED_20261124_${String(index + 10)}` }),
+    );
+    const items = kit.repo.fileRows.map((row) => ({ fileId: row.id, fileName: "notice.pdf" }));
+    classifier.respond = (request) => ({
+      model: "jev-1.13.0",
+      answers: request.items.map((item, index) => ({ itemId: item.id, choiceId: "d1", confidence: index === request.items.length - 1 ? 1.5 : 0.97 })),
+    });
+    await expect(service.classify(staff, { model: "jev-1.13.0", credential: KEY, items })).rejects.toThrow("classifier: invalid_response");
+    expect(kit.repo.fileRows.every((row) => row.docTypeId === null)).toBe(true);
+  });
 
   it("sets the type when confidence reaches the threshold and records model and confidence", async () => {
     const report = await service.classify(staff, request());

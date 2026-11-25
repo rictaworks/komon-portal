@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { invalidInput } from "../../../core/model/errors";
 import type { FileFormat } from "../../../core/model/types";
 import { OPEN_MODES } from "../../../core/publish/view-service";
-import { requireAuth, type AppBindings } from "../context";
+import { HttpError, requireAuth, type AppBindings } from "../context";
 
 const BINARY = "application/octet-stream";
 /** Types a browser never executes. Text formats are sent as opaque bytes so they cannot run as markup or script. */
@@ -26,6 +26,10 @@ export function fileContentRoutes(): Hono<AppBindings> {
   const routes = new Hono<AppBindings>();
 
   routes.get("/files/:id/content", async (c) => {
+    // Opening a file records an acknowledgement or a receipt, so a cross-site navigation must not reach it.
+    if (c.req.header("Sec-Fetch-Site") === "cross-site") {
+      throw new HttpError(403, "bad_origin");
+    }
     const { actor } = requireAuth(c);
     const requested = c.req.query("mode") ?? "download";
     const mode = OPEN_MODES.find((candidate) => candidate === requested);

@@ -47,7 +47,10 @@ export class GoogleOidc implements IdentityProvider {
     if (typeof payload.sub !== "string" || payload.sub === "") {
       throw new IdentityError("subject_missing");
     }
-    return { sub: payload.sub, displayName: typeof payload.name === "string" ? payload.name : "" };
+    if (typeof payload.name !== "string" || payload.name.trim() === "") {
+      throw new IdentityError("name_missing");
+    }
+    return { sub: payload.sub, displayName: payload.name };
   }
 
   private async requestIdToken(exchange: CodeExchange): Promise<string> {

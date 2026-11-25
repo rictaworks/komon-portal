@@ -1,20 +1,16 @@
 import { Hono } from "hono";
 import type { Services } from "../composition";
-import { DUE_CAUTION_DAYS, RETRIEVAL_CAUTION_DAYS } from "../../../core/cases/deadline-calculator";
 import { MAX_ARRIVAL_NUMBERS } from "../../../core/cases/case-service";
 import { invalidInput, notFound } from "../../../core/model/errors";
 import { CASE_KINDS, CASE_STATES, type CaseRecord, type CaseState } from "../../../core/model/types";
 import type { CaseFilter } from "../../../core/ports/repository";
-import { addDays } from "../../../core/time/local-date";
+import { dueWindowEnd, retrievalWindowEnd, unreadCutoff } from "../../../core/office/dashboard-windows";
 import { requireAuth, type AppBindings } from "../context";
 import { optionalString, readJson, requireArray, requireInteger, requireString } from "../input";
 import { caseView, Lookups, pageOf } from "./views";
 
-const UNREAD_DAYS = 7;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-async function deadlinesOf(services: Services, record: CaseRecord) {
-  const setting = await services.repository.settings.get();
+async function deadlinesOf(services: Services, lookups: Lookups, record: CaseRecord) {
+  const setting = await lookups.setting();
   return { retrieval: services.deadlines.retrievalLevel(record, setting), due: services.deadlines.dueLevel(record, setting) };
 }
 
@@ -23,7 +19,7 @@ async function casesByIds(services: Services, lookups: Lookups, ids: readonly st
   for (const id of ids) {
     const record = await services.repository.cases.findById(id);
     if (record !== null) {
-      views.push(await caseView(lookups, record, await deadlinesOf(services, record)));
+      views.push(await caseView(lookups, record, await deadlinesOf(services, lookups, record)));
     }
   }
   return views;
@@ -36,22 +32,26 @@ export function caseRoutes(): Hono<AppBindings> {
     const { actor } = requireAuth(c);
     const services = c.get("services");
     await services.guard.require(actor, "staff.operate", { type: "dashboard", id: "office" });
-    const setting = await services.repository.settings.get();
-    const today = services.deadlines.today(setting);
     const lookups = new Lookups(services);
+    const setting = await lookups.setting();
+    const today = services.deadlines.today(setting);
+    const unreadFiles = await services.dashboard.unreadPublishedBefore(unreadCutoff(services.clock.now()));
     const unread = [];
-    for (const file of await services.dashboard.unreadPublishedBefore(new Date(services.clock.now().getTime() - UNREAD_DAYS * DAY_MS))) {
+    for (const file of unreadFiles.items) {
       unread.push({ id: file.id, displayName: file.displayName, publishedAt: file.publishedAt, client: await lookups.client(file.clientId) });
     }
-    const retrievalFrom = addDays(today, RETRIEVAL_CAUTION_DAYS - setting.retrievalDeadlineDays);
+    const retrievalIds = await services.dashboard.submittedCaseIdsOnOrBefore(retrievalWindowEnd(today, setting.retrievalDeadlineDays));
+    const dueIds = await services.dashboard.openCaseIdsDueOnOrBefore(dueWindowEnd(today));
     return c.json({
       today,
       needsReview: await services.repository.files.count({ direction: "Outbound", states: ["NeedsReview"] }),
       staged: await services.repository.files.count({ direction: "Outbound", states: ["Staged"] }),
       submitted: await services.repository.files.count({ direction: "Inbound", states: ["Submitted"] }),
       unread,
-      retrieval: await casesByIds(services, lookups, await services.dashboard.submittedCaseIdsOnOrBefore(retrievalFrom)),
-      due: await casesByIds(services, lookups, await services.dashboard.openCaseIdsDueOnOrBefore(addDays(today, DUE_CAUTION_DAYS))),
+      // `truncated` is true when more items matched than the 100 shown.
+      truncated: { unread: unreadFiles.truncated, retrieval: retrievalIds.truncated, due: dueIds.truncated },
+      retrieval: await casesByIds(services, lookups, retrievalIds.items),
+      due: await casesByIds(services, lookups, dueIds.items),
       // Mis-deliveries are shown to the Owner only.
       incidents: services.policy.can(actor, "incident.read") ? (await services.publish.listIncidents(actor)).length : null,
     });
@@ -81,7 +81,7 @@ export function caseRoutes(): Hono<AppBindings> {
     const lookups = new Lookups(services);
     const items = [];
     for (const record of await services.repository.cases.list(filter, pageOf(c))) {
-      items.push(await caseView(lookups, record, await deadlinesOf(services, record)));
+      items.push(await caseView(lookups, record, await deadlinesOf(services, lookups, record)));
     }
     return c.json({ items });
   });
@@ -98,7 +98,8 @@ export function caseRoutes(): Hono<AppBindings> {
       assigneeId: optionalString(body, "assigneeId"),
       dueOn: optionalString(body, "dueOn", 10),
     });
-    return c.json(await caseView(new Lookups(services), created, await deadlinesOf(services, created), []), 201);
+    const lookups = new Lookups(services);
+    return c.json(await caseView(lookups, created, await deadlinesOf(services, lookups, created), []), 201);
   });
 
   routes.get("/cases/:id", async (c) => {
@@ -110,7 +111,8 @@ export function caseRoutes(): Hono<AppBindings> {
       throw notFound("case");
     }
     const arrivals = (await services.repository.cases.listArrivals(record.id)).map((arrival) => arrival.arrivalNumber);
-    return c.json(await caseView(new Lookups(services), record, await deadlinesOf(services, record), arrivals));
+    const lookups = new Lookups(services);
+    return c.json(await caseView(lookups, record, await deadlinesOf(services, lookups, record), arrivals));
   });
 
   routes.post("/cases/:id/submit", async (c) => {
@@ -128,21 +130,24 @@ export function caseRoutes(): Hono<AppBindings> {
       requireInteger(body, "version"),
     );
     const arrivals = (await services.repository.cases.listArrivals(updated.id)).map((arrival) => arrival.arrivalNumber);
-    return c.json(await caseView(new Lookups(services), updated, await deadlinesOf(services, updated), arrivals));
+    const lookups = new Lookups(services);
+    return c.json(await caseView(lookups, updated, await deadlinesOf(services, lookups, updated), arrivals));
   });
 
   routes.post("/cases/:id/close", async (c) => {
     const { actor } = requireAuth(c);
     const services = c.get("services");
     const updated = await services.cases.close(actor, c.req.param("id"), requireInteger(await readJson(c), "version"));
-    return c.json(await caseView(new Lookups(services), updated, await deadlinesOf(services, updated)));
+    const lookups = new Lookups(services);
+    return c.json(await caseView(lookups, updated, await deadlinesOf(services, lookups, updated)));
   });
 
   routes.post("/cases/:id/cancel", async (c) => {
     const { actor } = requireAuth(c);
     const services = c.get("services");
     const updated = await services.cases.cancel(actor, c.req.param("id"), requireInteger(await readJson(c), "version"));
-    return c.json(await caseView(new Lookups(services), updated, await deadlinesOf(services, updated)));
+    const lookups = new Lookups(services);
+    return c.json(await caseView(lookups, updated, await deadlinesOf(services, lookups, updated)));
   });
 
   return routes;
