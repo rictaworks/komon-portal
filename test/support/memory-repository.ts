@@ -3,7 +3,7 @@ import type {
   InvitationStatus, LocalDate, Membership, MembershipStatus, MetricEvent, OfficeSetting, PendingPurge, UploadBatch, User, YearMonth,
 } from "../../src/core/model/types";
 import type {
-  CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, MemberCounts, Page, Repository, UnreadPublished,
+  AuditFilter, CaseFileSummary, CaseFilter, ClientFilter, FileFilter, FileWriteResult, MemberCounts, Page, Repository, UnreadPublished,
 } from "../../src/core/ports/repository";
 
 function copy<T>(value: T): T {
@@ -575,11 +575,29 @@ export class MemoryRepository implements Repository {
       this.receiptRows.some((row) => row.fileId === fileId && row.userId === userId),
   };
 
+  /** Mirrors AUDIT_OF_CLIENT in the D1 adapter: the client, and its cases and files as they are stored now. */
+  private concernsClient(entry: AuditEntry, clientId: Id): boolean {
+    switch (entry.targetType) {
+      case "client":
+        return entry.targetId === clientId;
+      case "case":
+        return this.caseRows.some((row) => row.id === entry.targetId && row.clientId === clientId);
+      case "file":
+        return this.fileRows.some((row) => row.id === entry.targetId && row.clientId === clientId);
+      default:
+        return false;
+    }
+  }
+
   audit = {
     append: async (entry: AuditEntry): Promise<void> => {
       this.auditRows.push(copy(entry));
     },
-    list: async (page: Page): Promise<AuditEntry[]> => paged([...this.auditRows].reverse(), page),
+    list: async (page: Page, filter: AuditFilter = {}): Promise<AuditEntry[]> => {
+      const newest = [...this.auditRows].reverse();
+      const clientId = filter.clientId;
+      return paged(clientId === undefined ? newest : newest.filter((entry) => this.concernsClient(entry, clientId)), page);
+    },
   };
 
   metrics = {

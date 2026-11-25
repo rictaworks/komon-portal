@@ -258,9 +258,18 @@ export interface ReceiptRepository {
   hasOpened(fileId: Id, userId: Id): Promise<boolean>;
 }
 
+export interface AuditFilter {
+  /**
+   * Lists only the entries about this client: the client itself, and its cases and files as they are stored now.
+   * Left out, every entry is listed. An entry about a file or case that no longer exists is not listed under a client.
+   */
+  clientId?: Id;
+}
+
 export interface AuditRepository {
   append(entry: AuditEntry): Promise<void>;
-  list(page: Page): Promise<AuditEntry[]>;
+  /** Newest first. The log is append-only: nothing reads it to change it. */
+  list(page: Page, filter?: AuditFilter): Promise<AuditEntry[]>;
 }
 
 export interface MetricRepository {

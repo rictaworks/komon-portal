@@ -4,7 +4,7 @@ import type {
   PendingPurge, ResolutionMethod, ReviewReason, TypeSource, UploadBatch, WithdrawReason,
 } from "../../../core/model/types";
 import type {
-  AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository, UnreadPublished,
+  AuditFilter, AuditRepository, CaseFileSummary, FileFilter, FileRepository, FileWriteResult, MetricRepository, Page, ReceiptRepository, UnreadPublished,
 } from "../../../core/ports/repository";
 import {
   changes, chunk, fromIso, fromIsoOrNull, IN_CHUNK, isUniqueViolation, numberOrNull, placeholders, text, textOrNull,
@@ -401,6 +401,11 @@ export class D1ReceiptRepository implements ReceiptRepository {
   }
 }
 
+/** Entries about a client: the client, and its cases and files as they are stored now. Binds the client ID three times. */
+const AUDIT_OF_CLIENT = `((target_type = 'client' AND target_id = ?)
+  OR (target_type = 'case' AND target_id IN (SELECT id FROM case_records WHERE client_id = ?))
+  OR (target_type = 'file' AND target_id IN (SELECT id FROM file_records WHERE client_id = ?)))`;
+
 export class D1AuditRepository implements AuditRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -411,8 +416,13 @@ export class D1AuditRepository implements AuditRepository {
       .run();
   }
 
-  async list(page: Page): Promise<AuditEntry[]> {
-    const rows = await this.db.prepare("SELECT * FROM audit_log ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?").bind(page.limit, page.offset).all<Row>();
+  async list(page: Page, filter: AuditFilter = {}): Promise<AuditEntry[]> {
+    const newestFirst = "ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?";
+    const statement =
+      filter.clientId === undefined
+        ? this.db.prepare(`SELECT * FROM audit_log ${newestFirst}`).bind(page.limit, page.offset)
+        : this.db.prepare(`SELECT * FROM audit_log WHERE ${AUDIT_OF_CLIENT} ${newestFirst}`).bind(filter.clientId, filter.clientId, filter.clientId, page.limit, page.offset);
+    const rows = await statement.all<Row>();
     return rows.results.map((row) => ({
       id: text(row.id),
       actorUserId: textOrNull(row.actor_user_id),
