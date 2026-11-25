@@ -24,12 +24,17 @@ function Start() {
   return <Navigate to={landing.kind === "pending" ? "/pending" : "/no-access"} replace />;
 }
 
+/** Sends a visitor without a session to sign in; they come back to this page afterwards. */
+export function SignInFirst() {
+  const location = useLocation();
+  return <Navigate to={`/sign-in?return=${encodeURIComponent(returnTarget(location.pathname, location.search))}`} replace />;
+}
+
 /** Requires a session; a visitor without one is sent to sign in and comes back afterwards. */
 export function RequireSession({ children }: { children: ReactNode }) {
   const { me } = useSession();
-  const location = useLocation();
   if (me === null) {
-    return <Navigate to={`/sign-in?return=${encodeURIComponent(returnTarget(location.pathname, location.search))}`} replace />;
+    return <SignInFirst />;
   }
   return <>{children}</>;
 }

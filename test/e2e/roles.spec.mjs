@@ -42,3 +42,21 @@ test("signing out ends the session", async ({ sessions }) => {
   await page.waitForURL(/\/sign-in/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
+
+test("signing out in the office goes to Sign in, not to the no-access page", async ({ sessions }) => {
+  const page = await sessions.as("staff");
+  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(/\/sign-in\?return=%2Foffice%2Fdashboard$/);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No access yet" })).toHaveCount(0);
+});
+
+test("signing out in the client area goes to Sign in, not to the not-found page", async ({ sessions }) => {
+  const page = await sessions.as("member");
+  await page.waitForURL(new RegExp(`/client/${DEMO_CLIENT.id}/home$`));
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(new RegExp(`/sign-in\\?return=%2Fclient%2F${DEMO_CLIENT.id}%2Fhome$`));
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Page not found" })).toHaveCount(0);
+});
