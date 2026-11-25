@@ -123,7 +123,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | POST | `/api/office/cases/{id}/close` | Closes a confirmed case (version required). | staff |
 | POST | `/api/office/cases/{id}/submit` | Records the submission of a case with its arrival numbers. | staff |
 | POST | `/api/office/classify` | Asks Jev to suggest document types. The key is sent in the X-Jev-Key header and never stored. | staff |
-| GET | `/api/office/clients` | Lists clients, optionally filtered by status. | staff |
+| GET | `/api/office/clients` | Lists clients, optionally filtered by `status` and by `query` (any part of the code or name, ASCII case ignored), paged with `limit` (1 to 200, default 50) and `offset`. `include=members` adds the active and pending member counts and allows a `limit` of at most 50. | staff |
 | POST | `/api/office/clients` | Registers a client. | staff |
 | GET | `/api/office/clients/{id}` | One client. | staff |
 | PATCH | `/api/office/clients/{id}` | Updates a client's name or number (version required). Setting the status to Closed is Owner only. | staff |

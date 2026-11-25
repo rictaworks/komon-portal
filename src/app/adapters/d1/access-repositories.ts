@@ -2,7 +2,7 @@ import type {
   Client, ClientStatus, Id, Invitation, InvitationStatus, Membership, MembershipStatus, OfficeRole, OfficeSetting, User,
 } from "../../../core/model/types";
 import type {
-  ClientFilter, ClientRepository, InvitationRepository, MembershipRepository, Page, SessionRevoker, SettingsRepository,
+  ClientFilter, ClientRepository, InvitationRepository, MemberCounts, MembershipRepository, Page, SessionRevoker, SettingsRepository,
   UserRepository,
 } from "../../../core/ports/repository";
 import {
@@ -167,9 +167,9 @@ export class D1ClientRepository implements ClientRepository {
       where.params.push(filter.status);
     }
     if (filter.query !== undefined && filter.query !== "") {
-      // Exact, case-sensitive matching without LIKE: no wildcard escaping and no pattern length limit.
-      where.clauses.push("(substr(code, 1, length(?)) = ? OR instr(corporate_name, ?) > 0)");
-      where.params.push(filter.query, filter.query, filter.query);
+      // Matching without LIKE: no wildcard escaping and no pattern length limit. lower() folds ASCII letters only.
+      where.clauses.push("(instr(lower(code), lower(?)) > 0 OR instr(lower(corporate_name), lower(?)) > 0)");
+      where.params.push(filter.query, filter.query);
     }
     const rows = await this.db
       .prepare(`SELECT * FROM clients${whereSql(where)} ORDER BY code LIMIT ? OFFSET ?`)
@@ -243,6 +243,24 @@ export class D1MembershipRepository implements MembershipRepository {
   async listByClient(clientId: Id): Promise<Membership[]> {
     const rows = await this.db.prepare("SELECT * FROM memberships WHERE client_id = ? ORDER BY created_at, id").bind(clientId).all<Row>();
     return rows.results.map(toMembership);
+  }
+
+  async countOngoingByClients(clientIds: readonly Id[]): Promise<Map<Id, MemberCounts>> {
+    const counts = new Map<Id, MemberCounts>();
+    if (clientIds.length === 0) {
+      return counts;
+    }
+    // One grouped query for the whole page of clients, instead of one query per client.
+    const rows = await this.db
+      .prepare(
+        `SELECT client_id, SUM(status = 'Active') AS active, SUM(status = 'Pending') AS pending FROM memberships WHERE client_id IN (${clientIds.map(() => "?").join(", ")}) AND status IN ('Pending', 'Active') GROUP BY client_id ORDER BY client_id`,
+      )
+      .bind(...clientIds)
+      .all<Row>();
+    for (const row of rows.results) {
+      counts.set(text(row.client_id), { active: Number(row.active), pending: Number(row.pending) });
+    }
+    return counts;
   }
 
   async insert(membership: Membership): Promise<boolean> {

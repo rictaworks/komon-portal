@@ -65,7 +65,7 @@ export interface UserRepository {
 
 export interface ClientFilter {
   status?: ClientStatus;
-  /** Matches the start of the code or any part of the corporate name. */
+  /** Matches any part of the code or of the corporate name; the case of ASCII letters is ignored. */
   query?: string;
 }
 
@@ -80,12 +80,19 @@ export interface ClientRepository {
   update(client: Client, expectedVersion: number): Promise<boolean>;
 }
 
+export interface MemberCounts {
+  active: number;
+  pending: number;
+}
+
 export interface MembershipRepository {
   findById(id: Id): Promise<Membership | null>;
   /** The membership that is Pending or Active for this pair, if any. */
   findOngoing(userId: Id, clientId: Id): Promise<Membership | null>;
   listByUser(userId: Id): Promise<Membership[]>;
   listByClient(clientId: Id): Promise<Membership[]>;
+  /** Active and pending members of each given client, in one lookup. A client with neither has no entry. */
+  countOngoingByClients(clientIds: readonly Id[]): Promise<Map<Id, MemberCounts>>;
   /** Returns false when an ongoing membership already exists for the pair. */
   insert(membership: Membership): Promise<boolean>;
   /** Applies the change only while the stored status equals `expectedStatus`. Returns false otherwise. */
