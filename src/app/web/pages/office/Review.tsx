@@ -42,11 +42,11 @@ function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
       .run(async () => {
         await api.post(`/api/office/files/${file.id}/assign`, { clientId, caseId: caseId === "" ? null : caseId, docTypeId: docTypeId === "" ? null : docTypeId, confirmed, version: file.version });
       })
-      .then((ok) => (ok ? onDone() : undefined));
+      .then(() => onDone());
   };
 
   const trash = (): void => {
-    void action.run(() => api.post(`/api/office/files/${file.id}/trash`, { version: file.version })).then((ok) => (ok ? onDone() : undefined));
+    void action.run(() => api.post(`/api/office/files/${file.id}/trash`, { version: file.version })).then(() => onDone());
   };
 
   return (

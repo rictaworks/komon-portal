@@ -41,7 +41,8 @@ export function Intake() {
   const folderPicker = useRef<HTMLInputElement>(null);
 
   const takeIn = (files: File[]): void => {
-    if (files.length === 0) {
+    // One batch at a time: a second drop while an upload runs would interleave two result lists.
+    if (files.length === 0 || upload.busy) {
       return;
     }
     setClassified(null);

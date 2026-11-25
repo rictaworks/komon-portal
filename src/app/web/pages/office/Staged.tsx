@@ -67,11 +67,15 @@ export function Staged() {
 
   const sendBack = (): void => {
     void action.run(async () => {
-      for (const file of selected) {
-        await api.post(`/api/office/files/${file.id}/send-back`, { version: file.version });
+      try {
+        for (const file of selected) {
+          await api.post(`/api/office/files/${file.id}/send-back`, { version: file.version });
+        }
+      } finally {
+        // Whatever was sent back, the list shows the server's state, not the state before the attempt.
+        setChecked(new Set());
+        files.reload();
       }
-      setChecked(new Set());
-      files.reload();
     });
   };
 

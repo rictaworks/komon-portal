@@ -4,7 +4,7 @@ import { fileContentUrl } from "../../api/client";
 import type { CaseView, ClientRecord, FileView } from "../../api/office-types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SelectField } from "../../components/Form";
-import { formatDateTime } from "../../components/format";
+import { formatDateTime, formatMonth } from "../../components/format";
 import { ErrorNotice, Notice } from "../../components/Notice";
 import { Badge, FileStateBadge } from "../../components/StatusBadge";
 import { useAction } from "../../components/useAction";
@@ -17,6 +17,8 @@ const TABS = ["Published", "Withdrawn", "Trashed"] as const;
 type Tab = (typeof TABS)[number];
 const WITHDRAW_REASONS = ["WrongClient", "WrongFile", "Superseded", "Other"] as const;
 const WITHDRAW_NEXT = ["NeedsReview", "Trashed"] as const;
+/** Cases that can no longer receive documents. */
+const TERMINAL_STATES: readonly string[] = ["Closed", "Cancelled"];
 
 /** One client's shelf: published documents, withdrawn ones and the trash. The client is fixed on the banner. */
 export function Shelf() {
@@ -26,10 +28,10 @@ export function Shelf() {
   const [tab, setTab] = useState<Tab>("Published");
   const client = useLoad<ClientRecord>(() => api.get<ClientRecord>(`/api/office/clients/${clientId}`), [clientId]);
   const files = useLoad<{ items: FileView[]; total: number }>(
-    () => api.get<{ items: FileView[]; total: number }>(`/api/office/files?direction=Outbound&clientId=${clientId}&states=${tab}&limit=200`),
+    () => api.get<{ items: FileView[]; total: number }>(`/api/office/files?direction=Outbound&clientId=${encodeURIComponent(clientId)}&states=${tab}&limit=200`),
     [clientId, tab],
   );
-  const cases = useLoad<{ items: CaseView[] }>(() => api.get<{ items: CaseView[] }>(`/api/office/cases?clientId=${clientId}`), [clientId]);
+  const cases = useLoad<{ items: CaseView[] }>(() => api.get<{ items: CaseView[] }>(`/api/office/cases?clientId=${encodeURIComponent(clientId)}`), [clientId]);
   const action = useAction();
   const [withdrawing, setWithdrawing] = useState<FileView | null>(null);
   const [reason, setReason] = useState<string>(WITHDRAW_REASONS[0]);
@@ -37,11 +39,8 @@ export function Shelf() {
   const [linking, setLinking] = useState<FileView | null>(null);
   const [caseId, setCaseId] = useState("");
 
-  const done = (ok: boolean) => {
-    if (ok) {
-      files.reload();
-    }
-  };
+  // The list reloads after every attempt, so a version conflict is followed by the current version.
+  const done = () => files.reload();
 
   const withdraw = () => {
     const target = withdrawing;
@@ -145,7 +144,13 @@ export function Shelf() {
           <SelectField
             label={t("office.review.case")}
             value={caseId}
-            options={[{ value: "", label: t("office.review.noCase") }, ...(cases.data?.items ?? []).map((record) => ({ value: record.id, label: `${record.caseType?.label ?? ""} #${record.sequence}` }))]}
+            options={[
+              { value: "", label: t("office.review.noCase") },
+              // Only open cases, and the month is shown so two cases with the same number cannot be confused.
+              ...(cases.data?.items ?? [])
+                .filter((record) => !TERMINAL_STATES.includes(record.state))
+                .map((record) => ({ value: record.id, label: `${record.caseType?.label ?? ""} ${formatMonth(record.targetMonth)} #${record.sequence}` })),
+            ]}
             onChange={setCaseId}
           />
           <div className="row">

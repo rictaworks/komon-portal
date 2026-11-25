@@ -115,8 +115,9 @@ export function ClientDetail() {
           setCorporateName(null);
           setCorporateNumber(null);
           setStatus(null);
-          reload();
         }
+        // Reloaded after every attempt, so a version conflict is followed by the current version.
+        reload();
       });
   };
 

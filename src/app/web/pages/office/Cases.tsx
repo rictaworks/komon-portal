@@ -57,7 +57,7 @@ export function Cases() {
   };
 
   const transition = (record: CaseView, verb: "close" | "cancel") => () => {
-    void action.run(() => api.post(`/api/office/cases/${record.id}/${verb}`, { version: record.version })).then((ok) => ok && cases.reload());
+    void action.run(() => api.post(`/api/office/cases/${record.id}/${verb}`, { version: record.version })).then(() => cases.reload());
   };
 
   const visible = (cases.data?.items ?? []).filter((record) => stateFilter === "" || record.state === stateFilter);
