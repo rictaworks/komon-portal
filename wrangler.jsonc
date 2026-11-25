@@ -23,6 +23,10 @@
       "bucket_name": "komon-portal-files"
     }
   ],
+  // Daily maintenance at 18:17 UTC (03:17 in Japan).
+  "triggers": {
+    "crons": ["17 18 * * *"]
+  },
   "vars": {
     "ENVIRONMENT": "production"
   },

@@ -83,19 +83,28 @@ export class TrashService {
     await this.deps.guard.require(actor, "maintenance.run", { type: FILE_TARGET, id: "purge" });
     const report: PurgeReport = { purged: 0, skipped: 0, failed: 0 };
     const threshold = this.purgeThreshold();
+    // Only files whose record survived a failure stay in the listing and ahead of the next page.
+    let stillListed = 0;
     for (;;) {
-      // Files that failed stay in the listing, so later pages are reached by skipping them.
-      const due = await this.deps.repository.files.listTrashedBefore(threshold, { limit: PURGE_PAGE.limit, offset: report.failed });
+      const due = await this.deps.repository.files.listTrashedBefore(threshold, { limit: PURGE_PAGE.limit, offset: stillListed });
       if (due.length === 0) {
         return report;
       }
       for (const file of due) {
-        report[await this.purgeOne(actor, file, threshold)] += 1;
+        const outcome = await this.purgeOne(actor, file, threshold);
+        if (outcome === "failed") {
+          stillListed += 1;
+        }
+        report[outcome === "orphaned" ? "failed" : outcome] += 1;
       }
     }
   }
 
-  private async purgeOne(actor: Actor, file: FileRecord, threshold: Date): Promise<keyof PurgeReport> {
+  /**
+   * "failed": the record survived and is retried by a later run. "orphaned": the record was erased but its
+   * content could not be removed; it is counted as failed and cannot be retried (see the follow-up on purge state).
+   */
+  private async purgeOne(actor: Actor, file: FileRecord, threshold: Date): Promise<keyof PurgeReport | "orphaned"> {
     try {
       const erased = await this.deps.repository.files.purge(file.id, threshold, {
         id: this.deps.ids.newId(),
@@ -110,7 +119,12 @@ export class TrashService {
         // Restored or already gone in the meantime: nothing to do and nothing failed.
         return "skipped";
       }
-      await this.deps.store.delete(file.r2Key);
+      try {
+        await this.deps.store.delete(file.r2Key);
+      } catch (error) {
+        await this.recordFailure(actor, file, error);
+        return "orphaned";
+      }
       return "purged";
     } catch (error) {
       await this.recordFailure(actor, file, error);
