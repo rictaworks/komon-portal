@@ -353,6 +353,42 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(purges.map((row) => [row.id, row.targetId])).toEqual([[id("pl3"), old.id]]);
     });
 
+    it("changes a file and appends its audit entry together, or does neither", async () => {
+      const company = await seedClient();
+      const actor = await seedUser("actor", { officeRole: "Staff", officeStatus: "Active" });
+      const file = await seedFile(company.id);
+      const entry = (label: string) => ({
+        id: id(label), actorUserId: actor.id, action: "file.publish", targetType: "file", targetId: file.id, result: "ok" as const, occurredAt: T0,
+      });
+      const entriesForFile = async () => (await repo.audit.list({ limit: 500, offset: 0 })).filter((row) => row.targetId === file.id).map((row) => row.id);
+      const published = { ...file, state: "Published" as const, publishedAt: T0, version: 2 };
+
+      // A stale version writes neither the state nor the entry.
+      expect(await repo.files.updateWithAudit({ ...published, version: 6 }, 5, entry("wa-stale"))).toBe("stale");
+      expect(await repo.files.findById(file.id)).toMatchObject({ state: "Staged", version: 1 });
+      expect(await entriesForFile()).toEqual([]);
+
+      // An entry that cannot be written (its id is taken) stops the change.
+      await repo.audit.append({ ...entry("wa-taken"), targetId: id("other-target") });
+      await expect(repo.files.updateWithAudit(published, 1, entry("wa-taken"))).rejects.toThrow();
+      expect(await repo.files.findById(file.id)).toMatchObject({ state: "Staged", version: 1, publishedAt: null });
+      expect(await entriesForFile()).toEqual([]);
+
+      // A change that hits a constraint leaves no entry behind.
+      const twin = await seedFile(company.id, "f-twin", { sha256: file.sha256, state: "Trashed", trashedFrom: "Staged", trashedAt: T0 });
+      const restored = { ...twin, state: "Staged" as const, trashedFrom: null, trashedAt: null, version: 2 };
+      expect(await repo.files.updateWithAudit(restored, 1, { ...entry("wa-dup"), targetId: twin.id })).toBe("duplicate_content");
+      expect(await repo.files.findById(twin.id)).toMatchObject({ state: "Trashed", version: 1 });
+      expect((await repo.audit.list({ limit: 500, offset: 0 })).filter((row) => row.targetId === twin.id)).toEqual([]);
+
+      expect(await repo.files.updateWithAudit(published, 1, entry("wa-ok"))).toBe("ok");
+      expect(await repo.files.findById(file.id)).toMatchObject({ state: "Published", version: 2, publishedAt: T0 });
+      expect(await entriesForFile()).toEqual([id("wa-ok")]);
+      // The same write again is stale and adds nothing.
+      expect(await repo.files.updateWithAudit(published, 1, entry("wa-again"))).toBe("stale");
+      expect(await entriesForFile()).toEqual([id("wa-ok")]);
+    });
+
     it("appends audit entries and metric events", async () => {
       const actor = await seedUser();
       await repo.audit.append({ id: id("l1"), actorUserId: actor.id, action: "file.publish", targetType: "file", targetId: id("f"), result: "ok", occurredAt: new Date("2099-01-01T00:00:00.000Z") });

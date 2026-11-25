@@ -192,6 +192,12 @@ export interface FileRepository {
   nextDisplaySequence(clientId: Id | null, receivedOn: LocalDate): Promise<number>;
   insert(file: FileRecord): Promise<FileWriteResult>;
   update(file: FileRecord, expectedVersion: number): Promise<FileWriteResult>;
+  /**
+   * Like `update`, and appends the audit entry in the same atomic step: the entry is stored only
+   * when the file changes, and the file changes only when the entry is stored. Any result other
+   * than `ok` wrote nothing; an entry that cannot be written rejects and leaves the file as it was.
+   */
+  updateWithAudit(file: FileRecord, expectedVersion: number, audit: AuditEntry): Promise<FileWriteResult>;
   summarizeForCase(caseId: Id): Promise<CaseFileSummary>;
   /** Trashed files that are due for erasure and are not being purged yet, oldest first. */
   listTrashedBefore(threshold: Date, page: Page): Promise<FileRecord[]>;

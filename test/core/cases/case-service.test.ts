@@ -181,6 +181,23 @@ describe("CaseService", () => {
       expect(repo.metricRows.map((row) => row.attributes.to)).toEqual(["DocumentReceived", "Delivered", "Confirmed", "DocumentReceived", "Submitted"]);
     });
 
+    it("audits each automatic state change with the system as actor", async () => {
+      repo.caseRows.push(caseRecord({ id: "k1", submittedOn: "2026-11-20", state: "Submitted" }));
+      repo.fileRows.push(fileRecord({ id: "f1", caseId: "k1", state: "Staged" }));
+      await service.onFileEvent("k1");
+      expect(repo.auditRows).toHaveLength(1);
+      expect(repo.auditRows[0]).toMatchObject({ actorUserId: null, action: "case.state_change", targetType: "case", targetId: "k1", result: "ok" });
+      // Nothing changed, so nothing more is recorded.
+      await service.onFileEvent("k1");
+      expect(repo.auditRows).toHaveLength(1);
+      repo.fileRows[0] = fileRecord({ id: "f1", caseId: "k1", state: "Published", publishedAt: new Date() });
+      await service.onFileEvent("k1");
+      expect(repo.auditRows.map((row) => [row.action, row.actorUserId, row.targetId])).toEqual([
+        ["case.state_change", null, "k1"],
+        ["case.state_change", null, "k1"],
+      ]);
+    });
+
     it("settles on the facts when the files change while a write is in flight", async () => {
       repo.caseRows.push(caseRecord({ id: "k1", submittedOn: "2026-11-20", state: "DocumentReceived" }));
       repo.fileRows.push(fileRecord({ id: "f1", caseId: "k1", state: "Published", publishedAt: new Date() }));

@@ -34,7 +34,11 @@ describe("ReviewService", () => {
         reviewReason: null, reviewDetail: null, displayName: "C0031_SHAHO_20261124_01", version: 2,
       });
       expect(kit.repo.caseRows[0]?.state).toBe("DocumentReceived");
-      expect(kit.repo.auditRows.at(-1)).toMatchObject({ action: "file.assign", targetId: "f1", result: "ok" });
+      // The assignment, then the case change that followed from it.
+      expect(kit.repo.auditRows.slice(-2).map((row) => [row.action, row.targetId, row.result])).toEqual([
+        ["file.assign", "f1", "ok"],
+        ["case.state_change", "k1", "ok"],
+      ]);
     });
 
     it("keeps the current type when none is given", async () => {

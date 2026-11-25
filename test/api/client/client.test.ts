@@ -91,6 +91,8 @@ describe("client API and file delivery", () => {
     const response = await member.call("GET", `/api/files/${ids.published}/content`, { headers: { "Sec-Fetch-Site": "cross-site" } });
     expect(response.status).toBe(403);
     expect(await json(response)).toEqual({ error: "bad_origin" });
+    const denied = await env.DB.prepare("SELECT target_type, target_id, result FROM audit_log WHERE action = 'request.bad_origin'").all();
+    expect(denied.results).toEqual([{ target_type: "request", target_id: "read", result: "denied" }]);
     const same = await member.call("GET", `/api/files/${ids.published}/content`, { headers: { "Sec-Fetch-Site": "same-origin" } });
     expect(same.status).toBe(200);
   });

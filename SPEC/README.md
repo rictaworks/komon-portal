@@ -45,4 +45,4 @@ sequenceDiagram
   P->>D: first-view receipt, audit entry
 ```
 
-A failure at a step leaves the record as it was, and the result for that file says why. One known exception, listed in the README: a publish whose follow-up writes (audit, metric or case update) fail is still published and carries a warning.
+A failure at a step leaves the record as it was, and the result for that file says why. Publishing and withdrawing write the new state and the audit entry as one atomic step: if the entry cannot be written, the file is not published or withdrawn. One known exception, listed in the README: what follows a publish is best-effort, so when the measurement event or the update of the linked case (with that update's own audit entry) fails, the file is still published and its result carries a warning. For a withdrawal only the measurement event is best-effort.

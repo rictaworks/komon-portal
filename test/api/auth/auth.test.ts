@@ -23,6 +23,15 @@ describe("authentication", () => {
     kit.identity.identity = { sub: `google-sub-${serial}`, displayName: "K. Tanabe" };
   });
 
+  /** Audit rows of one action and result, oldest first (the database is shared by the tests of this file). */
+  async function auditRows(action: string, result: string): Promise<Record<string, unknown>[]> {
+    const rows = await env.DB
+      .prepare("SELECT actor_user_id, target_type, target_id FROM audit_log WHERE action = ? AND result = ? ORDER BY rowid")
+      .bind(action, result)
+      .all<Record<string, unknown>>();
+    return rows.results;
+  }
+
   async function googleSignIn(target: ApiClient = client, returnTo?: string): Promise<Response> {
     const start = await target.call("GET", `/api/auth/login${returnTo === undefined ? "" : `?return=${encodeURIComponent(returnTo)}`}`);
     const state = new URL(start.headers.get("Location") ?? "").searchParams.get("state") ?? "";
@@ -118,6 +127,19 @@ describe("authentication", () => {
       expect(rows.results).toEqual([{ action: "request.bad_origin", result: "denied" }]);
     });
 
+    it("records a refused sign-in as denied, with no actor and nothing the caller sent", async () => {
+      const before = await auditRows("auth.login", "denied");
+      await client.call("GET", "/api/auth/login");
+      expect((await client.call("GET", "/api/auth/callback?code=x&state=forged-by-caller")).status).toBe(400);
+      kit.identity.fail = true;
+      expect((await googleSignIn(kit.client())).status).toBe(400);
+      const rows = (await auditRows("auth.login", "denied")).slice(before.length);
+      expect(rows).toEqual([
+        { actor_user_id: null, target_type: "request", target_id: "sign_in" },
+        { actor_user_id: null, target_type: "request", target_id: "sign_in" },
+      ]);
+    });
+
     it("cannot replay a used state", async () => {
       const start = await client.call("GET", "/api/auth/login");
       const state = new URL(start.headers.get("Location") ?? "").searchParams.get("state") ?? "";
@@ -180,6 +202,59 @@ describe("authentication", () => {
   });
 
   describe("state-changing requests", () => {
+    it("are recorded as denied when refused, also when nobody is signed in", async () => {
+      const anonymous = kit.client();
+      const before = (await auditRows("request.bad_origin", "denied")).length;
+      const denied = await anonymous.call("POST", "/api/auth/logout", { origin: "https://evil.example", csrf: null });
+      expect(denied.status).toBe(403);
+      expect(await denied.json()).toEqual({ error: "bad_origin" });
+      expect((await auditRows("request.bad_origin", "denied")).slice(before)).toEqual([
+        { actor_user_id: null, target_type: "request", target_id: "state_change" },
+      ]);
+
+      const { userId } = await client.signIn("staff");
+      const csrfBefore = (await auditRows("request.bad_csrf", "denied")).length;
+      expect((await client.call("POST", "/api/auth/logout", { csrf: "wrong" })).status).toBe(403);
+      expect((await auditRows("request.bad_csrf", "denied")).slice(csrfBefore)).toEqual([
+        { actor_user_id: userId, target_type: "request", target_id: "state_change" },
+      ]);
+    });
+
+    it("are recorded as denied when the session is missing or unknown", async () => {
+      const before = (await auditRows("request.unauthenticated", "denied")).length;
+      const anonymous = kit.client();
+      expect((await anonymous.call("POST", "/api/invitations/redeem", { body: { code: "x", turnstileToken: "t" }, csrf: null })).status).toBe(401);
+      const stranger = kit.client();
+      stranger.cookies.set("__Host-kp_session", "no-such-session");
+      expect((await stranger.call("GET", "/api/me")).status).toBe(401);
+      expect((await auditRows("request.unauthenticated", "denied")).slice(before)).toEqual([
+        { actor_user_id: null, target_type: "request", target_id: "state_change" },
+        { actor_user_id: null, target_type: "request", target_id: "read" },
+      ]);
+    });
+
+    it("record a failed human check as denied for the signed-in user", async () => {
+      const { userId } = await client.signIn("member");
+      const before = (await auditRows("request.human_check_failed", "denied")).length;
+      kit.humans.pass = false;
+      const refused = await client.call("POST", "/api/invitations/redeem", { body: { code: "typed-by-user", turnstileToken: "bad" } });
+      expect(refused.status).toBe(403);
+      expect((await auditRows("request.human_check_failed", "denied")).slice(before)).toEqual([
+        { actor_user_id: userId, target_type: "request", target_id: "state_change" },
+      ]);
+    });
+
+    it("keep addresses and caller-supplied text out of the audit log", async () => {
+      const marker = "caller-marker-7731";
+      const anonymous = kit.client();
+      await anonymous.call("POST", `/api/office/${marker}`, { origin: `https://${marker}.example`, csrf: null, body: { note: marker }, headers: { "CF-Connecting-IP": "203.0.113.9", "X-Forwarded-For": "203.0.113.9" } });
+      await anonymous.call("GET", `/api/me?${marker}=1`, { headers: { "CF-Connecting-IP": "203.0.113.9" } });
+      const rows = await env.DB.prepare("SELECT * FROM audit_log").all<Record<string, unknown>>();
+      const dump = JSON.stringify(rows.results);
+      expect(dump).not.toContain(marker);
+      expect(dump).not.toContain("203.0.113.9");
+    });
+
     it("require this origin", async () => {
       await client.signIn("staff");
       for (const origin of [null, "https://evil.example", "http://portal.test"]) {

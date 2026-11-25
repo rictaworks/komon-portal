@@ -53,7 +53,7 @@ describe("ViewService.open", () => {
     await kit.view.open(member, "f1", "view");
     await kit.view.open(member, "f1", "download");
     expect(kit.repo.auditRows.map((row) => [row.action, row.result])).toEqual([
-      ["file.receive", "ok"], ["file.view", "ok"], ["file.download", "ok"],
+      ["file.receive", "ok"], ["case.state_change", "ok"], ["file.view", "ok"], ["file.download", "ok"],
     ]);
   });
 
