@@ -30,7 +30,7 @@ describe("incidents: a mis-delivery is reported as it was when the file was with
     const stored = await json(await staff.call("POST", `/api/office/batches/${batchId}/files`, { form: upload(name, `%PDF-1.7 ${name}`) }));
     const fileId = String((stored.file as Json).id);
     expect((await json(await staff.call("POST", "/api/office/publish", { body: { items: [{ fileId, version: 1 }] } }))).results).toEqual([expect.objectContaining({ outcome: "published" })]);
-    expect((await member.call("GET", `/api/files/${fileId}/content?mode=view`)).status).toBe(200);
+    expect((await member.call("POST", `/api/files/${fileId}/open`, { body: { mode: "view" } })).status).toBe(200);
     return fileId;
   }
 

@@ -45,7 +45,7 @@ describe("office dashboard: mis-deliveries and submissions", () => {
       const fileId = String((stored.file as Json).id);
       expect((await json(await staff.call("POST", "/api/office/publish", { body: { items: [{ fileId, version: 1 }] } }))).results).toEqual([expect.objectContaining({ outcome: "published" })]);
       if (index < 6) {
-        expect((await member.call("GET", `/api/files/${fileId}/content?mode=view`)).status).toBe(200);
+        expect((await member.call("POST", `/api/files/${fileId}/open`, { body: { mode: "view" } })).status).toBe(200);
         opened.push(fileId);
       }
       const withdrawn = await staff.call("POST", `/api/office/files/${fileId}/withdraw`, { body: { reason: index === 0 ? "WrongFile" : "WrongClient", next: "NeedsReview", version: 2 } });
