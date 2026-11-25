@@ -98,6 +98,11 @@ export interface ClientRecord {
   version: number;
 }
 
+/** A client in the list, with its member counts (`include=members`). */
+export interface ClientListItem extends ClientRecord {
+  members: { active: number; pending: number };
+}
+
 export interface InvitationView {
   id: string;
   targetType: "Office" | "Client";
