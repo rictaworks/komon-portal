@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { fileContentUrl } from "../../api/client";
+import { followDownload, openFile } from "../../api/client";
 import type { CaseView, ClientRecord, FileView, Reader } from "../../api/office-types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SelectField, TextField } from "../../components/Form";
@@ -26,8 +26,6 @@ const TERMINAL_STATES: readonly string[] = ["Closed", "Cancelled"];
 /** Clients are read page by page to the end; this is the largest page the server gives. */
 const CLIENT_PAGE = 200;
 const CASE_LIMIT = 200;
-/** Opening a submission acknowledges it on the server; the list is read again after this delay to show it. */
-const ACKNOWLEDGE_RELOAD_MS = 1500;
 
 /** Entry of the menu: choose the client whose shelf to open. */
 export function ShelfChooser() {
@@ -168,11 +166,13 @@ export function Shelf() {
       });
   };
 
-  // The first open of a submission changes its state and version on the server.
-  const opened = (file: FileView) => () => {
-    if (file.state === "Submitted") {
-      window.setTimeout(done, ACKNOWLEDGE_RELOAD_MS);
-    }
+  // The first open of a submission changes its state and version on the server before the download starts.
+  const open = (file: FileView) => () => {
+    void action.run(() => openFile(api, file.id, "view", followDownload)).then((ok) => {
+      if (ok && file.state === "Submitted") {
+        done();
+      }
+    });
   };
 
   if (client.data === null) {
@@ -303,9 +303,9 @@ export function Shelf() {
                         </td>
                         <td>
                           <div className="row row--nowrap">
-                            <a className="button" href={fileContentUrl(file.id, "view")} onClick={opened(file)}>
+                            <button type="button" className="button" disabled={action.busy} onClick={open(file)}>
                               {t("office.actions.open")}
-                            </a>
+                            </button>
                             {actions.includes("linkCase") ? (
                               <button type="button" className="button" disabled={action.busy} onClick={startLinking(file)}>
                                 {t("office.shelf.linkCase")}

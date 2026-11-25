@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { invalidInput } from "../../../core/model/errors";
 import type { FileFormat } from "../../../core/model/types";
 import { OPEN_MODES } from "../../../core/publish/view-service";
-import { HttpError, requireAuth, type AppBindings } from "../context";
+import { requireAuth, type AppBindings } from "../context";
+import { readJson, requireString } from "../input";
 
 const BINARY = "application/octet-stream";
 /** Types a browser never executes. Text formats are sent as opaque bytes so they cannot run as markup or script. */
@@ -21,22 +22,27 @@ const CONTENT_TYPES: Readonly<Record<FileFormat, string>> = {
 /**
  * File bodies are relayed by the Worker after a permission check on every request. They are
  * always sent as attachments with a generated name, never cached, and never given a URL of their own.
+ * Opening is two requests: the POST records the view behind the same-origin and CSRF checks and
+ * answers with a ticket, and the GET that follows only reads and is refused without that ticket.
+ * The ticket is signed with the secret of the session cookie, so it is of no use in any other session.
  */
 export function fileContentRoutes(): Hono<AppBindings> {
   const routes = new Hono<AppBindings>();
 
-  routes.get("/files/:id/content", async (c) => {
-    // Opening a file records an acknowledgement or a receipt, so a cross-site navigation must not reach it.
-    if (c.req.header("Sec-Fetch-Site") === "cross-site") {
-      throw new HttpError(403, "bad_origin");
-    }
-    const { actor } = requireAuth(c);
-    const requested = c.req.query("mode") ?? "download";
+  routes.post("/files/:id/open", async (c) => {
+    const { actor, token } = requireAuth(c);
+    const requested = requireString(await readJson(c), "mode");
     const mode = OPEN_MODES.find((candidate) => candidate === requested);
     if (mode === undefined) {
       throw invalidInput("mode");
     }
-    const opened = await c.get("services").view.open(actor, c.req.param("id"), mode);
+    const opened = await c.get("services").view.open(actor, c.req.param("id"), mode, token);
+    return c.json({ id: opened.file.id, ticket: opened.ticket });
+  });
+
+  routes.get("/files/:id/content", async (c) => {
+    const { actor, token } = requireAuth(c);
+    const opened = await c.get("services").view.download(actor, c.req.param("id"), token, c.req.query("ticket") ?? null);
     return new Response(opened.body.body, {
       headers: {
         "Content-Type": CONTENT_TYPES[opened.file.format],

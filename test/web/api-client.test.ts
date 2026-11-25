@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiClient, ApiError, fileContentUrl } from "../../src/app/web/api/client";
+import { ApiClient, ApiError, fileContentUrl, openFile } from "../../src/app/web/api/client";
 import { englishMessages, createTranslator } from "../../src/app/web/i18n";
 import { errorText } from "../../src/app/web/components/Notice";
 import { landingOf } from "../../src/app/web/session";
@@ -51,7 +51,32 @@ describe("ApiClient", () => {
   });
 
   it("builds file URLs that always go through the Worker", () => {
-    expect(fileContentUrl("a/b", "download")).toBe("/api/files/a%2Fb/content?mode=download");
+    expect(fileContentUrl("a/b", "9.a&b")).toBe("/api/files/a%2Fb/content?ticket=9.a%26b");
+  });
+
+  it("records the open with a protected request before it follows the download", async () => {
+    const calls: Call[] = [];
+    const followed: string[] = [];
+    const api = client(() => new Response(JSON.stringify({ id: "a/b", ticket: "1700000000000.abc" })), calls);
+    api.setCsrfToken("csrf-1");
+    await openFile(api, "a/b", "download", (url) => followed.push(`${calls.length}:${url}`));
+    expect(calls.map((call) => [call.method, call.path, call.headers.get("X-CSRF-Token"), call.body])).toEqual([["POST", "/api/files/a%2Fb/open", "csrf-1", '{"mode":"download"}']]);
+    expect(followed).toEqual(["1:/api/files/a%2Fb/content?ticket=1700000000000.abc"]);
+  });
+
+  it("does not follow the download when the open answers without a ticket", async () => {
+    const followed: string[] = [];
+    for (const answer of ["{}", '{"ticket":""}', '{"ticket":7}']) {
+      await expect(openFile(client(() => new Response(answer)), "f1", "view", (url) => followed.push(url))).rejects.toMatchObject({ code: "bad_response" });
+    }
+    expect(followed).toEqual([]);
+  });
+
+  it("does not follow the download when the open is refused", async () => {
+    const followed: string[] = [];
+    const api = client(() => new Response(JSON.stringify({ error: "not_found", detail: "file" }), { status: 404 }));
+    await expect(openFile(api, "f1", "view", (url) => followed.push(url))).rejects.toMatchObject({ status: 404, code: "not_found" });
+    expect(followed).toEqual([]);
   });
 });
 

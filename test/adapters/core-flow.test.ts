@@ -21,6 +21,7 @@ import { RecordingNotifier } from "../support/intake-kit";
 
 const ARRIVAL = "202611240912345678";
 const PDF_BYTES = new TextEncoder().encode("%PDF-1.7 flow");
+const SESSION = "flow-session-secret";
 
 describe("core services on D1 and R2", () => {
   const clock = new FixedClock();
@@ -91,21 +92,23 @@ describe("core services on D1 and R2", () => {
     expect(elsewhere.file.reviewDetail).toEqual([{ kind: "ClientCode", clientId: "flow-c2" }, { kind: "ExistingCopy", clientId: "flow-c1" }]);
     await expect(review.assign(staff, elsewhere.file.id, { clientId: "flow-c1", caseId: null, confirmed: true }, 1)).rejects.toThrow("conflict: duplicate_content");
 
-    await expect(view.open(member, accepted.file.id, "view")).rejects.toThrow("not_found: file");
+    await expect(view.open(member, accepted.file.id, "view", SESSION)).rejects.toThrow("not_found: file");
     expect(await publish.publish(staff, [{ fileId: accepted.file.id, version: 1 }])).toEqual([{ fileId: accepted.file.id, outcome: "published", clientId: "flow-c1" }]);
     expect(notifier.notified).toEqual(["flow-c1"]);
 
-    const opened = await view.open(member, accepted.file.id, "download");
+    await expect(view.download(member, accepted.file.id, SESSION, null)).rejects.toThrow("invalid_state: not_opened");
+    const { ticket } = await view.open(member, accepted.file.id, "download", SESSION);
+    const opened = await view.download(member, accepted.file.id, SESSION, ticket);
     expect(opened.downloadName).toBe("F0031_FSHAHO_20261124_01.pdf");
     expect(new Uint8Array(await new Response(opened.body.body).arrayBuffer())).toEqual(PDF_BYTES);
-    await view.open(member, accepted.file.id, "view");
+    await view.open(member, accepted.file.id, "view", SESSION);
     expect(await repository.receipts.listByFile(accepted.file.id)).toHaveLength(1);
     expect((await repository.cases.findById(registered.id))?.state).toBe("Confirmed");
-    await expect(view.open(memberActor(["flow-c2"], "flow-outsider"), accepted.file.id, "view")).rejects.toThrow("not_found: file");
+    await expect(view.open(memberActor(["flow-c2"], "flow-outsider"), accepted.file.id, "view", SESSION)).rejects.toThrow("not_found: file");
 
     const withdrawn = await publish.withdraw(staff, accepted.file.id, { reason: "WrongFile", next: "Trashed" }, 2);
     expect(withdrawn).toMatchObject({ state: "Trashed", incidentFlag: true });
-    await expect(view.open(member, accepted.file.id, "download")).rejects.toThrow("not_found: file");
+    await expect(view.open(member, accepted.file.id, "download", SESSION)).rejects.toThrow("not_found: file");
     expect((await repository.cases.findById(registered.id))?.state).toBe("Submitted");
 
     expect(await trash.purgeExpired(systemActor())).toEqual({ purged: 0, skipped: 0, failed: 0 });
@@ -125,7 +128,7 @@ describe("core services on D1 and R2", () => {
     expect(result.outcome === "stored" && result.file).toMatchObject({ state: "Submitted", caseId: payroll.id, format: "csv" });
     expect((await repository.cases.findById(payroll.id))?.state).toBe("MaterialsReceived");
     if (result.outcome !== "stored") return;
-    expect((await view.open(staff, result.file.id, "view")).file.state).toBe("Acknowledged");
+    expect((await view.open(staff, result.file.id, "view", SESSION)).file.state).toBe("Acknowledged");
   });
 });
 
