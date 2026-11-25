@@ -6,6 +6,8 @@ import { NavLink, Outlet } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { useLoad } from "../components/useLoad";
 import { useT } from "../i18n";
+import type { SettingsView } from "../api/office-types";
+import { OfficeNameReloadContext } from "../pages/office/office-name-context";
 import { useSession } from "../session";
 
 interface MenuItem {
@@ -38,37 +40,46 @@ export function OfficeLayout() {
   const t = useT();
   const { api, me, signOut } = useSession();
   const counts = useLoad<Counts>(() => api.get<Counts>("/api/office/dashboard"), []);
+  const officeSettings = useLoad<SettingsView>(() => api.get<SettingsView>("/api/office/settings"), []);
   const isOwner = me?.user.officeRole === "Owner";
+  const officeName = officeSettings.data?.office.officeName;
 
   return (
-    <div className="office">
-      <nav className="sidebar" aria-label={t("office.menu.label")}>
-        <NavLink to="/office/dashboard" className="sidebar__brand">
-          <Icon icon={faFolderOpen} />
-          <span>{t("app.brand")}</span>
-        </NavLink>
-        <div className="sidebar__nav">
-          {MENU.filter((item) => item.ownerOnly !== true || isOwner).map((item) => (
-            <NavLink key={item.to} to={item.to} className={({ isActive }) => `sidebar__link${isActive ? " sidebar__link--active" : ""}`}>
-              <Icon icon={item.icon} />
-              <span className="sidebar__label">{t(item.labelKey)}</span>
-              {item.count !== undefined && counts.data !== null && counts.data[item.count] > 0 ? (
-                <span className={`sidebar__count sidebar__count--${item.count === "needsReview" ? "review" : "staged"}`}>{counts.data[item.count]}</span>
-              ) : null}
-            </NavLink>
-          ))}
+    <OfficeNameReloadContext.Provider value={officeSettings.reload}>
+      <div className="office">
+        <nav className="sidebar" aria-label={t("office.menu.label")}>
+          <NavLink to="/office/dashboard" className="sidebar__brand">
+            <Icon icon={faFolderOpen} />
+            <span>{t("app.brand")}</span>
+          </NavLink>
+          <div className="sidebar__nav">
+            {MENU.filter((item) => item.ownerOnly !== true || isOwner).map((item) => (
+              <NavLink key={item.to} to={item.to} className={({ isActive }) => `sidebar__link${isActive ? " sidebar__link--active" : ""}`}>
+                <Icon icon={item.icon} />
+                <span className="sidebar__label">{t(item.labelKey)}</span>
+                {item.count !== undefined && counts.data !== null && counts.data[item.count] > 0 ? (
+                  <span className={`sidebar__count sidebar__count--${item.count === "needsReview" ? "review" : "staged"}`}>{counts.data[item.count]}</span>
+                ) : null}
+              </NavLink>
+            ))}
+          </div>
+          <div className="sidebar__foot">
+            <span>{me?.user.displayName}</span>
+            {officeName === undefined ? null : officeName === null ? (
+              <span className="sidebar__muted">{t("office.officeNameUnset")}</span>
+            ) : (
+              <span>{officeName}</span>
+            )}
+            <span className="sidebar__muted">{t(isOwner ? "office.role.owner" : "office.role.staff")}</span>
+            <button type="button" className="sidebar__signout" onClick={() => void signOut()}>
+              {t("common.signOut")}
+            </button>
+          </div>
+        </nav>
+        <div className="content">
+          <Outlet />
         </div>
-        <div className="sidebar__foot">
-          <span>{me?.user.displayName}</span>
-          <span className="sidebar__muted">{t(isOwner ? "office.role.owner" : "office.role.staff")}</span>
-          <button type="button" className="sidebar__signout" onClick={() => void signOut()}>
-            {t("common.signOut")}
-          </button>
-        </div>
-      </nav>
-      <div className="content">
-        <Outlet />
       </div>
-    </div>
+    </OfficeNameReloadContext.Provider>
   );
 }

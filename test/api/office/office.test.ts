@@ -102,10 +102,28 @@ describe("office API", () => {
     expect(JSON.stringify(configured)).not.toContain(privateKey);
   });
 
+  it("sets the office name through the Owner's settings, with an explicit error when it is not valid", async () => {
+    const before = (await json(await owner.call("GET", "/api/office/settings"))).office as Json;
+    expect(before.officeName).toBeNull();
+    const saved = await owner.call("PUT", "/api/office/settings/office", { body: { ...before, officeName: "  Aoba Labor Office ", version: before.version } });
+    expect(saved.status).toBe(200);
+    expect(await json(saved)).toMatchObject({ officeName: "Aoba Labor Office", version: Number(before.version) + 1 });
+    expect((await json(await staff.call("GET", "/api/office/settings"))).office).toMatchObject({ officeName: "Aoba Labor Office" });
+    const version = Number(before.version) + 1;
+    for (const officeName of ["", "   ", "a".repeat(101), 42]) {
+      const response = await owner.call("PUT", "/api/office/settings/office", { body: { ...before, officeName, version } });
+      expect([String(officeName), response.status]).toEqual([String(officeName), 400]);
+      expect(await response.json()).toEqual({ error: "invalid_input", detail: "office_name" });
+    }
+    const missing = await owner.call("PUT", "/api/office/settings/office", { body: { ...before, officeName: undefined, version } });
+    expect(missing.status).toBe(400);
+    expect((await json(await owner.call("GET", "/api/office/settings"))).office).toMatchObject({ officeName: "Aoba Labor Office", version: Number(before.version) + 1 });
+  });
+
   it("keeps Owner-only actions from staff", async () => {
     const settings = await json(await owner.call("GET", "/api/office/settings"));
     const office = settings.office as Json;
-    const change = { ...office, autoPublishEnabled: false, jevThreshold: 0.95 };
+    const change = { ...office, officeName: "Aoba Labor Office", autoPublishEnabled: false, jevThreshold: 0.95 };
     for (const [method, path, body] of [
       ["PUT", "/api/office/settings/office", change],
       ["GET", "/api/office/audit", undefined],

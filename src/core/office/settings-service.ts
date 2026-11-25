@@ -11,11 +11,13 @@ import type { IdGenerator } from "../ports/id-generator";
 import type { Repository } from "../ports/repository";
 import { localDateOf } from "../time/local-date";
 
-export type OfficeSettingInput = Omit<OfficeSetting, "version">;
+/** The name is required on every save: once set it can be changed but not cleared. */
+export type OfficeSettingInput = Omit<OfficeSetting, "version" | "officeName"> & { officeName: string };
 
 export const JEV_THRESHOLD_MIN = 0.8;
 export const JEV_THRESHOLD_MAX = 1;
 export const RETRIEVAL_DAYS_MAX = 365;
+export const MAX_OFFICE_NAME_LENGTH = 100;
 export const MAX_LABEL_LENGTH = 100;
 export const MAX_KEYWORD_LENGTH = 100;
 const SHORT_CODE = /^[A-Z0-9]{1,16}$/;
@@ -43,6 +45,10 @@ export class SettingsService {
 
   async updateOffice(actor: Actor, input: OfficeSettingInput, expectedVersion: number): Promise<OfficeSetting> {
     await this.deps.guard.require(actor, "office.settings.update", { type: SETTING_TARGET, id: "office" });
+    const officeName = typeof input.officeName === "string" ? input.officeName.trim() : "";
+    if (officeName === "" || [...officeName].length > MAX_OFFICE_NAME_LENGTH) {
+      throw invalidInput("office_name");
+    }
     localDateOf(new Date(0), input.timezone);
     compileArrivalNumberPattern(input.arrivalNumberPattern);
     if (!Number.isInteger(input.retrievalDeadlineDays) || input.retrievalDeadlineDays < 1 || input.retrievalDeadlineDays > RETRIEVAL_DAYS_MAX) {
@@ -52,7 +58,7 @@ export class SettingsService {
     if (!(input.jevThreshold >= JEV_THRESHOLD_MIN && input.jevThreshold <= JEV_THRESHOLD_MAX)) {
       throw invalidInput("jev_threshold");
     }
-    const updated: OfficeSetting = { ...input, version: expectedVersion + 1 };
+    const updated: OfficeSetting = { ...input, officeName, version: expectedVersion + 1 };
     if (!(await this.deps.repository.settings.update(updated, expectedVersion))) {
       throw conflict("stale");
     }

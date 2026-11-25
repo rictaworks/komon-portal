@@ -24,6 +24,7 @@ const ONGOING: readonly MembershipStatus[] = ["Pending", "Active"];
 /** In-memory Repository with the same uniqueness and locking behaviour as the D1 schema. */
 export class MemoryRepository implements Repository {
   setting: OfficeSetting = {
+    officeName: null,
     timezone: "Asia/Tokyo",
     arrivalNumberPattern: "[0-9]{17,18}",
     retrievalDeadlineDays: 90,
@@ -56,6 +57,10 @@ export class MemoryRepository implements Repository {
     update: async (setting: OfficeSetting, expectedVersion: number): Promise<boolean> => {
       if (this.setting.version !== expectedVersion) {
         return false;
+      }
+      // Mirrors the CHECK constraint of office_setting.office_name (migration 0006).
+      if (setting.officeName !== null && ([...setting.officeName].length < 1 || [...setting.officeName].length > 100)) {
+        throw new Error("CHECK constraint failed: office_name");
       }
       this.setting = copy(setting);
       return true;

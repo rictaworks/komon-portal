@@ -3,6 +3,15 @@ import type { DocTypeRecord, SettingsView } from "../../api/office-types";
 /** The range the server accepts for the Jev confidence threshold (see the settings service). */
 export const JEV_THRESHOLD_MIN = 0.8;
 export const JEV_THRESHOLD_MAX = 1;
+/** The longest office name the server accepts, counted in characters after trimming (see the settings service). */
+export const OFFICE_NAME_MAX_LENGTH = 100;
+
+/** The office name typed into the form, trimmed, or null when it is blank or longer than the server accepts. */
+export function parseOfficeName(text: string): string | null {
+  const trimmed = text.trim();
+  return trimmed !== "" && [...trimmed].length <= OFFICE_NAME_MAX_LENGTH ? trimmed : null;
+}
+
 /** The spin-button step only. Any value inside the range is valid, on this grid or not. */
 export const JEV_THRESHOLD_STEP = 0.01;
 
