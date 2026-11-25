@@ -7,7 +7,12 @@ import type { CaseFilter } from "../../../core/ports/repository";
 import { dueWindowEnd, retrievalWindowEnd, unreadCutoff } from "../../../core/office/dashboard-windows";
 import { requireAuth, type AppBindings } from "../context";
 import { optionalString, readJson, requireArray, requireInteger, requireString } from "../input";
-import { caseView, Lookups, pageOf } from "./views";
+import { caseView, fileView, Lookups, pageOf } from "./views";
+
+/** Mis-deliveries listed on the Owner dashboard; the rest are in the incidents list. */
+const DASHBOARD_INCIDENTS = 5;
+/** Waiting submissions listed on the dashboard. */
+const DASHBOARD_SUBMISSIONS = 100;
 
 async function deadlinesOf(services: Services, lookups: Lookups, record: CaseRecord) {
   const setting = await lookups.setting();
@@ -42,18 +47,35 @@ export function caseRoutes(): Hono<AppBindings> {
     }
     const retrievalIds = await services.dashboard.submittedCaseIdsOnOrBefore(retrievalWindowEnd(today, setting.retrievalDeadlineDays));
     const dueIds = await services.dashboard.openCaseIdsDueOnOrBefore(dueWindowEnd(today));
+    // One more than is shown is read, so that the answer can say whether more submissions wait.
+    const waiting = await services.repository.files.list({ direction: "Inbound", states: ["Submitted"] }, { limit: DASHBOARD_SUBMISSIONS + 1, offset: 0 });
+    const submissions = [];
+    for (const file of waiting.slice(0, DASHBOARD_SUBMISSIONS)) {
+      submissions.push({ id: file.id, displayName: file.displayName, receivedAt: file.receivedAt, client: await lookups.client(file.clientId) });
+    }
+    // Mis-deliveries, with who opened each document and when, are given to the Owner only.
+    let incidents = null;
+    if (services.policy.can(actor, "incident.read")) {
+      const recent = await services.publish.listIncidents(actor, DASHBOARD_INCIDENTS);
+      const items = [];
+      for (const incident of recent.items) {
+        items.push(await fileView(lookups, incident.file, incident.receipts));
+      }
+      incidents = { total: recent.total, truncated: recent.truncated, items };
+    }
     return c.json({
       today,
+      timezone: setting.timezone,
       needsReview: await services.repository.files.count({ direction: "Outbound", states: ["NeedsReview"] }),
       staged: await services.repository.files.count({ direction: "Outbound", states: ["Staged"] }),
       submitted: await services.repository.files.count({ direction: "Inbound", states: ["Submitted"] }),
+      submissions,
       unread,
       // `truncated` is true when more items matched than the 100 shown.
-      truncated: { unread: unreadFiles.truncated, retrieval: retrievalIds.truncated, due: dueIds.truncated },
+      truncated: { unread: unreadFiles.truncated, retrieval: retrievalIds.truncated, due: dueIds.truncated, submissions: waiting.length > DASHBOARD_SUBMISSIONS },
       retrieval: await casesByIds(services, lookups, retrievalIds.items),
       due: await casesByIds(services, lookups, dueIds.items),
-      // Mis-deliveries are shown to the Owner only.
-      incidents: services.policy.can(actor, "incident.read") ? (await services.publish.listIncidents(actor)).length : null,
+      incidents,
     });
   });
 

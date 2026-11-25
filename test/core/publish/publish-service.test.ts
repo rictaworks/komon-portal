@@ -223,10 +223,28 @@ describe("PublishService.withdraw", () => {
     const viewedAt = new Date("2026-11-19T01:42:00.000Z");
     kit.repo.receiptRows.push({ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: viewedAt });
     await kit.publish.withdraw(staff, "f1", { reason: "WrongClient", next: "NeedsReview" }, 1);
-    const incidents = await kit.publish.listIncidents(owner);
-    expect(incidents).toHaveLength(1);
-    expect(incidents[0]?.file).toMatchObject({ id: "f1", withdrawReason: "WrongClient", incidentFlag: true });
-    expect(incidents[0]?.receipts).toEqual([{ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: viewedAt }]);
-    await expect(kit.publish.listIncidents(staff)).rejects.toThrow("forbidden: incident.read");
+    const incidents = await kit.publish.listIncidents(owner, 100);
+    expect(incidents).toMatchObject({ total: 1, truncated: false });
+    expect(incidents.items).toHaveLength(1);
+    expect(incidents.items[0]?.file).toMatchObject({ id: "f1", withdrawReason: "WrongClient", incidentFlag: true });
+    expect(incidents.items[0]?.receipts).toEqual([{ id: "x1", fileId: "f1", userId: "u-member", firstViewedAt: viewedAt }]);
+    await expect(kit.publish.listIncidents(staff, 100)).rejects.toThrow("forbidden: incident.read");
+  });
+
+  it("counts every incident and says when more exist than the limit shows", async () => {
+    kit.repo.fileRows.push(
+      fileRecord({ id: "f2", state: "Published", publishedAt: new Date(), sha256: "b".repeat(64) }),
+      fileRecord({ id: "f3", state: "Published", publishedAt: new Date(), sha256: "c".repeat(64) }),
+    );
+    for (const id of ["f1", "f2", "f3"]) {
+      kit.repo.receiptRows.push({ id: `x-${id}`, fileId: id, userId: "u-member", firstViewedAt: new Date("2026-11-19T01:42:00.000Z") });
+      await kit.publish.withdraw(staff, id, { reason: "WrongFile", next: "NeedsReview" }, 1);
+    }
+    const shown = await kit.publish.listIncidents(owner, 2);
+    expect(shown).toMatchObject({ total: 3, truncated: true });
+    expect(shown.items).toHaveLength(2);
+    expect(shown.items.every((incident) => incident.receipts.length === 1 && incident.receipts[0]?.fileId === incident.file.id)).toBe(true);
+    expect(await kit.publish.listIncidents(owner, 3)).toMatchObject({ total: 3, truncated: false });
+    await expect(kit.publish.listIncidents(owner, 0)).rejects.toThrow("invalid_input: limit");
   });
 });

@@ -231,9 +231,21 @@
       "unreadBadge": "Unread",
       "unreadTitle": "Unread by clients",
       "unreadEmpty": "No unread documents.",
-      "submitted": "{count} submission(s) waiting to be reviewed.",
-      "incidents": "{count} incident(s) need attention.",
-      "incidentsLink": "Open the audit log"
+      "today": "{day} ({timezone})",
+      "submitted": "client submissions not opened yet",
+      "submittedBadge": "Submitted",
+      "submittedTitle": "Submissions from clients",
+      "submittedEmpty": "No submissions are waiting.",
+      "submittedAt": "Sent by the client {at}",
+      "incidentsRegion": "Incidents",
+      "incidents": "{count} withdrawn document(s) had already been opened",
+      "incidentWithdrawn": "{name} ({client}) was withdrawn: {reason}.",
+      "incidentUnknownClient": "no client",
+      "incidentReader": "{name} first opened it on {at}",
+      "incidentReaderUnnamed": "A member without a name",
+      "incidentsShown": "Showing the {shown} most recent of {total}.",
+      "moreNotShown": "More match than the {shown} shown here.",
+      "incidentsLink": "View details"
     },
     "intake": {
       "title": "Intake",
@@ -312,6 +324,7 @@
         "incidents": "Incidents"
       },
       "empty": "Nothing to show.",
+      "incidentsTruncated": "Showing {shown} of {total} incidents.",
       "when": "When",
       "who": "Who",
       "action": "Action",

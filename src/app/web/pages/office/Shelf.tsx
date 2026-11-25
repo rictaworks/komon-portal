@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { fileContentUrl } from "../../api/client";
 import type { CaseView, ClientRecord, FileView, Reader } from "../../api/office-types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -14,7 +14,7 @@ import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import {
   cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_DIRECTIONS, SHELF_VIEWS, shelfActions,
-  shelfListPath, shownList, sortedReaders,
+  shelfDirectionOf, shelfListPath, shownList, sortedReaders,
   type ShelfDirection, type ShelfList, type ShelfView,
 } from "./shelf-view";
 import { useSettings } from "./useMasterData";
@@ -91,8 +91,9 @@ export function Shelf() {
   const t = useT();
   const { clientId = "" } = useParams();
   const { api } = useSession();
-  const [direction, setDirection] = useState<ShelfDirection>("Outbound");
-  const [view, setView] = useState<ShelfView>(SHELF_VIEWS.Outbound[0] ?? "Published");
+  // A link (the dashboard's waiting submissions) can open the shelf on what the client sent.
+  const [direction, setDirection] = useState<ShelfDirection>(shelfDirectionOf(useLocation().search));
+  const [view, setView] = useState<ShelfView>(SHELF_VIEWS[direction][0] ?? "Published");
   const [docTypeId, setDocTypeId] = useState("");
   const [monthText, setMonthText] = useState("");
   const [filterCaseId, setFilterCaseId] = useState("");

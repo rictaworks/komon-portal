@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { CaseView, Dashboard as DashboardData } from "../../api/office-types";
+import type { CaseView, Dashboard as DashboardData, IncidentList } from "../../api/office-types";
 import { formatDateTime, formatDay, formatMonth } from "../../components/format";
 import { ErrorNotice, Notice } from "../../components/Notice";
 import { Badge, DeadlineBadge } from "../../components/StatusBadge";
@@ -7,6 +7,7 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { Loading } from "../common/Status";
 import { useSession } from "../../session";
+import { shelfPath, sortedReaders } from "./shelf-view";
 
 function caseName(record: CaseView): string {
   return `${record.caseType?.label ?? ""} ${formatMonth(record.targetMonth)} #${record.sequence}`;
@@ -53,6 +54,45 @@ function CaseTable({ title, cases, kind, emptyKey }: { title: string; cases: Cas
   );
 }
 
+/** Withdrawn documents that a client member had already opened: who opened each one and when. Owner only. */
+function Incidents({ incidents }: { incidents: IncidentList }) {
+  const t = useT();
+  return (
+    <section aria-label={t("office.dashboard.incidentsRegion")}>
+      <Notice tone="danger">
+        <div className="stack">
+          <strong>{t("office.dashboard.incidents", { count: incidents.total })}</strong>
+          <ul className="plain-list">
+            {incidents.items.map((file) => (
+              <li key={file.id} className="stack stack--tight">
+                <span>
+                  {t("office.dashboard.incidentWithdrawn", {
+                    name: file.displayName,
+                    client: file.client === null ? t("office.dashboard.incidentUnknownClient") : `${file.client.code} ${file.client.corporateName}`,
+                    reason: t(`withdrawReason.${file.withdrawReason ?? "Other"}`),
+                  })}
+                </span>
+                <ul className="plain-list">
+                  {sortedReaders(file.readers).map((reader, index) => (
+                    <li key={`${reader.firstViewedAt}-${index}`}>
+                      {t("office.dashboard.incidentReader", {
+                        name: reader.displayName ?? t("office.dashboard.incidentReaderUnnamed"),
+                        at: formatDateTime(reader.firstViewedAt),
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+          {incidents.truncated ? <span>{t("office.dashboard.incidentsShown", { shown: incidents.items.length, total: incidents.total })}</span> : null}
+          <Link to="/office/audit?view=incidents">{t("office.dashboard.incidentsLink")}</Link>
+        </div>
+      </Notice>
+    </section>
+  );
+}
+
 export function Dashboard() {
   const t = useT();
   const { api } = useSession();
@@ -65,7 +105,7 @@ export function Dashboard() {
     <div className="page">
       <div className="row">
         <h1 className="title grow">{t("office.dashboard.title")}</h1>
-        <span className="muted">{data === null ? "" : formatDay(data.today)}</span>
+        <span className="muted">{data === null ? "" : t("office.dashboard.today", { day: formatDay(data.today), timezone: data.timezone })}</span>
       </div>
       <ErrorNotice error={error} />
       {data === null ? null : (
@@ -86,25 +126,55 @@ export function Dashboard() {
               <span className="stat__value">{data.retrieval.length}</span>
               <span className="muted">{t("office.dashboard.retrieval")}</span>
             </Link>
-            <div className="stat">
+            <a href="#unread" className="stat">
               <Badge tone="neutral" label={t("office.dashboard.unreadBadge")} />
               <span className="stat__value">{data.unread.length}</span>
               <span className="muted">{t("office.dashboard.unread")}</span>
-            </div>
+            </a>
+            <a href="#submissions" className="stat">
+              <Badge tone="staged" label={t("office.dashboard.submittedBadge")} />
+              <span className="stat__value">{data.submitted}</span>
+              <span className="muted">{t("office.dashboard.submitted")}</span>
+            </a>
           </section>
-          {data.submitted > 0 ? <Notice tone="info">{t("office.dashboard.submitted", { count: data.submitted })}</Notice> : null}
-          {data.incidents !== null && data.incidents > 0 ? (
-            <Notice tone="danger">
-              {t("office.dashboard.incidents", { count: data.incidents })} <Link to="/office/audit">{t("office.dashboard.incidentsLink")}</Link>
-            </Notice>
-          ) : null}
+          {data.incidents !== null && data.incidents.total > 0 ? <Incidents incidents={data.incidents} /> : null}
           <div className="grid2">
             <CaseTable title={t("office.dashboard.retrievalTitle")} cases={data.retrieval} kind="retrieval" emptyKey="office.dashboard.retrievalEmpty" />
             <CaseTable title={t("office.dashboard.dueTitle")} cases={data.due} kind="due" emptyKey="office.dashboard.dueEmpty" />
           </div>
-          <section className="card">
+          <section className="card" id="submissions">
             <div className="card__head">
-              <h2 className="subtitle">{t("office.dashboard.unreadTitle")}</h2>
+              <h2 className="subtitle grow">{t("office.dashboard.submittedTitle")}</h2>
+              {data.truncated.submissions ? <span className="muted">{t("office.dashboard.moreNotShown", { shown: data.submissions.length })}</span> : null}
+            </div>
+            {data.submissions.length === 0 ? (
+              <p className="empty">{t("office.dashboard.submittedEmpty")}</p>
+            ) : (
+              <ul className="list">
+                {data.submissions.map((file) => (
+                  <li key={file.id} className="list__item">
+                    <span className="grow">
+                      <strong>{file.displayName}</strong>
+                      <br />
+                      <span className="muted">
+                        {file.client?.code} {file.client?.corporateName}
+                      </span>
+                    </span>
+                    <span className="muted">{t("office.dashboard.submittedAt", { at: formatDateTime(file.receivedAt) })}</span>
+                    {file.client === null ? null : (
+                      <Link className="button button--small" to={shelfPath(file.client.id, "Inbound")}>
+                        {t("office.actions.openShelf")}
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="card" id="unread">
+            <div className="card__head">
+              <h2 className="subtitle grow">{t("office.dashboard.unreadTitle")}</h2>
+              {data.truncated.unread ? <span className="muted">{t("office.dashboard.moreNotShown", { shown: data.unread.length })}</span> : null}
             </div>
             {data.unread.length === 0 ? (
               <p className="empty">{t("office.dashboard.unreadEmpty")}</p>
@@ -121,7 +191,7 @@ export function Dashboard() {
                     </span>
                     <span className="muted">{formatDateTime(file.publishedAt)}</span>
                     {file.client === null ? null : (
-                      <Link className="button button--small" to={`/office/shelf/${file.client.id}`}>
+                      <Link className="button button--small" to={shelfPath(file.client.id, "Outbound")}>
                         {t("office.actions.openShelf")}
                       </Link>
                     )}

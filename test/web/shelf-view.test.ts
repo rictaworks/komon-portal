@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CaseView, DocTypeRecord, FileView } from "../../src/app/web/api/office-types";
 import {
-  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_VIEWS, shelfActions, shelfListPath, shownList,
-  sortedReaders,
+  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_VIEWS, shelfActions, shelfDirectionOf, shelfListPath,
+  shelfPath, shownList, sortedReaders,
 } from "../../src/app/web/pages/office/shelf-view";
 
 function file(overrides: Partial<FileView>): FileView {
@@ -183,5 +183,19 @@ describe("docTypesFor", () => {
     ];
     expect(docTypesFor("Outbound", types).map((type) => type.id)).toEqual(["1", "3"]);
     expect(docTypesFor("Inbound", types).map((type) => type.id)).toEqual(["2", "3"]);
+  });
+});
+
+describe("opening the shelf on a direction", () => {
+  it("builds a link that opens a client's shelf on what the client sent", () => {
+    expect(shelfPath("c 1", "Inbound")).toBe("/office/shelf/c%201?direction=Inbound");
+    expect(shelfDirectionOf(new URL(shelfPath("c1", "Inbound"), "https://portal.test").search)).toBe("Inbound");
+  });
+
+  it("opens on what the office sent unless the link names the other direction", () => {
+    expect(shelfPath("c1", "Outbound")).toBe("/office/shelf/c1");
+    expect(shelfDirectionOf("")).toBe("Outbound");
+    expect(shelfDirectionOf("?direction=Outbound")).toBe("Outbound");
+    expect(shelfDirectionOf("?direction=inbound")).toBe("Outbound");
   });
 });

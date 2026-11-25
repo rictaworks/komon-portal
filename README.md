@@ -13,8 +13,7 @@ Every feature in the design has been built and merged: the domain core, the D1 s
 **Known gaps:**
 
 - A publish whose follow-up writes (audit, metric or case update) fail is still published; its result carries a warning.
-- The Owner dashboard's mis-delivery count and the incidents list both show at most 100 items, with no truncation flag yet.
-- The Owner dashboard shows a count of mis-deliveries; the spec asks for the readers and times, which are in the incidents list.
+- The Owner dashboard lists the five most recent mis-deliveries with their readers and first view times; the incidents list shows at most 100 and says when more exist, but has no paging.
 - The client home lists unread documents by intake time, not publication time, within a window of 100 (the response says when more exist).
 - The weekly count of staff using the portal is not measured: events do not record the acting staff member.
 - The client pickers and the document list load a first page only (200 clients; documents are not paged in the screen yet).
