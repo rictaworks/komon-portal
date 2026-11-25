@@ -342,6 +342,17 @@ export class MemoryRepository implements Repository {
     );
   }
 
+  /** Published outbound files of the client that this user has no receipt for, the most recently published first. */
+  private unreadPublished(clientId: Id, userId: Id): FileRecord[] {
+    return this.fileRows
+      .filter(
+        (row) =>
+          this.matchesFile(row, { clientId, direction: "Outbound", states: ["Published"] }) &&
+          !this.receiptRows.some((receipt) => receipt.fileId === row.id && receipt.userId === userId),
+      )
+      .sort((a, b) => (b.publishedAt?.getTime() ?? 0) - (a.publishedAt?.getTime() ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  }
+
   /** Mirrors the CHECK and foreign key constraints of file_records. A violation throws, as D1 would. */
   private assertFileConstraints(file: FileRecord): void {
     const fail = (rule: string): never => {
@@ -396,6 +407,8 @@ export class MemoryRepository implements Repository {
         page,
       ),
     count: async (filter: FileFilter): Promise<number> => this.fileRows.filter((row) => this.matchesFile(row, filter)).length,
+    listUnreadPublished: async (clientId: Id, userId: Id, page: Page): Promise<FileRecord[]> => paged(this.unreadPublished(clientId, userId), page),
+    countUnreadPublished: async (clientId: Id, userId: Id): Promise<number> => this.unreadPublished(clientId, userId).length,
     nextDisplaySequence: async (clientId: Id | null, receivedOn: LocalDate): Promise<number> => {
       const compact = receivedOn.replaceAll("-", "");
       // Display names are unique across all files, so the sequence follows the name prefix, not the current client.

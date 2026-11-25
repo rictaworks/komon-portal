@@ -188,6 +188,13 @@ export interface FileRepository {
   findActiveBySha256(sha256: string): Promise<FileRecord[]>;
   list(filter: FileFilter, page: Page): Promise<FileRecord[]>;
   count(filter: FileFilter): Promise<number>;
+  /**
+   * Published outbound files of the client that this user has not opened, the most recently
+   * published first. Another user's receipt does not make a file read for this user.
+   */
+  listUnreadPublished(clientId: Id, userId: Id, page: Page): Promise<FileRecord[]>;
+  /** How many files `listUnreadPublished` would return without paging. */
+  countUnreadPublished(clientId: Id, userId: Id): Promise<number>;
   /** Next number for display names of this client (or of unassigned files) on the given day. */
   nextDisplaySequence(clientId: Id | null, receivedOn: LocalDate): Promise<number>;
   insert(file: FileRecord): Promise<FileWriteResult>;

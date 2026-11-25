@@ -102,6 +102,9 @@ function uniqueConflict(error: unknown): FileWriteResult | null {
 
 /** A file being purged is hidden from every read except the purge job's own listing. */
 const NOT_PURGING = "purging_at IS NULL";
+/** Published outbound files of one client (first parameter) without a receipt of one user (second parameter). */
+const UNREAD_PUBLISHED = `client_id = ? AND direction = 'Outbound' AND state = 'Published' AND ${NOT_PURGING}
+  AND NOT EXISTS (SELECT 1 FROM file_receipts r WHERE r.file_id = file_records.id AND r.user_id = ?)`;
 
 function fileWhere(filter: FileFilter): Where | null {
   const where: Where = { clauses: [NOT_PURGING], params: [] };
@@ -162,6 +165,22 @@ export class D1FileRepository implements FileRepository {
     }
     const row = await this.db.prepare(`SELECT COUNT(*) AS n FROM file_records${whereSql(where)}`).bind(...where.params).first<{ n: number }>();
     return row?.n ?? 0;
+  }
+
+  async listUnreadPublished(clientId: Id, userId: Id, page: Page): Promise<FileRecord[]> {
+    const rows = await this.db
+      .prepare(`SELECT * FROM file_records WHERE ${UNREAD_PUBLISHED} ORDER BY published_at DESC, id LIMIT ? OFFSET ?`)
+      .bind(clientId, userId, page.limit, page.offset)
+      .all<Row>();
+    return rows.results.map(toFile);
+  }
+
+  async countUnreadPublished(clientId: Id, userId: Id): Promise<number> {
+    const row = await this.db.prepare(`SELECT COUNT(*) AS n FROM file_records WHERE ${UNREAD_PUBLISHED}`).bind(clientId, userId).first<{ n: number }>();
+    if (row === null) {
+      throw new Error("the unread count returned no row");
+    }
+    return row.n;
   }
 
   async nextDisplaySequence(clientId: Id | null, receivedOn: LocalDate): Promise<number> {
