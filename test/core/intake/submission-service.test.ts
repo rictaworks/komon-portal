@@ -1,15 +1,25 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { systemActor } from "../../../src/core/model/actor";
-import { caseRecord, fileRecord, memberActor, staffActor } from "../../support/builders";
+import { caseRecord, caseType, docType, fileRecord, memberActor, staffActor } from "../../support/builders";
 import { intakeKit, type IntakeKit } from "../../support/intake-kit";
 import { PDF, PNG, text } from "./fixtures";
 
 const staff = staffActor();
 const member = memberActor(["c1"], "u-member");
 const input = { clientId: "c1", docTypeId: "d3", targetMonth: "2026-11" };
+const attendanceInput = { ...input, docTypeId: "d4" };
 
 function pdf(marker: string): Uint8Array {
   return new Uint8Array([...PDF, ...text(marker)]);
+}
+
+/** A second inbound document type with its own payroll case type, and a payroll case type no document type fits. */
+function addAttendanceTypes(kit: IntakeKit): void {
+  kit.repo.caseTypeRows.push(
+    caseType({ id: "t3", kind: "Payroll", label: "Attendance" }),
+    caseType({ id: "t4", kind: "Payroll", label: "Year-end adjustment" }),
+  );
+  kit.repo.docTypeRows.push(docType({ id: "d4", shortCode: "KINTAI", label: "Attendance record", direction: "Inbound" }));
 }
 
 describe("SubmissionService.submit", () => {
@@ -82,7 +92,7 @@ describe("SubmissionService.submit", () => {
     expect(await kit.submissions.submit(member, input, { fileName: "b.pdf", bytes: pdf("same") })).toEqual({ outcome: "duplicate", existingFileId: null });
   });
 
-  it("links the only open payroll case of that month and moves it to MaterialsReceived", async () => {
+  it("links the only open payroll case of that month whose type fits the document type and moves it to MaterialsReceived", async () => {
     kit.repo.caseRows.push(caseRecord({ id: "k1", clientId: "c1", caseTypeId: "t2" }));
     const result = await kit.submissions.submit(member, input, { fileName: "a.pdf", bytes: pdf("a") });
     expect(result.outcome === "stored" && result.file.caseId).toBe("k1");
@@ -96,8 +106,70 @@ describe("SubmissionService.submit", () => {
     ["the only case is not payroll", [caseRecord({ id: "k1", caseTypeId: "t1" })]],
     ["the only case is closed", [caseRecord({ id: "k1", caseTypeId: "t2", state: "Closed" })]],
     ["the only case belongs to another client", [caseRecord({ id: "k1", caseTypeId: "t2", clientId: "c2" })]],
+    ["the only payroll case is of a type that does not fit the document type", [caseRecord({ id: "k1", caseTypeId: "t3" })]],
   ])("leaves the case to staff when %s", async (_name, cases) => {
+    addAttendanceTypes(kit);
     kit.repo.caseRows.push(...cases);
+    const result = await kit.submissions.submit(member, input, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBeNull();
+    expect(kit.repo.caseRows.every((row) => row.state !== "MaterialsReceived")).toBe(true);
+  });
+
+  it("does not attach a document of another type to the month's payroll case", async () => {
+    addAttendanceTypes(kit);
+    kit.repo.caseRows.push(caseRecord({ id: "k1", caseTypeId: "t2" }));
+    const result = await kit.submissions.submit(member, attendanceInput, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBeNull();
+    expect(kit.repo.caseRows[0]?.state).toBe("Open");
+    expect(kit.repo.metricRows.at(-1)).toMatchObject({ name: "submission.received", attributes: { linked: false } });
+  });
+
+  it("picks the case of the fitting type when the month has payroll cases of several types", async () => {
+    addAttendanceTypes(kit);
+    kit.repo.caseRows.push(
+      caseRecord({ id: "k1", caseTypeId: "t2" }),
+      caseRecord({ id: "k2", caseTypeId: "t3" }),
+      caseRecord({ id: "k3", caseTypeId: "t4" }),
+    );
+    const payroll = await kit.submissions.submit(member, input, { fileName: "a.pdf", bytes: pdf("a") });
+    const attendance = await kit.submissions.submit(member, attendanceInput, { fileName: "b.pdf", bytes: pdf("b") });
+    expect(payroll.outcome === "stored" && payroll.file.caseId).toBe("k1");
+    expect(attendance.outcome === "stored" && attendance.file.caseId).toBe("k2");
+    expect(kit.repo.caseRows.map((row) => row.state)).toEqual(["MaterialsReceived", "MaterialsReceived", "Open"]);
+  });
+
+  it("leaves the case to staff when several open cases fit the document type among many cases of that month", async () => {
+    addAttendanceTypes(kit);
+    kit.repo.caseRows.push(
+      ...Array.from({ length: 60 }, (_unused, index) => caseRecord({ id: `other-${index}`, caseTypeId: "t4", sequence: index + 1 })),
+      caseRecord({ id: "k1", caseTypeId: "t3" }),
+      caseRecord({ id: "k2", caseTypeId: "t3", sequence: 2 }),
+    );
+    const result = await kit.submissions.submit(member, attendanceInput, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBeNull();
+  });
+
+  it("finds the single fitting case among many cases of that month", async () => {
+    addAttendanceTypes(kit);
+    kit.repo.caseRows.push(
+      ...Array.from({ length: 60 }, (_unused, index) => caseRecord({ id: `other-${index}`, caseTypeId: "t4", sequence: index + 1 })),
+      caseRecord({ id: "k1", caseTypeId: "t3" }),
+    );
+    const result = await kit.submissions.submit(member, attendanceInput, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBe("k1");
+  });
+
+  it("compares the type names without regard to letter case, character width or surrounding spaces", async () => {
+    kit.repo.caseTypeRows.push(caseType({ id: "t5", kind: "Payroll", label: " \uff27\uff25\uff2e\uff33\uff25\uff2e " }));
+    kit.repo.docTypeRows.push(docType({ id: "d5", shortCode: "GENSEN", label: "Gensen list", direction: "Both" }));
+    kit.repo.caseRows.push(caseRecord({ id: "k1", caseTypeId: "t5" }));
+    const result = await kit.submissions.submit(member, { ...input, docTypeId: "d5" }, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBe("k1");
+  });
+
+  it("never treats a blank case type name as fitting", async () => {
+    kit.repo.caseTypeRows.push(caseType({ id: "t5", kind: "Payroll", label: "  " }));
+    kit.repo.caseRows.push(caseRecord({ id: "k1", caseTypeId: "t5" }));
     const result = await kit.submissions.submit(member, input, { fileName: "a.pdf", bytes: pdf("a") });
     expect(result.outcome === "stored" && result.file.caseId).toBeNull();
   });

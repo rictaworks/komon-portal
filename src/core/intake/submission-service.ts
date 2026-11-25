@@ -4,7 +4,9 @@ import type { CaseService } from "../cases/case-service";
 import { TERMINAL_CASE_STATES } from "../cases/case-state";
 import type { Actor, UserActor } from "../model/actor";
 import { conflict, invalidInput, invalidState, notFound } from "../model/errors";
-import { CASE_STATES, type FileRecord, type Id, type RejectionReason, type YearMonth } from "../model/types";
+import {
+  CASE_STATES, type CaseRecord, type CaseType, type DocType, type FileRecord, type Id, type RejectionReason, type YearMonth,
+} from "../model/types";
 import type { FileStore } from "../ports/file-store";
 import type { IdGenerator } from "../ports/id-generator";
 import type { Repository } from "../ports/repository";
@@ -29,7 +31,22 @@ const TARGET_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FILE_TARGET = "file";
 const CLIENT_TARGET = "client";
 const OPEN_CASE_STATES = CASE_STATES.filter((state) => !TERMINAL_CASE_STATES.includes(state));
-const CASE_PAGE = { limit: 2, offset: 0 };
+const CASE_PAGE_SIZE = 50;
+
+/** Master names are compared without regard to letter case, character width or surrounding spaces. */
+function comparableName(label: string): string {
+  return label.normalize("NFKC").trim().toLowerCase();
+}
+
+/**
+ * The master data holds no relation between document types and case types, so "the type matches"
+ * (instructions.md 1.6.7) is decided on their names: a case type fits a document type when the
+ * document type's name contains the case type's name ("Payroll material" fits "Payroll").
+ */
+function fitsDocType(caseType: CaseType, docType: DocType): boolean {
+  const caseName = comparableName(caseType.label);
+  return caseName !== "" && comparableName(docType.label).includes(caseName);
+}
 
 export interface SubmissionServiceDeps {
   repository: Repository;
@@ -48,7 +65,7 @@ export class SubmissionService {
 
   async submit(actor: UserActor, input: SubmissionInput, incoming: IncomingFile): Promise<SubmissionResult> {
     await this.requireReach(actor, "client.submit", input.clientId);
-    await this.validate(input);
+    const docType = await this.validate(input);
     const validation = validateFile(incoming);
     if (!validation.ok) {
       await this.deps.metrics.record("submission.rejected", input.clientId, { reason: validation.reason });
@@ -65,7 +82,7 @@ export class SubmissionService {
     await this.deps.repository.files.insertBatch({ id: batchId, uploadedBy: actor.userId, hintClientId: input.clientId, createdAt: now });
     const id = this.deps.ids.newId();
     const draft: FileRecord = {
-      id, batchId, direction: "Inbound", clientId: input.clientId, caseId: await this.matchingCase(input),
+      id, batchId, direction: "Inbound", clientId: input.clientId, caseId: await this.matchingCase(input, docType),
       docTypeId: input.docTypeId, targetMonth: input.targetMonth, displayName: "", format: validation.format, sha256,
       sizeBytes: incoming.bytes.length, r2Key: `${FILE_KEY_PREFIX}${id}`, state: "Submitted", trashedFrom: null,
       resolutionMethod: null, reviewReason: null, reviewDetail: null, unmatchedArrivalNumber: null, typeSource: null,
@@ -157,17 +174,44 @@ export class SubmissionService {
     return updated;
   }
 
-  /** Linked only when exactly one open payroll case of that month exists; otherwise staff decide. */
-  private async matchingCase(input: SubmissionInput): Promise<Id | null> {
-    const candidates = await this.deps.repository.cases.list(
-      { clientId: input.clientId, kind: "Payroll", targetMonth: input.targetMonth, states: OPEN_CASE_STATES },
-      CASE_PAGE,
-    );
-    const [only] = candidates;
-    return candidates.length === 1 && only !== undefined ? only.id : null;
+  /**
+   * Linked only when exactly one open payroll case of that client and month fits the document type;
+   * with none or several, staff decide.
+   */
+  private async matchingCase(input: SubmissionInput, docType: DocType): Promise<Id | null> {
+    const fitByCaseType = new Map<Id, boolean>();
+    const fitting: CaseRecord[] = [];
+    for (let offset = 0; ; offset += CASE_PAGE_SIZE) {
+      const page = await this.deps.repository.cases.list(
+        { clientId: input.clientId, kind: "Payroll", targetMonth: input.targetMonth, states: OPEN_CASE_STATES },
+        { limit: CASE_PAGE_SIZE, offset },
+      );
+      for (const candidate of page) {
+        let fits = fitByCaseType.get(candidate.caseTypeId);
+        if (fits === undefined) {
+          const caseType = await this.deps.repository.caseTypes.findById(candidate.caseTypeId);
+          if (caseType === null) {
+            throw new Error(`case ${candidate.id} refers to a case type that does not exist`);
+          }
+          fits = fitsDocType(caseType, docType);
+          fitByCaseType.set(candidate.caseTypeId, fits);
+        }
+        if (fits) {
+          fitting.push(candidate);
+        }
+      }
+      if (fitting.length > 1) {
+        return null;
+      }
+      if (page.length < CASE_PAGE_SIZE) {
+        break;
+      }
+    }
+    const [only] = fitting;
+    return only === undefined ? null : only.id;
   }
 
-  private async validate(input: SubmissionInput): Promise<void> {
+  private async validate(input: SubmissionInput): Promise<DocType> {
     if (!TARGET_MONTH.test(input.targetMonth)) {
       throw invalidInput("target_month");
     }
@@ -175,6 +219,7 @@ export class SubmissionService {
     if (docType === null || docType.direction === "Outbound") {
       throw invalidInput("doc_type");
     }
+    return docType;
   }
 
   private async duplicate(actor: UserActor, existing: FileRecord | null): Promise<SubmissionResult> {
