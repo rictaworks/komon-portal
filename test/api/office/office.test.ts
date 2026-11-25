@@ -212,6 +212,14 @@ describe("office API", () => {
     }
   });
 
+  it("gives the total of a list on one row, so a count does not fetch every row", async () => {
+    const everything = await json(await staff.call("GET", "/api/office/files?direction=Outbound&states=Staged"));
+    const counted = await json(await staff.call("GET", "/api/office/files?direction=Outbound&states=Staged&limit=1"));
+    expect(counted.items).toHaveLength(1);
+    expect(counted.total).toBe(everything.total);
+    expect(Number(counted.total)).toBeGreaterThanOrEqual(2);
+  });
+
   it("publishes with one result per file and withdraws with a reason", async () => {
     const published = await json(await staff.call("POST", "/api/office/publish", { body: { items: [{ fileId: ids.f1, version: 1 }, { fileId: ids.f2, version: 1 }, { fileId: "missing", version: 1 }] } }));
     expect(published.results).toEqual([

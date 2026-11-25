@@ -36,6 +36,7 @@ export function shelfDirectionOf(search: string): ShelfDirection {
 }
 
 const LIST_LIMIT = 200;
+const COUNT_LIMIT = 1;
 
 export interface ShelfQuery {
   clientId: string;
@@ -47,12 +48,12 @@ export interface ShelfQuery {
   caseId: string;
 }
 
-/** Path of the file list for one client, direction and view, narrowed by the chosen filters. */
-export function shelfListPath(query: ShelfQuery): string {
-  if (!SHELF_VIEWS[query.direction].includes(query.view)) {
-    throw new Error(`view ${query.view} does not belong to ${query.direction}`);
-  }
-  const parameters = new URLSearchParams({ direction: query.direction, clientId: query.clientId, states: VIEW_STATES[query.view].join(",") });
+/** The filters of the screen, without the view: a count covers every view of a direction. */
+export type ShelfFilters = Omit<ShelfQuery, "view">;
+
+/** The query string of a file list request, narrowed by the chosen filters. */
+function filterParameters(query: ShelfFilters, states: readonly string[], limit: number): URLSearchParams {
+  const parameters = new URLSearchParams({ direction: query.direction, clientId: query.clientId, states: states.join(",") });
   if (query.docTypeId !== "") {
     parameters.set("docTypeId", query.docTypeId);
   }
@@ -62,8 +63,25 @@ export function shelfListPath(query: ShelfQuery): string {
   if (query.caseId !== "") {
     parameters.set("caseId", query.caseId);
   }
-  parameters.set("limit", String(LIST_LIMIT));
-  return `/api/office/files?${parameters.toString().replaceAll("+", "%20")}`;
+  parameters.set("limit", String(limit));
+  return parameters;
+}
+
+/** Path of the file list for one client, direction and view, narrowed by the chosen filters. */
+export function shelfListPath(query: ShelfQuery): string {
+  if (!SHELF_VIEWS[query.direction].includes(query.view)) {
+    throw new Error(`view ${query.view} does not belong to ${query.direction}`);
+  }
+  return `/api/office/files?${filterParameters(query, VIEW_STATES[query.view], LIST_LIMIT).toString().replaceAll("+", "%20")}`;
+}
+
+/**
+ * Path of the request that counts a direction's documents for the client and filters: every view of
+ * the direction, and no rows (the server answers the total with a single row).
+ */
+export function shelfCountPath(query: ShelfFilters): string {
+  const states = SHELF_VIEWS[query.direction].flatMap((view) => VIEW_STATES[view]);
+  return `/api/office/files?${filterParameters(query, states, COUNT_LIMIT).toString().replaceAll("+", "%20")}`;
 }
 
 /**
@@ -90,6 +108,18 @@ export function shelfActions(file: Pick<FileView, "direction" | "state" | "trash
     return ["withdraw"];
   }
   return file.state === "Withdrawn" ? ["trash"] : [];
+}
+
+/** The reasons the office can give when it withdraws a document. */
+export const WITHDRAW_REASON_CHOICES = ["WrongClient", "WrongFile", "Superseded", "Other"] as const;
+export type WithdrawReasonChoice = (typeof WITHDRAW_REASON_CHOICES)[number];
+
+/**
+ * The reason chosen in the withdraw dialog, or null while none is chosen. A withdrawal has no default
+ * reason: WrongClient and WrongFile record a mis-delivery, so the office must pick one.
+ */
+export function withdrawReasonOf(value: string): WithdrawReasonChoice | null {
+  return WITHDRAW_REASON_CHOICES.find((reason) => reason === value) ?? null;
 }
 
 /**
