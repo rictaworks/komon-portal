@@ -1,0 +1,1717 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "komon-portal API",
+    "version": "01.01.00",
+    "description": "The API of the office Worker, for the portal's own screens. The developer's admin Worker is documented in README.md. Every operation is listed here; a test fails when a route is added or removed without this file changing."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/client/{clientId}/notifications/subscriptions": {
+      "delete": {
+        "summary": "Removes this browser's push subscription by endpoint.",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      },
+      "post": {
+        "summary": "Stores this browser's push subscription for the member.",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/doc-rules/{id}": {
+      "delete": {
+        "summary": "Removes a keyword rule. 404 when the rule does not exist.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/auth/callback": {
+      "get": {
+        "summary": "Completes Google sign-in and starts a session. Redirects back.",
+        "tags": [
+          "public"
+        ],
+        "description": "No session needed.",
+        "x-access": "none",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "get": {
+        "summary": "Starts Google sign-in (OpenID Connect with PKCE). Redirects to Google.",
+        "tags": [
+          "public"
+        ],
+        "description": "No session needed.",
+        "x-access": "none",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/client/{clientId}/doc-types": {
+      "get": {
+        "summary": "Document types the company may send and receive.",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/client/{clientId}/documents": {
+      "get": {
+        "summary": "Published documents of the company, filtered by type and month.",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/client/{clientId}/home": {
+      "get": {
+        "summary": "The company's unread documents and cases (up to 100 each, with truncation flags).",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/client/{clientId}/notifications": {
+      "get": {
+        "summary": "Whether notifications are available, the VAPID public key and the account's subscription count.",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/client/{clientId}/submissions": {
+      "get": {
+        "summary": "Files the company has sent, with their confirmation state.",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Sends one file to the office (multipart: file, docTypeId, targetMonth). Answers with the outcome.",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/config": {
+      "get": {
+        "summary": "Public configuration: environment, Turnstile key, sign-in availability, setup state.",
+        "tags": [
+          "public"
+        ],
+        "description": "No session needed.",
+        "x-access": "none",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/files/{id}/content": {
+      "get": {
+        "summary": "Opens a file as an attachment (mode=view or download). Records the first view or acknowledgement.",
+        "tags": [
+          "public"
+        ],
+        "description": "Signed-in user. State-changing requests also need the same origin and the CSRF token.",
+        "x-access": "session",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Liveness check.",
+        "tags": [
+          "public"
+        ],
+        "description": "No session needed.",
+        "x-access": "none",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "The signed-in user with memberships and CSRF token. 401 when signed out.",
+        "tags": [
+          "public"
+        ],
+        "description": "Signed-in user. State-changing requests also need the same origin and the CSRF token.",
+        "x-access": "session",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/office/audit": {
+      "get": {
+        "summary": "The audit log, newest first (append-only).",
+        "tags": [
+          "office"
+        ],
+        "description": "Office Owner only. Denials look like not found.",
+        "x-access": "owner",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/office/cases": {
+      "get": {
+        "summary": "Cases, optionally for one client.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      },
+      "post": {
+        "summary": "Registers a case for a client, case type and target month.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/cases/{id}": {
+      "get": {
+        "summary": "One case with its arrival numbers and deadlines.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/office/clients": {
+      "get": {
+        "summary": "Lists clients, optionally filtered by status.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      },
+      "post": {
+        "summary": "Registers a client.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/clients/{id}": {
+      "get": {
+        "summary": "One client.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "summary": "Updates a client's name, number or status (version required).",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/clients/{id}/members": {
+      "get": {
+        "summary": "Members and open invitations of a client.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/office/dashboard": {
+      "get": {
+        "summary": "Office dashboard counts and the lists of unread, retrieval and due items.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/office/files": {
+      "get": {
+        "summary": "Lists files with filters (direction, states, client, case, document type, month, review reason) and paging.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/office/files/{id}": {
+      "get": {
+        "summary": "One file with its readers.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/office/incidents": {
+      "get": {
+        "summary": "Mis-delivered files that were withdrawn as wrong client or wrong file.",
+        "tags": [
+          "office"
+        ],
+        "description": "Office Owner only. Denials look like not found.",
+        "x-access": "owner",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/office/settings": {
+      "get": {
+        "summary": "Office settings, document and case types, and rules.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/office/staff": {
+      "get": {
+        "summary": "Staff members and open staff invitations.",
+        "tags": [
+          "office"
+        ],
+        "description": "Office Owner only. Denials look like not found.",
+        "x-access": "owner",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/session": {
+      "get": {
+        "summary": "The signed-in user and memberships, or null when nobody is signed in. Always 200.",
+        "tags": [
+          "public"
+        ],
+        "description": "No session needed.",
+        "x-access": "none",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Ends the current session.",
+        "tags": [
+          "public"
+        ],
+        "description": "Signed-in user. State-changing requests also need the same origin and the CSRF token.",
+        "x-access": "session",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/client/{clientId}/submissions/{id}/cancel": {
+      "post": {
+        "summary": "Cancels a submission the office has not confirmed (version required).",
+        "tags": [
+          "client"
+        ],
+        "description": "Active member of the company in the path. Other companies look like not found.",
+        "x-access": "member",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/dev/login": {
+      "post": {
+        "summary": "Development only: signs in as a test user (owner, staff or member).",
+        "tags": [
+          "public"
+        ],
+        "description": "Only when ENVIRONMENT is development; otherwise not found.",
+        "x-access": "development",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/invitations/redeem": {
+      "post": {
+        "summary": "Uses an invitation code. Requires a Turnstile token and a signed-in user.",
+        "tags": [
+          "public"
+        ],
+        "description": "Signed-in user. State-changing requests also need the same origin and the CSRF token.",
+        "x-access": "session",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/batches": {
+      "post": {
+        "summary": "Starts an upload batch, optionally with a destination client hint.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/batches/{batchId}/files": {
+      "post": {
+        "summary": "Uploads one file into a batch and returns its result (stored, duplicate or rejected).",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/case-types": {
+      "post": {
+        "summary": "Adds a case type.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/cases/{id}/cancel": {
+      "post": {
+        "summary": "Cancels a case (version required).",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/cases/{id}/close": {
+      "post": {
+        "summary": "Closes a confirmed case (version required).",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/cases/{id}/submit": {
+      "post": {
+        "summary": "Records the submission of a case with its arrival numbers.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/classify": {
+      "post": {
+        "summary": "Asks Jev to suggest document types. The key is sent in the X-Jev-Key header and never stored.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/clients/{id}/invitations": {
+      "post": {
+        "summary": "Issues a client invitation. The code is shown once.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/doc-rules": {
+      "post": {
+        "summary": "Adds a keyword rule for a document type.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/doc-types": {
+      "post": {
+        "summary": "Adds a document type.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/files/{id}/assign": {
+      "post": {
+        "summary": "Assigns a file to a client (and optionally a case and document type) during review.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/files/{id}/doc-type": {
+      "post": {
+        "summary": "Sets the document type of a file.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/files/{id}/link-case": {
+      "post": {
+        "summary": "Links a file to a case.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/files/{id}/restore": {
+      "post": {
+        "summary": "Restores a trashed file.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/files/{id}/send-back": {
+      "post": {
+        "summary": "Sends a staged file back to review.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/files/{id}/trash": {
+      "post": {
+        "summary": "Moves a file to the trash.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/files/{id}/withdraw": {
+      "post": {
+        "summary": "Withdraws a published file with a reason, and says where it goes next.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/invitations/{id}/cancel": {
+      "post": {
+        "summary": "Cancels an open invitation.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/memberships/{id}/approve": {
+      "post": {
+        "summary": "Approves a client member.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/memberships/{id}/reject": {
+      "post": {
+        "summary": "Rejects a client member.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/memberships/{id}/revoke": {
+      "post": {
+        "summary": "Revokes a client member's access.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/publish": {
+      "post": {
+        "summary": "Publishes staged files, one result per file.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/staff/{userId}/approve": {
+      "post": {
+        "summary": "Approves a staff member.",
+        "tags": [
+          "office"
+        ],
+        "description": "Office Owner only. Denials look like not found.",
+        "x-access": "owner",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/staff/{userId}/reject": {
+      "post": {
+        "summary": "Rejects a staff member.",
+        "tags": [
+          "office"
+        ],
+        "description": "Office Owner only. Denials look like not found.",
+        "x-access": "owner",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/staff/{userId}/revoke": {
+      "post": {
+        "summary": "Revokes a staff member's access.",
+        "tags": [
+          "office"
+        ],
+        "description": "Office Owner only. Denials look like not found.",
+        "x-access": "owner",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/staff/invitations": {
+      "post": {
+        "summary": "Issues a staff invitation for the Staff or Owner role.",
+        "tags": [
+          "office"
+        ],
+        "description": "Office Owner only. Denials look like not found.",
+        "x-access": "owner",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/setup/claim": {
+      "post": {
+        "summary": "Makes the signed-in user the first Owner, with the setup token and a Turnstile token.",
+        "tags": [
+          "public"
+        ],
+        "description": "Signed-in user. State-changing requests also need the same origin and the CSRF token.",
+        "x-access": "session",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/case-types/{id}": {
+      "put": {
+        "summary": "Updates a case type.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/doc-types/{id}": {
+      "put": {
+        "summary": "Updates a document type.",
+        "tags": [
+          "office"
+        ],
+        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "x-access": "staff",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-csrf": "required"
+      }
+    },
+    "/api/office/settings/office": {
+      "put": {
+        "summary": "Updates office settings (time zone, arrival-number pattern, deadlines, automatic publishing).",
+        "tags": [
+          "office"
+        ],
+        "description": "Office Owner only. Denials look like not found.",
+        "x-access": "owner",
+        "responses": {
+          "default": {
+            "description": "Errors use the shape {\"error\": code}. Codes are listed in src/app/api/codes.ts."
+          },
+          "200": {
+            "description": "Success."
+          },
+          "201": {
+            "description": "Created, where the route creates a record."
+          }
+        },
+        "x-csrf": "required"
+      }
+    }
+  }
+}
