@@ -29,6 +29,8 @@
     "privacy": "Use the Google account you were approved with. Only your Google account ID and display name are kept. Your email address is not requested or stored.",
     "google": "Sign in with Google",
     "notConfigured": "Google sign-in is not configured on this installation.",
+    "firstTime": "First time here",
+    "firstTimeGuide": "If the office gave you an invitation link, use it before anything else: open the invitation page, sign in with Google when it asks, and enter your invitation.",
     "haveInvitation": "I have an invitation link",
     "approvalNote": "After you use an invitation, the office checks your display name and approves your access. Nothing is visible until then.",
     "developmentNote": "Development environment: sign in as a ready-made test user. These buttons do not exist in production.",
