@@ -1,9 +1,51 @@
 import { describe, expect, it } from "vitest";
 import type { CaseView, DocTypeRecord, FileView } from "../../src/app/web/api/office-types";
 import {
-  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_VIEWS, shelfActions, shelfDirectionOf, shelfListPath,
-  shelfPath, shownList, sortedReaders,
+  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_VIEWS, shelfActions, shelfCountPath, shelfDirectionOf, shelfListPath,
+  shelfPath, shownCounts, shownList, sortedReaders, withdrawReasonOf,
 } from "../../src/app/web/pages/office/shelf-view";
+
+describe("withdrawReasonOf", () => {
+  it("has no reason until one of the four reasons is chosen", () => {
+    expect(withdrawReasonOf("")).toBeNull();
+    expect(withdrawReasonOf("WrongClient")).toBe("WrongClient");
+    expect(withdrawReasonOf("WrongFile")).toBe("WrongFile");
+    expect(withdrawReasonOf("Superseded")).toBe("Superseded");
+    expect(withdrawReasonOf("Other")).toBe("Other");
+  });
+
+  it("refuses a value that is not a withdraw reason instead of passing it on", () => {
+    expect(withdrawReasonOf("Trashed")).toBeNull();
+    expect(withdrawReasonOf("wrongclient")).toBeNull();
+  });
+});
+
+describe("shelfCountPath", () => {
+  it("counts every view of a direction in one request, without fetching rows", () => {
+    const outbound = new URL(shelfCountPath({ clientId: "c1", direction: "Outbound", docTypeId: "", targetMonth: "", caseId: "" }), "https://example.invalid");
+    expect(outbound.pathname).toBe("/api/office/files");
+    expect(outbound.searchParams.get("direction")).toBe("Outbound");
+    expect(outbound.searchParams.get("clientId")).toBe("c1");
+    expect(outbound.searchParams.get("states")?.split(",").sort()).toEqual(["Published", "Trashed", "Withdrawn"]);
+    expect(outbound.searchParams.get("limit")).toBe("1");
+  });
+
+  it("counts the submissions of a direction across its views", () => {
+    const inbound = new URL(shelfCountPath({ clientId: "c1", direction: "Inbound", docTypeId: "", targetMonth: "", caseId: "" }), "https://example.invalid");
+    expect(inbound.searchParams.get("direction")).toBe("Inbound");
+    expect(inbound.searchParams.get("states")?.split(",").sort()).toEqual(["Acknowledged", "Submitted", "Trashed"]);
+  });
+
+  it("applies the same filters as the list, so the count matches what the tab shows", () => {
+    const query = new URL(
+      shelfCountPath({ clientId: "c1", direction: "Outbound", docTypeId: "d1", targetMonth: "2026-11", caseId: "k1" }),
+      "https://example.invalid",
+    ).searchParams;
+    expect(query.get("docTypeId")).toBe("d1");
+    expect(query.get("targetMonth")).toBe("2026-11");
+    expect(query.get("caseId")).toBe("k1");
+  });
+});
 
 function file(overrides: Partial<FileView>): FileView {
   return {
@@ -98,6 +140,21 @@ describe("shownList", () => {
   it("shows nothing after a failed load instead of the rows of the previous view", () => {
     expect(shownList({ path: "/a", list }, "/b", new Error("offline"))).toBeNull();
     expect(shownList({ path: "/a", list }, "/a", new Error("offline"))).toBeNull();
+  });
+});
+
+describe("shownCounts", () => {
+  const totals = { Outbound: 12, Inbound: 3 };
+
+  it("shows the totals only for the filters they were loaded for", () => {
+    expect(shownCounts({ key: "client-a", totals }, "client-a", null)).toBe(totals);
+    expect(shownCounts({ key: "client-a", totals }, "client-b", null)).toBeNull();
+    expect(shownCounts(null, "client-a", null)).toBeNull();
+  });
+
+  it("shows nothing after a failed reload, instead of the totals of the previous selection", () => {
+    expect(shownCounts({ key: "client-a", totals }, "client-b", new Error("offline"))).toBeNull();
+    expect(shownCounts({ key: "client-a", totals }, "client-a", new Error("offline"))).toBeNull();
   });
 });
 

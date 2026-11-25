@@ -533,6 +533,7 @@
         "Outbound": "To client",
         "Inbound": "From client"
       },
+      "directionCount": "{direction} ({count})",
       "tabs": "Shelf views",
       "tab": {
         "Published": "Published",
@@ -572,7 +573,8 @@
       "withdrawUnread": "No client member has opened it.",
       "withdrawOpened": "Opened by {count} client member(s), first on {at}.",
       "withdrawConfirm": "Withdraw",
-      "reason": "Reason",
+      "reason": "Reason (required)",
+      "reasonPlaceholder": "Choose a reason",
       "next": "Then",
       "restore": "Restore"
     }

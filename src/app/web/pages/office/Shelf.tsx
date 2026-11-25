@@ -14,12 +14,11 @@ import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import {
   cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_DIRECTIONS, SHELF_VIEWS, shelfActions,
-  shelfDirectionOf, shelfListPath, shownList, sortedReaders,
-  type ShelfDirection, type ShelfList, type ShelfView,
+  shelfCountPath, shelfDirectionOf, shelfListPath, shownCounts, shownList, sortedReaders, WITHDRAW_REASON_CHOICES, withdrawReasonOf,
+  type ShelfCounts, type ShelfDirection, type ShelfList, type ShelfView,
 } from "./shelf-view";
 import { useSettings } from "./useMasterData";
 
-const WITHDRAW_REASONS = ["WrongClient", "WrongFile", "Superseded", "Other"] as const;
 const WITHDRAW_NEXT = ["NeedsReview", "Trashed"] as const;
 /** Cases that can no longer receive documents. */
 const TERMINAL_STATES: readonly string[] = ["Closed", "Cancelled"];
@@ -101,6 +100,18 @@ export function Shelf() {
   const listPath = shelfListPath({ clientId, direction, view, docTypeId, targetMonth: month.value, caseId: filterCaseId });
   // The answer is kept with its question, so rows are never shown under another direction, view or filter.
   const files = useLoad<{ path: string; list: ShelfList }>(async () => ({ path: listPath, list: await api.get<ShelfList>(listPath) }), [listPath]);
+  // The direction tabs show how many documents each direction holds for this client and filters.
+  // The totals are kept with the filters they were counted for, so a total is never shown for another selection.
+  const countKey = JSON.stringify([clientId, docTypeId, month.value, filterCaseId]);
+  const counts = useLoad<ShelfCounts>(async () => {
+    const filters = { clientId, docTypeId, targetMonth: month.value, caseId: filterCaseId };
+    const [outbound, inbound] = await Promise.all([
+      api.get<ShelfList>(shelfCountPath({ ...filters, direction: "Outbound" })),
+      api.get<ShelfList>(shelfCountPath({ ...filters, direction: "Inbound" })),
+    ]);
+    return { key: countKey, totals: { Outbound: outbound.total, Inbound: inbound.total } };
+  }, [countKey]);
+  const countsShown = shownCounts(counts.data, countKey, counts.error);
   const cases = useLoad<{ items: CaseView[] }>(
     () => api.get<{ items: CaseView[] }>(`/api/office/cases?clientId=${encodeURIComponent(clientId)}&limit=${CASE_LIMIT}`),
     [clientId],
@@ -108,13 +119,17 @@ export function Shelf() {
   const settings = useSettings();
   const action = useAction();
   const [withdrawing, setWithdrawing] = useState<FileView | null>(null);
-  const [reason, setReason] = useState<string>(WITHDRAW_REASONS[0]);
+  // No reason is chosen until the office picks one: a mis-delivery must not be recorded by default.
+  const [reason, setReason] = useState("");
   const [next, setNext] = useState<string>(WITHDRAW_NEXT[0]);
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [caseId, setCaseId] = useState("");
 
   // The list reloads after every attempt, so a version conflict is followed by the current version.
-  const done = () => files.reload();
+  const done = () => {
+    files.reload();
+    counts.reload();
+  };
 
   const chooseDirection = (value: ShelfDirection) => {
     const first = SHELF_VIEWS[value][0];
@@ -133,12 +148,19 @@ export function Shelf() {
     setLinkingId(null);
   };
 
+  const startWithdrawing = (file: FileView) => {
+    setReason("");
+    setWithdrawing(file);
+  };
+
   const withdraw = () => {
     const target = withdrawing;
-    setWithdrawing(null);
-    if (target !== null) {
-      void action.run(() => api.post(`/api/office/files/${target.id}/withdraw`, { reason, next, version: target.version })).then(done);
+    const chosen = withdrawReasonOf(reason);
+    if (target === null || chosen === null) {
+      return;
     }
+    setWithdrawing(null);
+    void action.run(() => api.post(`/api/office/files/${target.id}/withdraw`, { reason: chosen, next, version: target.version })).then(done);
   };
 
   const restore = (file: FileView) => () => {
@@ -232,11 +254,13 @@ export function Shelf() {
             onChange={setFilterCaseId}
           />
         </div>
-        <ErrorNotice error={files.error ?? cases.error ?? settings.error ?? action.error} />
+        <ErrorNotice error={files.error ?? counts.error ?? cases.error ?? settings.error ?? action.error} />
         <nav className="tabs" aria-label={t("office.shelf.directions")}>
           {SHELF_DIRECTIONS.map((value) => (
             <button key={value} type="button" className={`tab${direction === value ? " tab--active" : ""}`} aria-pressed={direction === value} onClick={() => chooseDirection(value)}>
-              {t(`office.shelf.direction.${value}`)}
+              {countsShown === null
+                ? t(`office.shelf.direction.${value}`)
+                : t("office.shelf.directionCount", { direction: t(`office.shelf.direction.${value}`), count: countsShown[value] })}
             </button>
           ))}
         </nav>
@@ -313,7 +337,7 @@ export function Shelf() {
                               </button>
                             ) : null}
                             {actions.includes("withdraw") ? (
-                              <button type="button" className="button button--danger" disabled={action.busy} onClick={() => setWithdrawing(file)}>
+                              <button type="button" className="button button--danger" disabled={action.busy} onClick={() => startWithdrawing(file)}>
                                 {t("office.shelf.withdraw")}
                               </button>
                             ) : null}
@@ -365,6 +389,7 @@ export function Shelf() {
           title={t("office.shelf.withdrawTitle", { name: withdrawing?.displayName ?? "" })}
           confirmLabel={t("office.shelf.withdrawConfirm")}
           danger
+          disabled={withdrawReasonOf(reason) === null}
           onConfirm={withdraw}
           onCancel={() => setWithdrawing(null)}
         >
@@ -379,7 +404,15 @@ export function Shelf() {
               <ReaderLines readers={withdrawing.readers} />
             </div>
           )}
-          <SelectField label={t("office.shelf.reason")} value={reason} options={WITHDRAW_REASONS.map((value) => ({ value, label: t(`withdrawReason.${value}`) }))} onChange={setReason} />
+          <SelectField
+            label={t("office.shelf.reason")}
+            value={reason}
+            options={[
+              { value: "", label: t("office.shelf.reasonPlaceholder") },
+              ...WITHDRAW_REASON_CHOICES.map((value) => ({ value, label: t(`withdrawReason.${value}`) })),
+            ]}
+            onChange={setReason}
+          />
           <SelectField label={t("office.shelf.next")} value={next} options={WITHDRAW_NEXT.map((value) => ({ value, label: t(`withdrawNext.${value}`) }))} onChange={setNext} />
         </ConfirmDialog>
       </div>
