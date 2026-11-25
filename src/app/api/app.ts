@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { authRoutes } from "./auth/routes";
+import { clientPortalRoutes } from "./client/routes";
 import { API_CODES } from "./codes";
 import type { AdapterOverrides } from "./composition";
 import type { AppBindings } from "./context";
+import { fileContentRoutes } from "./files/routes";
 import { handleError } from "./middleware/errors";
 import { securityHeaders } from "./middleware/security-headers";
 import { officeRoutes } from "./office";
@@ -20,6 +22,8 @@ export function createApp(overrides: AdapterOverrides = {}): Hono<AppBindings> {
   app.use("/api/*", withServices(overrides), loadSession(), protectStateChanges());
   app.route("/api", authRoutes());
   app.route("/api/office", officeRoutes());
+  app.route("/api/client", clientPortalRoutes());
+  app.route("/api", fileContentRoutes());
 
   app.all("/api/*", (c) => c.json({ error: API_CODES.notFound }, 404));
   // Everything else is the single-page application, served through the Worker so that it carries the security headers.

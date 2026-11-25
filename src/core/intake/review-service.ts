@@ -53,6 +53,7 @@ export class ReviewService {
         ...file,
         clientId: input.clientId,
         caseId: input.caseId,
+        targetMonth: input.caseId === null ? null : ((await this.deps.repository.cases.findById(input.caseId))?.targetMonth ?? null),
         docTypeId,
         typeSource: typeChanged ? (docTypeId === null ? null : "Staff") : file.typeSource,
         state: "Staged",

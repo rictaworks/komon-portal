@@ -52,8 +52,15 @@ function fileFilter(c: AppContext): FileFilter {
   return filter;
 }
 
+export interface UploadedFile {
+  fileName: string;
+  bytes: Uint8Array;
+  /** The other fields of the same form. */
+  form: FormData;
+}
+
 /** Reads the single uploaded file of a request. The name is used in memory only and never stored. */
-async function uploadedFile(c: AppContext): Promise<{ fileName: string; bytes: Uint8Array }> {
+export async function uploadedFile(c: AppContext): Promise<UploadedFile> {
   const declared = Number(c.req.header("Content-Length") ?? 0);
   if (declared > MAX_FILE_BYTES + UPLOAD_OVERHEAD_BYTES) {
     throw new HttpError(400, "invalid_input", "file_too_large");
@@ -68,10 +75,8 @@ async function uploadedFile(c: AppContext): Promise<{ fileName: string; bytes: U
   if (!(file instanceof File)) {
     throw invalidInput("file");
   }
-  return { fileName: file.name, bytes: new Uint8Array(await file.arrayBuffer()) };
+  return { fileName: file.name, bytes: new Uint8Array(await file.arrayBuffer()), form };
 }
-
-export { uploadedFile };
 
 function version(body: JsonObject): number {
   return requireInteger(body, "version");

@@ -46,7 +46,7 @@ describe("IntakeService", () => {
 
   it("links the case by arrival number and advances the case", async () => {
     const result = await accept(`${A1}.pdf`, pdf("two"));
-    expect(result.outcome === "stored" && result.file).toMatchObject({ state: "Staged", clientId: "c1", caseId: "k1", resolutionMethod: "ArrivalNumber" });
+    expect(result.outcome === "stored" && result.file).toMatchObject({ state: "Staged", clientId: "c1", caseId: "k1", resolutionMethod: "ArrivalNumber", targetMonth: "2026-11" });
     expect(kit.repo.caseRows[0]?.state).toBe("DocumentReceived");
   });
 

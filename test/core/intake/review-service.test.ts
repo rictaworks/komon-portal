@@ -30,7 +30,7 @@ describe("ReviewService", () => {
       seed();
       const updated = await kit.review.assign(staff, "f1", { clientId: "c1", caseId: "k1", docTypeId: "d1", confirmed: false }, 1);
       expect(updated).toMatchObject({
-        state: "Staged", clientId: "c1", caseId: "k1", docTypeId: "d1", typeSource: "Staff", resolutionMethod: "StaffSelected",
+        state: "Staged", clientId: "c1", caseId: "k1", targetMonth: "2026-11", docTypeId: "d1", typeSource: "Staff", resolutionMethod: "StaffSelected",
         reviewReason: null, reviewDetail: null, displayName: "C0031_SHAHO_20261124_01", version: 2,
       });
       expect(kit.repo.caseRows[0]?.state).toBe("DocumentReceived");

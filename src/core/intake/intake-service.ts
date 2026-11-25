@@ -157,7 +157,8 @@ export class IntakeService {
       clientId: resolution.clientId,
       caseId: resolution.caseId,
       docTypeId: type.docTypeId,
-      targetMonth: null,
+      // A document linked to a case is filed under that case's month.
+      targetMonth: resolution.caseId === null ? null : ((await this.deps.repository.cases.findById(resolution.caseId))?.targetMonth ?? null),
       displayName: "",
       format,
       sha256,
