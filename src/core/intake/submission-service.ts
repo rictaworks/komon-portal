@@ -4,7 +4,7 @@ import type { CaseService } from "../cases/case-service";
 import { TERMINAL_CASE_STATES } from "../cases/case-state";
 import type { Actor, UserActor } from "../model/actor";
 import { conflict, invalidInput, invalidState, notFound } from "../model/errors";
-import { CASE_STATES, type FileRecord, type Id, type RejectionReason, type YearMonth } from "../model/types";
+import { CASE_STATES, type DocType, type FileRecord, type Id, type RejectionReason, type YearMonth } from "../model/types";
 import type { FileStore } from "../ports/file-store";
 import type { IdGenerator } from "../ports/id-generator";
 import type { Repository } from "../ports/repository";
@@ -29,6 +29,9 @@ const TARGET_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FILE_TARGET = "file";
 const CLIENT_TARGET = "client";
 const OPEN_CASE_STATES = CASE_STATES.filter((state) => !TERMINAL_CASE_STATES.includes(state));
+/** The monthly case of instructions.md 1.6.7: the only kind a submission moves on (MaterialsReceived). */
+const MONTHLY_CASE_KIND = "Payroll";
+/** Two rows are enough to tell "exactly one" from "several". */
 const CASE_PAGE = { limit: 2, offset: 0 };
 
 export interface SubmissionServiceDeps {
@@ -48,7 +51,7 @@ export class SubmissionService {
 
   async submit(actor: UserActor, input: SubmissionInput, incoming: IncomingFile): Promise<SubmissionResult> {
     await this.requireReach(actor, "client.submit", input.clientId);
-    await this.validate(input);
+    const docType = await this.validate(input);
     const validation = validateFile(incoming);
     if (!validation.ok) {
       await this.deps.metrics.record("submission.rejected", input.clientId, { reason: validation.reason });
@@ -65,7 +68,7 @@ export class SubmissionService {
     await this.deps.repository.files.insertBatch({ id: batchId, uploadedBy: actor.userId, hintClientId: input.clientId, createdAt: now });
     const id = this.deps.ids.newId();
     const draft: FileRecord = {
-      id, batchId, direction: "Inbound", clientId: input.clientId, caseId: await this.matchingCase(input),
+      id, batchId, direction: "Inbound", clientId: input.clientId, caseId: await this.matchingCase(input, docType),
       docTypeId: input.docTypeId, targetMonth: input.targetMonth, displayName: "", format: validation.format, sha256,
       sizeBytes: incoming.bytes.length, r2Key: `${FILE_KEY_PREFIX}${id}`, state: "Submitted", trashedFrom: null,
       resolutionMethod: null, reviewReason: null, reviewDetail: null, unmatchedArrivalNumber: null, typeSource: null,
@@ -157,17 +160,23 @@ export class SubmissionService {
     return updated;
   }
 
-  /** Linked only when exactly one open payroll case of that month exists; otherwise staff decide. */
-  private async matchingCase(input: SubmissionInput): Promise<Id | null> {
+  /**
+   * Linked only when the document type names a case type and exactly one open monthly (Payroll) case of
+   * that client, that month and that case type exists (instructions.md 1.6.7); otherwise staff decide.
+   */
+  private async matchingCase(input: SubmissionInput, docType: DocType): Promise<Id | null> {
+    if (docType.caseTypeId === null) {
+      return null;
+    }
     const candidates = await this.deps.repository.cases.list(
-      { clientId: input.clientId, kind: "Payroll", targetMonth: input.targetMonth, states: OPEN_CASE_STATES },
+      { clientId: input.clientId, caseTypeId: docType.caseTypeId, kind: MONTHLY_CASE_KIND, targetMonth: input.targetMonth, states: OPEN_CASE_STATES },
       CASE_PAGE,
     );
-    const [only] = candidates;
-    return candidates.length === 1 && only !== undefined ? only.id : null;
+    const [only, ...others] = candidates;
+    return only === undefined || others.length > 0 ? null : only.id;
   }
 
-  private async validate(input: SubmissionInput): Promise<void> {
+  private async validate(input: SubmissionInput): Promise<DocType> {
     if (!TARGET_MONTH.test(input.targetMonth)) {
       throw invalidInput("target_month");
     }
@@ -175,6 +184,7 @@ export class SubmissionService {
     if (docType === null || docType.direction === "Outbound") {
       throw invalidInput("doc_type");
     }
+    return docType;
   }
 
   private async duplicate(actor: UserActor, existing: FileRecord | null): Promise<SubmissionResult> {

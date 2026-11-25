@@ -72,6 +72,10 @@ export class D1CaseRepository implements CaseRepository {
       where.clauses.push("c.client_id = ?");
       where.params.push(filter.clientId);
     }
+    if (filter.caseTypeId !== undefined) {
+      where.clauses.push("c.case_type_id = ?");
+      where.params.push(filter.caseTypeId);
+    }
     if (filter.kind !== undefined) {
       where.clauses.push("t.kind = ?");
       where.params.push(filter.kind);
@@ -176,7 +180,10 @@ export class D1CaseRepository implements CaseRepository {
 }
 
 function toDocType(row: Row): DocType {
-  return { id: text(row.id), label: text(row.label), shortCode: text(row.short_code), direction: text(row.direction) as DocTypeDirection };
+  return {
+    id: text(row.id), label: text(row.label), shortCode: text(row.short_code), direction: text(row.direction) as DocTypeDirection,
+    caseTypeId: textOrNull(row.case_type_id),
+  };
 }
 
 export class D1DocTypeRepository implements DocTypeRepository {
@@ -195,8 +202,8 @@ export class D1DocTypeRepository implements DocTypeRepository {
   async insert(docType: DocType): Promise<boolean> {
     try {
       await this.db
-        .prepare("INSERT INTO doc_types (id, label, short_code, direction) VALUES (?, ?, ?, ?)")
-        .bind(docType.id, docType.label, docType.shortCode, docType.direction)
+        .prepare("INSERT INTO doc_types (id, label, short_code, direction, case_type_id) VALUES (?, ?, ?, ?, ?)")
+        .bind(docType.id, docType.label, docType.shortCode, docType.direction, docType.caseTypeId)
         .run();
       return true;
     } catch (error) {
@@ -210,8 +217,8 @@ export class D1DocTypeRepository implements DocTypeRepository {
   async update(docType: DocType): Promise<boolean> {
     try {
       const result = await this.db
-        .prepare("UPDATE doc_types SET label = ?, short_code = ?, direction = ? WHERE id = ?")
-        .bind(docType.label, docType.shortCode, docType.direction, docType.id)
+        .prepare("UPDATE doc_types SET label = ?, short_code = ?, direction = ?, case_type_id = ? WHERE id = ?")
+        .bind(docType.label, docType.shortCode, docType.direction, docType.caseTypeId, docType.id)
         .run();
       return changes(result) === 1;
     } catch (error) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copyText, parseJevThreshold } from "../../src/app/web/pages/office/settings-input";
+import { copyText, docTypeUpdate, parseJevThreshold, submissionCaseTypeOptions, takesSubmissions } from "../../src/app/web/pages/office/settings-input";
 
 describe("parseJevThreshold", () => {
   it("accepts every value the server accepts, including one off the 0.01 grid", () => {
@@ -46,5 +46,34 @@ describe("copyText", () => {
         "link",
       ),
     ).toBe(false);
+  });
+});
+
+describe("the case type of a document type", () => {
+  const caseTypes = [
+    { id: "t1", kind: "Procedure" as const, label: "Social insurance" },
+    { id: "t2", kind: "Payroll" as const, label: "Monthly payroll" },
+    { id: "t3", kind: "Other" as const, label: "Consulting" },
+    { id: "t4", kind: "Payroll" as const, label: "Bonus payroll" },
+  ];
+  const existing = { id: "d1", label: "Payroll material", shortCode: "KYUYO", direction: "Inbound" as const, caseTypeId: null };
+
+  it("offers no case type first and then the monthly (Payroll) case types only", () => {
+    expect(submissionCaseTypeOptions(caseTypes, "None")).toEqual([
+      { value: "", label: "None" },
+      { value: "t2", label: "Monthly payroll" },
+      { value: "t4", label: "Bonus payroll" },
+    ]);
+  });
+
+  it("builds the update of an existing document type: everything kept, the case type set or removed", () => {
+    expect(docTypeUpdate(existing, "t2")).toEqual({ label: "Payroll material", shortCode: "KYUYO", direction: "Inbound", caseTypeId: "t2" });
+    expect(docTypeUpdate({ ...existing, caseTypeId: "t2" }, "")).toEqual({ label: "Payroll material", shortCode: "KYUYO", direction: "Inbound", caseTypeId: null });
+  });
+
+  it("is chosen only for document types a client can submit", () => {
+    expect(takesSubmissions({ ...existing, direction: "Inbound" })).toBe(true);
+    expect(takesSubmissions({ ...existing, direction: "Both" })).toBe(true);
+    expect(takesSubmissions({ ...existing, direction: "Outbound" })).toBe(false);
   });
 });

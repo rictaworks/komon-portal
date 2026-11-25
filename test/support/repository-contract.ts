@@ -209,6 +209,8 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.cases.list({ clientId: company.id, states: ["Open"] }, PAGE)).toEqual([]);
       expect(await repo.cases.list({ clientId: company.id, states: [] }, PAGE)).toEqual([]);
       expect(await repo.cases.list({ clientId: company.id, kind: "Payroll" }, PAGE)).toEqual([]);
+      expect((await repo.cases.list({ clientId: company.id, caseTypeId: first.caseTypeId }, PAGE)).map((row) => row.id)).toEqual([first.id]);
+      expect(await repo.cases.list({ clientId: company.id, caseTypeId: id("t-other") }, PAGE)).toEqual([]);
       expect((await repo.cases.list({ clientId: company.id, kind: "Procedure", targetMonth: first.targetMonth, states: ["Closed"] }, PAGE)).map((row) => row.id)).toEqual([first.id]);
     });
 
@@ -245,7 +247,18 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.docTypes.insert(type)).toBe(true);
       expect(await repo.docTypes.insert(docType({ id: id("d2"), shortCode: code }))).toBe(false);
       expect(await repo.docTypes.update({ ...type, label: "Renamed", direction: "Both" })).toBe(true);
-      expect(await repo.docTypes.findById(type.id)).toMatchObject({ label: "Renamed", direction: "Both" });
+      expect(await repo.docTypes.findById(type.id)).toMatchObject({ label: "Renamed", direction: "Both", caseTypeId: null });
+      const linkedTo = caseType({ id: id("t-doc"), kind: "Payroll", label: "Payroll" });
+      await repo.caseTypes.insert(linkedTo);
+      expect(await repo.docTypes.update({ ...type, caseTypeId: linkedTo.id })).toBe(true);
+      expect(await repo.docTypes.findById(type.id)).toMatchObject({ caseTypeId: linkedTo.id });
+      expect((await repo.docTypes.list()).find((row) => row.id === type.id)?.caseTypeId).toBe(linkedTo.id);
+      const linkedCode = `${code}L`.slice(-16);
+      expect(await repo.docTypes.insert(docType({ id: id("d3"), shortCode: linkedCode, caseTypeId: linkedTo.id }))).toBe(true);
+      expect(await repo.docTypes.findById(id("d3"))).toMatchObject({ caseTypeId: linkedTo.id });
+      await expect(repo.docTypes.insert(docType({ id: id("d4"), shortCode: `${code}M`.slice(-16), caseTypeId: id("no-such-type") }))).rejects.toThrow(/FOREIGN KEY/);
+      expect(await repo.docTypes.update({ ...type, caseTypeId: null })).toBe(true);
+      expect(await repo.docTypes.findById(type.id)).toMatchObject({ caseTypeId: null });
       expect(await repo.docTypes.update(docType({ id: id("missing"), shortCode: `${code}X`.slice(0, 16) }))).toBe(false);
       await repo.docTypes.insertRule(docRule({ id: id("r1"), docTypeId: type.id, keyword: "kettei" }));
       expect((await repo.docTypes.listRules()).filter((rule) => rule.docTypeId === type.id)).toEqual([{ id: id("r1"), docTypeId: type.id, keyword: "kettei" }]);

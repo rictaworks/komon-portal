@@ -63,7 +63,7 @@ describe("core services on D1 and R2", () => {
     await repository.caseTypes.insert(caseType({ id: "flow-t1", kind: "Procedure" }));
     await repository.caseTypes.insert(caseType({ id: "flow-t2", kind: "Payroll", label: "Payroll" }));
     await repository.docTypes.insert(docType({ id: "flow-d1", shortCode: "FSHAHO" }));
-    await repository.docTypes.insert(docType({ id: "flow-d3", shortCode: "FKYUYO", direction: "Inbound" }));
+    await repository.docTypes.insert(docType({ id: "flow-d3", shortCode: "FKYUYO", direction: "Inbound", caseTypeId: "flow-t2" }));
     await repository.docTypes.insertRule(docRule({ id: "flow-r1", docTypeId: "flow-d1", keyword: "shaho" }));
   });
 
