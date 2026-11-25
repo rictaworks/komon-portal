@@ -32,6 +32,7 @@ const FILE_TARGET = "file";
 const CLIENT_TARGET = "client";
 const OPEN_CASE_STATES = CASE_STATES.filter((state) => !TERMINAL_CASE_STATES.includes(state));
 const CASE_PAGE_SIZE = 50;
+const CASE_READ_ATTEMPTS = 3;
 
 /** Master names are compared without regard to letter case, character width or surrounding spaces. */
 function comparableName(label: string): string {
@@ -42,6 +43,8 @@ function comparableName(label: string): string {
  * The master data holds no relation between document types and case types, so "the type matches"
  * (instructions.md 1.6.7) is decided on their names: a case type fits a document type when the
  * document type's name contains the case type's name ("Payroll material" fits "Payroll").
+ * This is a naming convention, not a rule of the requirement: an unrelated name that happens to contain
+ * the case type's name fits too, and a related one that does not contain it never does.
  */
 function fitsDocType(caseType: CaseType, docType: DocType): boolean {
   const caseName = comparableName(caseType.label);
@@ -77,12 +80,14 @@ export class SubmissionService {
     if (own !== undefined) {
       return this.duplicate(actor, own);
     }
+    // Resolved before anything is written, so a failure here leaves no batch behind.
+    const caseId = await this.matchingCase(input, docType);
     const now = this.deps.writer.now();
     const batchId = this.deps.ids.newId();
     await this.deps.repository.files.insertBatch({ id: batchId, uploadedBy: actor.userId, hintClientId: input.clientId, createdAt: now });
     const id = this.deps.ids.newId();
     const draft: FileRecord = {
-      id, batchId, direction: "Inbound", clientId: input.clientId, caseId: await this.matchingCase(input, docType),
+      id, batchId, direction: "Inbound", clientId: input.clientId, caseId,
       docTypeId: input.docTypeId, targetMonth: input.targetMonth, displayName: "", format: validation.format, sha256,
       sizeBytes: incoming.bytes.length, r2Key: `${FILE_KEY_PREFIX}${id}`, state: "Submitted", trashedFrom: null,
       resolutionMethod: null, reviewReason: null, reviewDetail: null, unmatchedArrivalNumber: null, typeSource: null,
@@ -179,36 +184,64 @@ export class SubmissionService {
    * with none or several, staff decide.
    */
   private async matchingCase(input: SubmissionInput, docType: DocType): Promise<Id | null> {
+    const candidates = await this.openMonthlyCases(input);
+    if (candidates === null) {
+      return null;
+    }
     const fitByCaseType = new Map<Id, boolean>();
     const fitting: CaseRecord[] = [];
-    for (let offset = 0; ; offset += CASE_PAGE_SIZE) {
-      const page = await this.deps.repository.cases.list(
-        { clientId: input.clientId, kind: "Payroll", targetMonth: input.targetMonth, states: OPEN_CASE_STATES },
-        { limit: CASE_PAGE_SIZE, offset },
-      );
-      for (const candidate of page) {
-        let fits = fitByCaseType.get(candidate.caseTypeId);
-        if (fits === undefined) {
-          const caseType = await this.deps.repository.caseTypes.findById(candidate.caseTypeId);
-          if (caseType === null) {
-            throw new Error(`case ${candidate.id} refers to a case type that does not exist`);
-          }
-          fits = fitsDocType(caseType, docType);
-          fitByCaseType.set(candidate.caseTypeId, fits);
+    for (const candidate of candidates) {
+      let fits = fitByCaseType.get(candidate.caseTypeId);
+      if (fits === undefined) {
+        const caseType = await this.deps.repository.caseTypes.findById(candidate.caseTypeId);
+        if (caseType === null) {
+          throw new Error(`case ${candidate.id} refers to a case type that does not exist`);
         }
-        if (fits) {
-          fitting.push(candidate);
-        }
+        fits = fitsDocType(caseType, docType);
+        fitByCaseType.set(candidate.caseTypeId, fits);
       }
-      if (fitting.length > 1) {
-        return null;
-      }
-      if (page.length < CASE_PAGE_SIZE) {
-        break;
+      if (fits) {
+        fitting.push(candidate);
       }
     }
-    const [only] = fitting;
-    return only === undefined ? null : only.id;
+    const [only, ...others] = fitting;
+    return only === undefined || others.length > 0 ? null : only.id;
+  }
+
+  /**
+   * Every open payroll case of that client and month, each one once. The pages overlap by one row: when a page
+   * does not start with the last row of the page before, the listing changed while it was read (a case was
+   * registered or closed) and rows may have been repeated or skipped, so it is read again from the start.
+   * Null when it keeps changing; "exactly one" cannot be established then and staff decide.
+   */
+  private async openMonthlyCases(input: SubmissionInput): Promise<CaseRecord[] | null> {
+    for (let attempt = 0; attempt < CASE_READ_ATTEMPTS; attempt += 1) {
+      const found = new Map<Id, CaseRecord>();
+      let previousLast: Id | null = null;
+      let moved = false;
+      for (let offset = 0; ; offset += CASE_PAGE_SIZE - 1) {
+        const page = await this.deps.repository.cases.list(
+          { clientId: input.clientId, kind: "Payroll", targetMonth: input.targetMonth, states: OPEN_CASE_STATES },
+          { limit: CASE_PAGE_SIZE, offset },
+        );
+        if (previousLast !== null && page[0]?.id !== previousLast) {
+          moved = true;
+          break;
+        }
+        for (const row of page) {
+          found.set(row.id, row);
+        }
+        const last = page.at(-1);
+        if (last === undefined || page.length < CASE_PAGE_SIZE) {
+          break;
+        }
+        previousLast = last.id;
+      }
+      if (!moved) {
+        return [...found.values()];
+      }
+    }
+    return null;
   }
 
   private async validate(input: SubmissionInput): Promise<DocType> {

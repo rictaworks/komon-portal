@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { systemActor } from "../../../src/core/model/actor";
+import type { CaseRecord } from "../../../src/core/model/types";
 import { caseRecord, caseType, docType, fileRecord, memberActor, staffActor } from "../../support/builders";
 import { intakeKit, type IntakeKit } from "../../support/intake-kit";
 import { PDF, PNG, text } from "./fixtures";
@@ -8,6 +9,8 @@ const staff = staffActor();
 const member = memberActor(["c1"], "u-member");
 const input = { clientId: "c1", docTypeId: "d3", targetMonth: "2026-11" };
 const attendanceInput = { ...input, docTypeId: "d4" };
+
+const CASE_PAGE_SIZE = 50;
 
 function pdf(marker: string): Uint8Array {
   return new Uint8Array([...PDF, ...text(marker)]);
@@ -20,6 +23,26 @@ function addAttendanceTypes(kit: IntakeKit): void {
     caseType({ id: "t4", kind: "Payroll", label: "Year-end adjustment" }),
   );
   kit.repo.docTypeRows.push(docType({ id: "d4", shortCode: "KINTAI", label: "Attendance record", direction: "Inbound" }));
+}
+
+/** Open payroll cases of a type no document type fits. */
+function otherCases(count: number, prefix = "other"): CaseRecord[] {
+  return Array.from({ length: count }, (_unused, index) => caseRecord({ id: `${prefix}-${index}`, caseTypeId: "t4", sequence: index + 1 }));
+}
+
+/** Runs `change` after each of the first `times` readings of a page of cases, as a concurrent request would. */
+function changeWhileReadingCases(kit: IntakeKit, times: number, change: (call: number) => void): () => number {
+  const original = kit.repo.cases.list;
+  let calls = 0;
+  kit.repo.cases.list = async (filter, page) => {
+    const listed = await original(filter, page);
+    calls += 1;
+    if (calls <= times) {
+      change(calls);
+    }
+    return listed;
+  };
+  return () => calls;
 }
 
 describe("SubmissionService.submit", () => {
@@ -141,7 +164,7 @@ describe("SubmissionService.submit", () => {
   it("leaves the case to staff when several open cases fit the document type among many cases of that month", async () => {
     addAttendanceTypes(kit);
     kit.repo.caseRows.push(
-      ...Array.from({ length: 60 }, (_unused, index) => caseRecord({ id: `other-${index}`, caseTypeId: "t4", sequence: index + 1 })),
+      ...otherCases(120),
       caseRecord({ id: "k1", caseTypeId: "t3" }),
       caseRecord({ id: "k2", caseTypeId: "t3", sequence: 2 }),
     );
@@ -152,11 +175,59 @@ describe("SubmissionService.submit", () => {
   it("finds the single fitting case among many cases of that month", async () => {
     addAttendanceTypes(kit);
     kit.repo.caseRows.push(
-      ...Array.from({ length: 60 }, (_unused, index) => caseRecord({ id: `other-${index}`, caseTypeId: "t4", sequence: index + 1 })),
+      ...otherCases(120),
       caseRecord({ id: "k1", caseTypeId: "t3" }),
     );
     const result = await kit.submissions.submit(member, attendanceInput, { fileName: "a.pdf", bytes: pdf("a") });
     expect(result.outcome === "stored" && result.file.caseId).toBe("k1");
+  });
+
+  it("counts a case once when a case registered during the read moves it onto the next page", async () => {
+    addAttendanceTypes(kit);
+    // k1 is the last row of the first page; a new first row pushes it to the start of the second page.
+    kit.repo.caseRows.push(...otherCases(CASE_PAGE_SIZE - 1), caseRecord({ id: "k1", caseTypeId: "t3" }), ...otherCases(30, "late"));
+    changeWhileReadingCases(kit, 1, () => {
+      kit.repo.caseRows.unshift(caseRecord({ id: "new", caseTypeId: "t4", sequence: 900 }));
+    });
+    const result = await kit.submissions.submit(member, attendanceInput, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBe("k1");
+  });
+
+  it("does not miss a second fitting case when a case closed during the read moves it onto the page already read", async () => {
+    addAttendanceTypes(kit);
+    // k2 is the first row of the second page; closing a row of the first page pulls it back onto the first page.
+    kit.repo.caseRows.push(
+      caseRecord({ id: "k1", caseTypeId: "t3" }), ...otherCases(CASE_PAGE_SIZE - 1),
+      caseRecord({ id: "k2", caseTypeId: "t3", sequence: 2 }), ...otherCases(30, "late"),
+    );
+    changeWhileReadingCases(kit, 1, () => {
+      const closed = kit.repo.caseRows.find((row) => row.id === "other-0");
+      if (closed === undefined) throw new Error("setup");
+      closed.state = "Closed";
+    });
+    const result = await kit.submissions.submit(member, attendanceInput, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBeNull();
+    expect(kit.repo.caseRows.find((row) => row.id === "k1")?.state).toBe("Open");
+  });
+
+  it("leaves the case to staff when the cases of that month keep changing while they are read", async () => {
+    addAttendanceTypes(kit);
+    kit.repo.caseRows.push(...otherCases(CASE_PAGE_SIZE - 1), caseRecord({ id: "k1", caseTypeId: "t3" }), ...otherCases(30, "late"));
+    const readings = changeWhileReadingCases(kit, Number.POSITIVE_INFINITY, (call) => {
+      kit.repo.caseRows.unshift(caseRecord({ id: `new-${call}`, caseTypeId: "t4", sequence: 900 + call }));
+    });
+    const result = await kit.submissions.submit(member, attendanceInput, { fileName: "a.pdf", bytes: pdf("a") });
+    expect(result.outcome === "stored" && result.file.caseId).toBeNull();
+    expect(readings()).toBe(6);
+  });
+
+  it("writes nothing when a case of that month refers to a case type that cannot be found", async () => {
+    kit.repo.caseRows.push(caseRecord({ id: "k1", caseTypeId: "t2" }));
+    kit.repo.caseTypes.findById = async () => null;
+    await expect(kit.submissions.submit(member, input, { fileName: "a.pdf", bytes: pdf("a") })).rejects.toThrow("case k1 refers to a case type that does not exist");
+    expect(kit.repo.batchRows).toEqual([]);
+    expect(kit.repo.fileRows).toEqual([]);
+    expect(kit.store.objects.size).toBe(0);
   });
 
   it("compares the type names without regard to letter case, character width or surrounding spaces", async () => {
