@@ -78,6 +78,11 @@ export class ClassificationService {
     }
     const results: ClassificationResult[] = [];
     const candidates = await this.candidates(request.items, results);
+    // One threshold applies to the whole request, so the report never mixes two rules.
+    const threshold = (await this.deps.repository.settings.get()).jevThreshold;
+    // Every batch is answered and every answer checked before anything is written. A provider error or a
+    // bad answer therefore leaves all files as they were, as the contract says.
+    const decided: { candidate: Candidate; answer: ClassifierAnswer; model: string }[] = [];
     let model: string | null = null;
     for (let start = 0; start < candidates.length; start += CLASSIFIER_BATCH_SIZE) {
       const batch = candidates.slice(start, start + CLASSIFIER_BATCH_SIZE);
@@ -90,8 +95,11 @@ export class ClassificationService {
       });
       model = response.model;
       for (const candidate of batch) {
-        results.push(await this.apply(actor, candidate.file, this.answerFor(candidate.file.id, response.answers, choices), response.model));
+        decided.push({ candidate, answer: this.answerFor(candidate.file.id, response.answers, choices), model: response.model });
       }
+    }
+    for (const entry of decided) {
+      results.push(await this.apply(actor, entry.candidate.file, entry.answer, entry.model, threshold));
     }
     return { model, results };
   }
@@ -137,8 +145,7 @@ export class ClassificationService {
     return answer;
   }
 
-  private async apply(actor: Actor, file: FileRecord, answer: ClassifierAnswer, model: string): Promise<ClassificationResult> {
-    const threshold = (await this.deps.repository.settings.get()).jevThreshold;
+  private async apply(actor: Actor, file: FileRecord, answer: ClassifierAnswer, model: string, threshold: number): Promise<ClassificationResult> {
     const accepted = answer.confidence >= threshold;
     const change: FileRecord = accepted
       ? { ...file, docTypeId: answer.choiceId, typeSource: "Jev", jevModel: model, jevConfidence: answer.confidence, jevCandidateDocTypeId: null }
