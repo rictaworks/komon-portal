@@ -418,8 +418,10 @@
       "memberCounts": {
         "none": "No members",
         "active": "{active} active",
+        "activeReadOnly": "{active} active, read only",
         "pending": "{pending} pending",
-        "both": "{active} active, {pending} pending"
+        "both": "{active} active, {pending} pending",
+        "bothReadOnly": "{active} active, {pending} pending, read only"
       },
       "previousPage": "Previous",
       "nextPage": "Next",
@@ -436,6 +438,8 @@
       "details": "Details",
       "save": "Save",
       "members": "Members and invitations",
+      "pendingOne": "1 person is waiting for approval",
+      "pendingMany": "{count} people are waiting for approval",
       "invite": "Issue invitation",
       "inviteIssued": "Invitation issued. The link is shown once.",
       "inviteLink": "Invitation link",
