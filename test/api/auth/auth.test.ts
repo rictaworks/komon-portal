@@ -83,7 +83,7 @@ describe("authentication", () => {
 
     it("returns to the requested page but never to another site", async () => {
       expect((await googleSignIn(kit.client(), "/documents?month=2026-11")).headers.get("Location")).toBe("/documents?month=2026-11");
-      for (const target of ["//evil.example", "https://evil.example/", "/\\evil.example", "evil", "/api/auth/logout"]) {
+      for (const target of ["//evil.example", "https://evil.example/", "/\\evil.example", "evil", "/api/auth/logout", "/\t/evil.example", "/\n/evil.example", "/./api/x"]) {
         expect((await googleSignIn(kit.client(), target)).headers.get("Location")).toBe("/");
       }
     });
@@ -100,6 +100,22 @@ describe("authentication", () => {
       expect(failed.status).toBe(400);
       expect(await failed.json()).toEqual({ error: "sign_in_failed" });
       expect(failed.headers.getSetCookie().some((value) => value.startsWith("__Host-kp_session="))).toBe(false);
+    });
+
+    it("ends the previous session when the same browser signs in again", async () => {
+      await googleSignIn();
+      const first = client.cookies.get("__Host-kp_session") ?? "";
+      await googleSignIn();
+      const rows = await env.DB.prepare("SELECT id FROM sessions").all<{ id: string }>();
+      expect(rows.results.map((row) => row.id)).not.toContain(first);
+    });
+
+    it("records a state-changing request denied for a bad origin when the actor is signed in", async () => {
+      await googleSignIn();
+      const denied = await client.call("POST", "/api/auth/logout", { origin: "https://evil.example" });
+      expect(denied.status).toBe(403);
+      const rows = await env.DB.prepare("SELECT action, result FROM audit_log WHERE action = 'request.bad_origin'").all<{ action: string; result: string }>();
+      expect(rows.results).toEqual([{ action: "request.bad_origin", result: "denied" }]);
     });
 
     it("cannot replay a used state", async () => {
