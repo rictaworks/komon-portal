@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { webAnalyticsEnabled } from "../../web-analytics";
 import { useT } from "../../i18n";
 
 const JEV_LINKS = [
@@ -46,6 +47,7 @@ export function Notices() {
         <h2 className="subtitle">{t("notices.privacy.title")}</h2>
         <p>{t("notices.privacy.identity")}</p>
         <p>{t("notices.privacy.cookies")}</p>
+        {webAnalyticsEnabled(document) ? <p>{t("notices.privacy.pageViews")}</p> : null}
         <p>{t("notices.privacy.individualNumber")}</p>
       </section>
       <section className="card card--pad">
