@@ -114,7 +114,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | GET | `/api/me` | The signed-in user with memberships and CSRF token. 401 when signed out. | session |
 | GET | `/api/office/audit` | The audit log, newest first (append-only). | owner |
 | POST | `/api/office/batches` | Starts an upload batch, optionally with a destination client hint. | staff |
-| POST | `/api/office/batches/{batchId}/files` | Uploads one file into a batch and returns its result (stored, duplicate or rejected). | staff |
+| POST | `/api/office/batches/{batchId}/files` | Uploads one file into a batch and returns its result (stored, duplicate or rejected). With a Jev key in the X-Jev-Key header, Jev sets the type when the rules leave it open. | staff |
 | POST | `/api/office/case-types` | Adds a case type. | staff |
 | PUT | `/api/office/case-types/{id}` | Updates a case type. | staff |
 | GET | `/api/office/cases` | Cases, optionally for one client; `truncated` tells whether more match than the page holds. | staff |

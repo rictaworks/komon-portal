@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { IntakeJev } from "../../../core/intake/classification-service";
 import { MAX_FILE_BYTES } from "../../../core/intake/limits";
 import { invalidInput, notFound } from "../../../core/model/errors";
 import {
@@ -8,6 +9,7 @@ import type { FileFilter } from "../../../core/ports/repository";
 import { AFTER_WITHDRAW, MAX_INCIDENTS } from "../../../core/publish/publish-service";
 import { requireAuth, type AppBindings, type AppContext } from "../context";
 import { optionalBoolean, optionalString, readJson, requireArray, requireEnum, requireInteger, requireString, type JsonObject } from "../input";
+import { JEV_KEY_HEADER } from "./classify";
 import { fileView, incidentView, Lookups, pageOf } from "./views";
 
 const MAX_PUBLISH_ITEMS = 200;
@@ -116,6 +118,19 @@ export async function uploadedFile(c: AppContext): Promise<UploadedFile> {
   return { fileName: file.name, bytes: new Uint8Array(await file.arrayBuffer()), form };
 }
 
+/**
+ * The browser's Jev key for this upload, when it holds one. The key travels in the header and the fixed model name
+ * in the form beside the file. Neither is stored; the core checks them only when Jev is asked.
+ */
+function jevOf(c: AppContext, form: FormData): IntakeJev | null {
+  const credential = c.req.header(JEV_KEY_HEADER);
+  if (credential === undefined) {
+    return null;
+  }
+  const model = form.get("model");
+  return { model: typeof model === "string" ? model : "", credential };
+}
+
 function version(body: JsonObject): number {
   return requireInteger(body, "version");
 }
@@ -133,7 +148,8 @@ export function fileRoutes(): Hono<AppBindings> {
     const { actor } = requireAuth(c);
     const services = c.get("services");
     await services.guard.require(actor, "staff.operate", { type: "batch", id: c.req.param("batchId") });
-    const result = await services.intake.accept(actor, c.req.param("batchId"), await uploadedFile(c));
+    const upload = await uploadedFile(c);
+    const result = await services.intake.accept(actor, c.req.param("batchId"), upload, jevOf(c, upload.form));
     if (result.outcome === "stored") {
       return c.json({ outcome: "stored", published: result.published, file: await fileView(new Lookups(services), result.file, []) }, 201);
     }

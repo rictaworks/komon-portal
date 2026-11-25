@@ -981,7 +981,7 @@
         "tags": [
           "office"
         ],
-        "description": "Active office staff (Owner or Staff). Denials look like not found.",
+        "description": "Active office staff (Owner or Staff). Denials look like not found. The browser's Jev key may be sent in the X-Jev-Key header with a fixed model name in the form field model; Jev then sets the type when the rules leave it open and its confidence reaches the office threshold. The key is never stored.",
         "x-access": "staff",
         "responses": {
           "default": {
@@ -999,6 +999,15 @@
             "name": "batchId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Jev-Key",
+            "in": "header",
+            "required": false,
+            "description": "The user's own Jev key, for this request only. Optional.",
             "schema": {
               "type": "string"
             }
