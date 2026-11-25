@@ -2,6 +2,8 @@ import { CaseService } from "../../src/core/cases/case-service";
 import { FileWriter } from "../../src/core/intake/file-writer";
 import { IntakeService, type AutoPublisher } from "../../src/core/intake/intake-service";
 import { ReviewService } from "../../src/core/intake/review-service";
+import { SubmissionService } from "../../src/core/intake/submission-service";
+import { TrashService } from "../../src/core/intake/trash-service";
 import type { Notifier } from "../../src/core/ports/notifier";
 import { PublishService } from "../../src/core/publish/publish-service";
 import { ViewService } from "../../src/core/publish/view-service";
@@ -35,6 +37,8 @@ export interface IntakeKit extends CoreKit {
   notifier: RecordingNotifier;
   publish: PublishService;
   view: ViewService;
+  submissions: SubmissionService;
+  trash: TrashService;
   repo: MemoryRepository;
   store: MemoryFileStore;
   writer: FileWriter;
@@ -70,5 +74,7 @@ export function intakeKit(): IntakeKit {
   const notifier = new RecordingNotifier();
   const publish = new PublishService({ repository: repo, writer, cases, notifier, ...kit });
   const view = new ViewService({ repository: repo, store, writer, cases, ...kit });
-  return { ...kit, repo, store, writer, cases, autoPublisher, intake, review, notifier, publish, view };
+  const submissions = new SubmissionService({ repository: repo, store, writer, cases, ...kit });
+  const trash = new TrashService({ repository: repo, store, writer, cases, ...kit });
+  return { ...kit, repo, store, writer, cases, autoPublisher, intake, review, notifier, publish, view, submissions, trash };
 }
