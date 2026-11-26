@@ -487,4 +487,18 @@ export class D1MetricRepository implements MetricRepository {
       .first<{ found: number }>();
     return row !== null;
   }
+
+  async appendUnlessSince(event: MetricEvent, since: Date): Promise<boolean> {
+    // One statement: the existence check and the insert cannot interleave with another request's.
+    const result = await this.db
+      .prepare(
+        "INSERT INTO metric_events (id, name, client_id, actor_kind, actor_user_id, attributes, occurred_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM metric_events WHERE name = ? AND actor_user_id IS ? AND client_id IS ? AND occurred_at >= ?)",
+      )
+      .bind(
+        event.id, event.name, event.clientId, event.actorKind, event.actorUserId, JSON.stringify(event.attributes), toIso(event.occurredAt),
+        event.name, event.actorUserId, event.clientId, toIso(since),
+      )
+      .run();
+    return changes(result) === 1;
+  }
 }

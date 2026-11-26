@@ -174,7 +174,7 @@ Counts and averages only: no names, file names or identifiers.
 
 How the figures are measured:
 
-- Each measurement event stores who caused it as a kind (staff, client member or the system) and, for a person, the internal user ID. A staff member is active in a week when at least one event of that week was caused by them; reading screens alone records no event. Events recorded before migration `0005_metric_actor.sql` name no actor, so earlier weeks show no staff.
+- Each measurement event stores who caused it as a kind (staff, client member or the system) and, for a person, the internal user ID. A staff member is active in a week when at least one event of that week was caused by them. Any signed-in request to the API counts, read or change: the first such request of each client and ISO week records one `active` event (for a client member, one per active membership; for staff, one without a client), and later requests in that week record nothing. Events recorded before migration `0005_metric_actor.sql` name no actor, so earlier weeks show no staff.
 - The daily job records, once per case, each submitted case whose retrieval deadline is 10 days away or less (or has passed). The summary groups the cases recorded in the window by the state they are in now, so a case still shown as `Submitted` is still waiting for its document.
 - The daily job stores the outcome of each run as an event. The summary shows the most recent run with its time, whether it completed or which steps failed, and its counts; it is a record to read, not an alert.
 
