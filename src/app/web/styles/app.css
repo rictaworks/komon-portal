@@ -40,7 +40,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* Layout: office */
 .office { display: flex; flex-wrap: wrap; min-height: 100vh; }
-.sidebar { flex: 1 1 220px; max-width: 240px; background: var(--navy); color: var(--white); padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
+.sidebar { flex: 1 1 220px; max-width: 240px; height: 100vh; position: sticky; top: 0; overflow-y: auto; background: var(--navy); color: var(--white); padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
 .sidebar__brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; font-family: var(--font-display); font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: var(--white); text-decoration: none; }
 .sidebar__brand svg { color: var(--sky); }
 .sidebar__nav { display: flex; flex-direction: column; gap: 4px; }
@@ -57,8 +57,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .content { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; }
 .page { padding: 32px 40px; display: flex; flex-direction: column; gap: 20px; }
 @media (max-width: 720px) {
-  .sidebar { max-width: none; }
+  .sidebar { max-width: none; height: auto; position: static; overflow: visible; }
   .page { padding: 20px 16px; }
+}
+/* Below 780px (sidebar 220px basis + content 560px basis) the row wraps: the sidebar keeps its own row, so it must not be a full viewport tall. */
+@media (max-width: 779px) {
+  .sidebar { height: auto; position: static; overflow: visible; }
 }
 
 /* Layout: client (single column, phone first) */
@@ -140,6 +144,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 720px) {
   .banner--fixed { padding: 12px 16px; }
 }
+/* card--open lets the banner stick, so the banner rounds its own top corners to match the card */
+.card--open > .banner--fixed:first-child { border-radius: var(--radius) var(--radius) 0 0; }
 .stat { padding: 20px; background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; color: var(--navy); text-decoration: none; }
 .stat__value { font-family: var(--font-display); font-size: 44px; font-weight: 800; line-height: 1; }
 

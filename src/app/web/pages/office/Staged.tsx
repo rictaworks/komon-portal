@@ -107,8 +107,8 @@ export function Staged() {
             const ids = group.files.map((file) => file.id);
             const all = ids.every((id) => checked.has(id));
             return (
-              <div key={group.client.id} className="card">
-                <label className="banner">
+              <div key={group.client.id} className="card card--open">
+                <label className="banner banner--fixed">
                   <input type="checkbox" checked={all} aria-label={t("office.staged.selectAll", { client: group.client.code })} onChange={(event) => toggle(ids, event.target.checked)} />
                   <span className="banner__code">{group.client.code}</span>
                   <span className="banner__name">{group.client.corporateName}</span>

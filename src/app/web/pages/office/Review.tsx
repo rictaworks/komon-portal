@@ -55,8 +55,8 @@ function Decision({ file, onDone }: { file: FileView; onDone(): void }) {
   };
 
   return (
-    <section className="card" aria-label={t("office.review.decision")}>
-      <div className="banner">
+    <section className="card card--open" aria-label={t("office.review.decision")}>
+      <div className="banner banner--fixed">
         <span className="banner__label">{t("office.review.assigningTo")}</span>
         <span className="banner__code">{chosen?.code ?? t("office.review.noClient")}</span>
         <span className="banner__name">{chosen?.corporateName ?? ""}</span>
