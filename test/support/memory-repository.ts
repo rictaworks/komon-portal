@@ -458,6 +458,13 @@ export class MemoryRepository implements Repository {
         this.fileRows.filter((row) => this.matchesFile(row, filter)).sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime()),
         page,
       ),
+    listByPublication: async (filter: FileFilter, page: Page): Promise<FileRecord[]> =>
+      paged(
+        this.fileRows
+          .filter((row) => this.matchesFile(row, filter))
+          .sort((a, b) => (b.publishedAt?.getTime() ?? 0) - (a.publishedAt?.getTime() ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+        page,
+      ),
     listIncidents: async (page: Page): Promise<FileRecord[]> =>
       paged(
         this.fileRows
