@@ -105,8 +105,13 @@ export function settingsRoutes(): Hono<AppBindings> {
     const services = c.get("services");
     await services.guard.require(actor, "audit.read", { type: "audit", id: "log" });
     const lookups = new Lookups(services);
+    // Only the entries about one client, when a client is named. An empty value is refused, never read as no client.
+    const clientId = c.req.query("clientId");
+    if (clientId === "") {
+      throw invalidInput("clientId");
+    }
     const items = [];
-    for (const entry of await services.repository.audit.list(pageOf(c))) {
+    for (const entry of await services.repository.audit.list(pageOf(c), clientId === undefined ? {} : { clientId })) {
       items.push({ ...entry, actorDisplayName: await lookups.displayName(entry.actorUserId) });
     }
     return c.json({ items });

@@ -431,7 +431,7 @@
     },
     "/api/office/audit": {
       "get": {
-        "summary": "The audit log, newest first (append-only).",
+        "summary": "The audit log, newest first (append-only), one page at a time, optionally for one client.",
         "tags": [
           "office"
         ],
@@ -444,7 +444,41 @@
           "200": {
             "description": "Success."
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Entries per page, from 1 to 200. Defaults to 50. Another value is refused with 400 invalid_input.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Index of the first entry shown, counted from the newest. Defaults to 0. A negative or malformed value is refused with 400 invalid_input.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "clientId",
+            "in": "query",
+            "required": false,
+            "description": "Lists only the entries about this client: the client itself, and its cases and files as they are stored now. An empty value is refused with 400 invalid_input.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/api/office/cases": {

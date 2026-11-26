@@ -535,6 +535,53 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await entriesForCase()).toEqual([id("ka-ok")]);
     });
 
+    it("lists the audit entries about one client, newest first, with paging", async () => {
+      const actor = await seedUser("audit-actor", { officeRole: "Staff", officeStatus: "Active" });
+      const mine = await seedClient("audit-mine");
+      const other = await seedClient("audit-other");
+      const myCase = await seedCase(mine.id, "audit-case");
+      const otherCase = await seedCase(other.id, "audit-other-case");
+      const myFile = await seedFile(mine.id, "audit-file");
+      const member = await seedUser("audit-member");
+      const issuer = await seedUser("audit-issuer", { officeRole: "Owner", officeStatus: "Active" });
+      const myMembership = { id: id("al-membership-mine"), userId: member.id, clientId: mine.id, status: "Pending" as const, approvedBy: null, approvedAt: null, createdAt: T0 };
+      const otherMembership = { ...myMembership, id: id("al-membership-other"), clientId: other.id };
+      await repo.memberships.insert(myMembership);
+      await repo.memberships.insert(otherMembership);
+      const invitationFor = (label: string, targetType: "Client" | "Office", clientId: string | null) => ({
+        id: id(label), codeHash: sha(label), targetType, clientId, officeRole: targetType === "Office" ? ("Staff" as const) : null,
+        issuedBy: issuer.id, expiresAt: new Date("2099-06-01T00:00:00.000Z"), status: "Issued" as const, redeemedBy: null, redeemedAt: null, createdAt: T0,
+      });
+      await repo.invitations.insert(invitationFor("al-invitation-mine", "Client", mine.id));
+      await repo.invitations.insert(invitationFor("al-invitation-other", "Client", other.id));
+      await repo.invitations.insert(invitationFor("al-invitation-office", "Office", null));
+      const entryFor = (label: string, targetType: string, targetId: string, occurredAt: string) => ({
+        id: id(label), actorUserId: actor.id, action: "audit.test", targetType, targetId, result: "ok" as const, occurredAt: new Date(occurredAt),
+      });
+      // Appended oldest first. Entries about the client itself, its cases, files, memberships and client invitations are linked to it; the others are not.
+      await repo.audit.append(entryFor("al-client", "client", mine.id, "2099-01-01T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-case", "case", myCase.id, "2099-01-02T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-file", "file", myFile.id, "2099-01-03T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-membership", "membership", myMembership.id, "2099-01-04T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-invitation", "invitation", id("al-invitation-mine"), "2099-01-05T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-other-client", "client", other.id, "2099-01-06T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-other-case", "case", otherCase.id, "2099-01-07T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-other-membership", "membership", otherMembership.id, "2099-01-08T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-other-invitation", "invitation", id("al-invitation-other"), "2099-01-09T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-office-invitation", "invitation", id("al-invitation-office"), "2099-01-10T00:00:00.000Z"));
+      await repo.audit.append(entryFor("al-unlinked", "file", id("al-no-such-file"), "2099-01-11T00:00:00.000Z"));
+
+      const ids = async (page: { limit: number; offset: number }, clientId: string) => (await repo.audit.list(page, { clientId })).map((row) => row.id);
+      expect(await ids(PAGE, mine.id)).toEqual([id("al-invitation"), id("al-membership"), id("al-file"), id("al-case"), id("al-client")]);
+      expect(await ids({ limit: 2, offset: 0 }, mine.id)).toEqual([id("al-invitation"), id("al-membership")]);
+      expect(await ids({ limit: 2, offset: 2 }, mine.id)).toEqual([id("al-file"), id("al-case")]);
+      expect(await ids({ limit: 2, offset: 4 }, mine.id)).toEqual([id("al-client")]);
+      expect(await ids(PAGE, other.id)).toEqual([id("al-other-invitation"), id("al-other-membership"), id("al-other-case"), id("al-other-client")]);
+      expect(await ids(PAGE, id("al-unknown-client"))).toEqual([]);
+      expect(await ids(PAGE, other.id)).not.toContain(id("al-unlinked"));
+      expect(await ids(PAGE, other.id)).not.toContain(id("al-office-invitation"));
+    });
+
     it("appends audit entries and metric events", async () => {
       const actor = await seedUser();
       await repo.audit.append({ id: id("l1"), actorUserId: actor.id, action: "file.publish", targetType: "file", targetId: id("f"), result: "ok", occurredAt: new Date("2099-01-01T00:00:00.000Z") });

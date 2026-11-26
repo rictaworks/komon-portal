@@ -112,7 +112,7 @@ The office Worker's API. Each operation's access rule is in the OpenAPI file; a 
 | GET | `/api/health` | Liveness check. | none |
 | POST | `/api/invitations/redeem` | Uses an invitation code. Requires a Turnstile token and a signed-in user. | session |
 | GET | `/api/me` | The signed-in user with memberships and CSRF token. 401 when signed out. | session |
-| GET | `/api/office/audit` | The audit log, newest first (append-only). | owner |
+| GET | `/api/office/audit` | The audit log, newest first (append-only), one page at a time (`limit`, `offset`); `clientId` keeps the entries about one client. | owner |
 | POST | `/api/office/batches` | Starts an upload batch, optionally with a destination client hint. | staff |
 | POST | `/api/office/batches/{batchId}/files` | Uploads one file into a batch and returns its result (stored, duplicate or rejected). With a Jev key in the X-Jev-Key header, Jev sets the type when the rules leave it open. | staff |
 | POST | `/api/office/case-types` | Adds a case type. | staff |
