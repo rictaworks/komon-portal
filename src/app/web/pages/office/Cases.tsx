@@ -11,7 +11,7 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
-import { caseSteps, freshestCase, parseArrivalNumbers } from "./case-progress";
+import { caseSteps, freshestCase, parseArrivalNumbers, stepNoteKey } from "./case-progress";
 import { useSettings } from "./useMasterData";
 
 const CASE_KINDS = ["Procedure", "Payroll", "Other"] as const;
@@ -60,7 +60,8 @@ function RetrievalCell({ record }: { record: CaseView }) {
   return <span className="muted">{t(record.submittedOn === null ? "office.cases.notSubmitted" : "office.cases.retrieved")}</span>;
 }
 
-function Steps({ record }: { record: CaseView }) {
+/** The progress steps of a case: a date, a "not recorded" note, or the state note of a current or pending step. */
+export function Steps({ record }: { record: CaseView }) {
   const t = useT();
   if (record.caseType === null) {
     return null;
@@ -68,14 +69,19 @@ function Steps({ record }: { record: CaseView }) {
   const steps = caseSteps(record.caseType.kind, record.state, record.submittedOn);
   return (
     <ol className="steps" aria-label={t("office.cases.steps")}>
-      {steps.map((step, index) => (
-        <li key={step.state} className={`step${step.status === "pending" ? "" : ` step--${step.status}`}`} aria-current={step.status === "current" ? "step" : undefined}>
-          <span className="step__number">{index + 1}</span>
-          <span>{t(`caseState.${step.state}`)}</span>
-          {step.state === "Submitted" && record.submittedOn !== null ? <span className="step__note">{formatDay(record.submittedOn)}</span> : null}
-          {step.status === "unconfirmed" ? <span className="step__note">{t(step.state === "Submitted" ? "office.cases.notSubmitted" : "office.cases.stepNotRecorded")}</span> : null}
-        </li>
-      ))}
+      {steps.map((step, index) => {
+        const dated = step.state === "Submitted" && record.submittedOn !== null;
+        const noteKey = stepNoteKey(step);
+        return (
+          <li key={step.state} className={`step${step.status === "pending" ? "" : ` step--${step.status}`}`} aria-current={step.status === "current" ? "step" : undefined}>
+            <span className="step__number">{index + 1}</span>
+            <span>{t(`caseState.${step.state}`)}</span>
+            {dated ? <span className="step__note">{formatDay(record.submittedOn)}</span> : null}
+            {step.status === "unconfirmed" ? <span className="step__note">{t(step.state === "Submitted" ? "office.cases.notSubmitted" : "office.cases.stepNotRecorded")}</span> : null}
+            {noteKey !== null && !dated ? <span className="step__note">{t(noteKey)}</span> : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }
