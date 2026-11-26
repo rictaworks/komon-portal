@@ -13,10 +13,11 @@ import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
 import {
-  cancelledByClient, caseLabel, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_DIRECTIONS, SHELF_VIEWS, shelfActions,
-  shelfCountPath, shelfDirectionOf, shelfListPath, shownCounts, shownList, sortedReaders, WITHDRAW_REASON_CHOICES, withdrawReasonOf,
+  CASE_PAGE, cancelledByClient, caseLabel, casePagePath, docTypesFor, firstView, linkTarget, loadAllPages, monthFilter, SHELF_DIRECTIONS, SHELF_VIEWS,
+  shelfActions, shelfCountPath, shelfDirectionOf, shelfListPath, shownCounts, shownList, sortedReaders, WITHDRAW_REASON_CHOICES, withdrawReasonOf,
   type ShelfCounts, type ShelfDirection, type ShelfList, type ShelfView,
 } from "./shelf-view";
+import { rowsOutside } from "./list-limit";
 import { useSettings } from "./useMasterData";
 
 const WITHDRAW_NEXT = ["NeedsReview", "Trashed"] as const;
@@ -24,7 +25,6 @@ const WITHDRAW_NEXT = ["NeedsReview", "Trashed"] as const;
 const TERMINAL_STATES: readonly string[] = ["Closed", "Cancelled"];
 /** Clients are read page by page to the end; this is the largest page the server gives. */
 const CLIENT_PAGE = 200;
-const CASE_LIMIT = 200;
 
 /** Entry of the menu: choose the client whose shelf to open. */
 export function ShelfChooser() {
@@ -112,8 +112,9 @@ export function Shelf() {
     return { key: countKey, totals: { Outbound: outbound.total, Inbound: inbound.total } };
   }, [countKey]);
   const countsShown = shownCounts(counts.data, countKey, counts.error);
-  const cases = useLoad<{ items: CaseView[] }>(
-    () => api.get<{ items: CaseView[] }>(`/api/office/cases?clientId=${encodeURIComponent(clientId)}&limit=${CASE_LIMIT}`),
+  // Every case of the client is read page by page, so the filter and the link picker never miss one beyond the first page.
+  const cases = useLoad<CaseView[]>(
+    () => loadAllPages(async (offset) => (await api.get<{ items: CaseView[] }>(casePagePath({ clientId, offset }))).items, CASE_PAGE),
     [clientId],
   );
   const settings = useSettings();
@@ -202,7 +203,7 @@ export function Shelf() {
     return <div className="page">{client.error === null ? <Loading /> : <ErrorNotice error={client.error} />}</div>;
   }
 
-  const caseRecords = cases.data?.items ?? [];
+  const caseRecords = cases.data ?? [];
   const caseNames = new Map(caseRecords.map((record) => [record.id, caseLabel(record)]));
   const caseName = (file: FileView): string => {
     if (file.caseId === null) {
@@ -270,7 +271,11 @@ export function Shelf() {
               {t(`office.shelf.tab.${value}`)}
             </button>
           ))}
-          {shown === null ? null : <span className="muted">{t("office.shelf.count", { count: shown.total })}</span>}
+          {shown === null ? null : (
+            <span className="muted">
+              {rowsOutside(items.length, shown.total) === 0 ? t("office.shelf.count", { count: shown.total }) : t("office.shownOf", { shown: items.length, total: shown.total })}
+            </span>
+          )}
         </nav>
         {shown === null && files.error === null ? <Loading /> : null}
         {shown !== null && items.length === 0 ? <p className="card empty">{t("office.shelf.empty")}</p> : null}
