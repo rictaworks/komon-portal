@@ -34,6 +34,17 @@ export function caseSteps(kind: CaseKindName, state: string, submittedOn: string
 }
 
 /**
+ * The locale key of the note a step shows while it is current or pending. Done and unconfirmed
+ * steps carry their own notes instead, so they have none here.
+ */
+export function stepNoteKey(step: CaseStep): string | null {
+  if (step.status === "done" || step.status === "unconfirmed") {
+    return null;
+  }
+  return `caseStepNote.${step.state}`;
+}
+
+/**
  * The newest known copy of the selected case: the loaded one, or the answer of the last
  * change when that is newer. Null when neither belongs to the selection.
  */

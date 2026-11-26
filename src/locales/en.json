@@ -178,6 +178,14 @@
     "Closed": "Closed",
     "Cancelled": "Cancelled"
   },
+  "caseStepNote": {
+    "Open": "Registered",
+    "Submitted": "Waiting for filing",
+    "MaterialsReceived": "Waiting for materials",
+    "DocumentReceived": "Waiting for official document",
+    "Delivered": "Published to client",
+    "Confirmed": "Opened by client"
+  },
   "deadline": {
     "ok": "{days} days left",
     "caution": "Caution: {days} days left",
