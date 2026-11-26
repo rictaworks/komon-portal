@@ -116,12 +116,26 @@ test("a document goes from intake through review and publishing to the client, a
     await form.getByLabel("Target month").fill("2026-10");
     await form.locator('input[type="file"]').setInputFiles(CLIENT_FILES);
     await expect(form.getByRole("list", { name: "Chosen files" }).getByRole("listitem")).toHaveCount(CLIENT_FILES.length);
+    // The chosen files show their position and size, never the name the member chose them by.
+    await expect(form.getByRole("list", { name: "Chosen files" }).getByText("hours.csv")).toHaveCount(0);
     await form.getByRole("button", { name: "Send to office" }).click();
     const results = member.getByRole("region", { name: "Results" });
     await expect(results.getByText("The file was sent to the office.")).toHaveCount(CLIENT_FILES.length);
     await expect(results.getByText("Not sent")).toHaveCount(0);
     const sent = member.getByRole("region", { name: "Sent files" });
     await expect(sent.getByRole("article").filter({ hasText: INBOUND_TYPE.label })).toHaveCount(CLIENT_FILES.length);
+  });
+
+  await test.step("a file sent again is named as the copy already held, which the member can open", async () => {
+    const form = member.getByRole("form", { name: "Send files to the office" });
+    await form.getByLabel("Type", { exact: true }).selectOption({ label: INBOUND_TYPE.label });
+    await form.getByLabel("Target month").fill("2026-10");
+    await form.locator('input[type="file"]').setInputFiles(CLIENT_FILES.slice(0, 1));
+    await form.getByRole("button", { name: "Send to office" }).click();
+    const results = member.getByRole("region", { name: "Results" });
+    await expect(results.getByText(new RegExp(`already held for your company as ${DEMO_CLIENT.code}_`))).toHaveCount(1);
+    await expect(results.getByRole("button", { name: "Open the existing copy" })).toHaveCount(1);
+    await expect(results.getByText("hours.csv")).toHaveCount(0);
   });
 
   await test.step("the office sees the sent files on the client's shelf", async () => {

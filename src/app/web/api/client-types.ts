@@ -68,4 +68,8 @@ export interface NotificationStatus {
 export interface SendResult {
   outcome: "stored" | "duplicate" | "rejected";
   reason?: string;
+  /** Given with a duplicate when the member may open the existing copy. */
+  existingFileId?: string | null;
+  /** The display name of the existing copy, given with a duplicate when the member may see it. */
+  existingDisplayName?: string | null;
 }

@@ -21,8 +21,8 @@ export interface SubmissionInput {
 
 export type SubmissionResult =
   | { outcome: "rejected"; reason: RejectionReason }
-  /** `existingFileId` is given only when the submitter is allowed to see that file. */
-  | { outcome: "duplicate"; existingFileId: Id | null }
+  /** `existingFileId` and `existingDisplayName` are given only when the submitter is allowed to see that file. */
+  | { outcome: "duplicate"; existingFileId: Id | null; existingDisplayName: string | null }
   | { outcome: "stored"; file: FileRecord };
 
 const TARGET_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -190,7 +190,10 @@ export class SubmissionService {
 
   private async duplicate(actor: UserActor, existing: FileRecord | null): Promise<SubmissionResult> {
     const visible = existing !== null && this.deps.guard.allows(actor, "file.read", { file: existing });
-    return { outcome: "duplicate", existingFileId: visible && existing !== null ? existing.id : null };
+    if (!visible || existing === null) {
+      return { outcome: "duplicate", existingFileId: null, existingDisplayName: null };
+    }
+    return { outcome: "duplicate", existingFileId: existing.id, existingDisplayName: existing.displayName };
   }
 
   /** A client the member cannot reach is reported exactly like a client that does not exist. */

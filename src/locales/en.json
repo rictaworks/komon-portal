@@ -22,7 +22,7 @@
     "none": "None",
     "yes": "Yes",
     "no": "No",
-    "individualNumberNotice": "Do not upload documents that contain an Individual Number (My Number)."
+    "individualNumberNotice": "Do not send documents that contain an Individual Number (My Number)."
   },
   "signIn": {
     "title": "Sign in",
@@ -676,6 +676,9 @@
       "title": "Send Files",
       "type": "Type",
       "duplicate": "This content is already held for your company, so it was not sent again.",
+      "duplicateOf": "This content is already held for your company as {name}, so it was not sent again.",
+      "fileNumber": "File {number}",
+      "openExisting": "Open the existing copy",
       "rejected": "The file was not sent. {reason}"
     }
   },

@@ -6,7 +6,8 @@ import { ApiError } from "../../src/app/web/api/client";
 import type { ClientCase, ClientDocument, Submission } from "../../src/app/web/api/client-types";
 import { Pager } from "../../src/app/web/components/Pager";
 import { englishTranslator, I18nContext } from "../../src/app/web/i18n";
-import { CaseRow, DocumentCard, NewDocumentsHeading, SendResults, SubmissionCard, UnreadRow } from "../../src/app/web/pages/client/ClientRows";
+import { IndividualNumberNotice } from "../../src/app/web/components/Notice";
+import { CaseRow, ChosenFiles, DocumentCard, NewDocumentsHeading, SendResults, SubmissionCard, UnreadRow } from "../../src/app/web/pages/client/ClientRows";
 
 function ignore(): void {
   // The markup test never presses a button.
@@ -108,29 +109,77 @@ describe("sent file card", () => {
   });
 });
 
-describe("send results", () => {
-  it("gives each file its own result with its reason", () => {
-    const html = render(createElement(SendResults, {
+describe("chosen files after a partial send", () => {
+  it("shows a file that stays chosen under the same number as its result row", () => {
+    // Files a, b, c were chosen as 1, 2, 3. b was rejected, so it stays chosen with its number.
+    const english = englishTranslator();
+    const chosen = render(createElement(ChosenFiles, { busy: false, onRemove: ignore, files: [{ key: "2", number: 2, size: 1024 }] }));
+    const results = render(createElement(SendResults, {
+      busy: false,
+      onOpenExisting: ignore,
       rows: [
-        { key: "1", fileName: "one.pdf", outcome: { outcome: "stored" } },
-        { key: "2", fileName: "two.exe", outcome: { outcome: "rejected", reason: "UnsupportedFormat" } },
-        { key: "3", fileName: "three.pdf", outcome: { outcome: "duplicate" } },
-        { key: "4", fileName: "four.pdf", outcome: { outcome: "failed", error: new ApiError(0, "network_error", null) } },
+        { key: "1", position: 1, size: 2048, outcome: { outcome: "stored" } },
+        { key: "2", position: 2, size: 1024, outcome: { outcome: "rejected", reason: "UnsupportedFormat" } },
+        { key: "3", position: 3, size: 512, outcome: { outcome: "stored" } },
+      ],
+    }));
+    expect(textOf(chosen)).toBe(`File 2 1.0 KB ${english("client.send.remove")}`);
+    const rejected = [...results.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textOf(match[1] ?? ""))[1];
+    expect(rejected?.startsWith("File 2 ")).toBe(true);
+  });
+});
+
+describe("send results", () => {
+  it("gives each file its own result with its position, its size and its reason", () => {
+    const html = render(createElement(SendResults, {
+      busy: false,
+      onOpenExisting: ignore,
+      rows: [
+        { key: "1", position: 1, size: 2048, outcome: { outcome: "stored" } },
+        { key: "2", position: 2, size: 1024, outcome: { outcome: "rejected", reason: "UnsupportedFormat" } },
+        { key: "3", position: 3, size: 512, outcome: { outcome: "duplicate" } },
+        { key: "4", position: 4, size: 4096, outcome: { outcome: "failed", error: new ApiError(0, "network_error", null) } },
       ],
     }));
     const english = englishTranslator();
     const items = [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textOf(match[1] ?? ""));
     expect(items).toEqual([
-      `one.pdf ${english("client.send.storedReason")} ${english("client.send.result.stored")}`,
-      `two.exe ${english("client.send.rejected", { reason: english("rejection.UnsupportedFormat") })} ${english("client.send.result.notSent")}`,
-      `three.pdf ${english("client.send.duplicate")} ${english("client.send.result.notSent")}`,
-      `four.pdf ${english("errors.network_error._")} ${english("client.send.result.notSent")}`,
+      `File 1 2.0 KB ${english("client.send.storedReason")} ${english("client.send.result.stored")}`,
+      `File 2 1.0 KB ${english("client.send.rejected", { reason: english("rejection.UnsupportedFormat") })} ${english("client.send.result.notSent")}`,
+      `File 3 512 B ${english("client.send.duplicate")} ${english("client.send.result.notSent")}`,
+      `File 4 4.0 KB ${english("errors.network_error._")} ${english("client.send.result.notSent")}`,
     ]);
     expect(badges(html).map((badge) => [badge.tone, badge.icon])).toEqual([["published", true], ["danger", true], ["neutral", true], ["danger", true]]);
   });
 
+  it("names the existing copy of a duplicate and offers to open it when the member may open it", () => {
+    const html = render(createElement(SendResults, {
+      busy: false,
+      onOpenExisting: ignore,
+      rows: [{ key: "1", position: 2, size: 2048, outcome: { outcome: "duplicate", existingFileId: "f9", existingDisplayName: "C0031_KYUYO_20261120_01" } }],
+    }));
+    expect(textOf(html)).toContain("This content is already held for your company as C0031_KYUYO_20261120_01, so it was not sent again.");
+    expect(html).toMatch(/<button type="button" class="button button--small"[^>]*><svg[\s\S]*?<\/svg>Open the existing copy<\/button>/);
+  });
+
+  it("names no file and offers no link when the member may not see the existing copy", () => {
+    const html = render(createElement(SendResults, {
+      busy: false,
+      onOpenExisting: ignore,
+      rows: [{ key: "1", position: 1, size: 2048, outcome: { outcome: "duplicate", existingFileId: null, existingDisplayName: null } }],
+    }));
+    expect(textOf(html)).toContain(englishTranslator()("client.send.duplicate"));
+    expect(html).not.toContain("<button");
+  });
+
   it("renders nothing before anything was sent", () => {
-    expect(render(createElement(SendResults, { rows: [] }))).toBe("");
+    expect(render(createElement(SendResults, { rows: [], busy: false, onOpenExisting: ignore }))).toBe("");
+  });
+});
+
+describe("Individual Number notice", () => {
+  it("reads as the mock asks", () => {
+    expect(textOf(render(createElement(IndividualNumberNotice)))).toBe("Do not send documents that contain an Individual Number (My Number).");
   });
 });
 
