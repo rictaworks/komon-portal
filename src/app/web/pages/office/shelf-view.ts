@@ -1,5 +1,6 @@
 import type { CaseView, DocTypeRecord, FileView, Reader } from "../../api/office-types";
 import { formatMonth } from "../../components/format";
+import { LIST_LIMIT } from "./list-limit";
 
 /** Rules of the Shelf screen that do not need React: what is listed, and which actions a row offers. */
 
@@ -35,7 +36,6 @@ export function shelfDirectionOf(search: string): ShelfDirection {
   return new URLSearchParams(search).get(DIRECTION_PARAMETER) === "Inbound" ? "Inbound" : "Outbound";
 }
 
-const LIST_LIMIT = 200;
 const COUNT_LIMIT = 1;
 
 export interface ShelfQuery {
@@ -169,6 +169,14 @@ export function monthFilter(text: string): { valid: boolean; value: string } {
     return { valid: true, value: "" };
   }
   return MONTH_TEXT.test(text) ? { valid: true, value: text } : { valid: false, value: "" };
+}
+
+/** The most cases one request of the Shelf case picker asks for: the largest page the API serves. */
+export const CASE_PAGE = 200;
+
+/** One page of a client's cases, for the case filter and the case link picker. */
+export function casePagePath(query: { clientId: string; offset: number }): string {
+  return `/api/office/cases?clientId=${encodeURIComponent(query.clientId)}&limit=${CASE_PAGE}&offset=${query.offset}`;
 }
 
 /** Reads a paged list to its end, so a long list is never cut off at the page size. */

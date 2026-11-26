@@ -209,6 +209,7 @@
       "trash": "Move to trash"
     },
     "allClients": "All clients",
+    "shownOf": "Showing {shown} of {total} documents. The rest are not in this list.",
     "clientPicker": {
       "hint": "Type part of a client code or name.",
       "searching": "Searching for clients.",
@@ -328,7 +329,8 @@
       "check": "Check the client list before publishing. Published documents become visible to the client.",
       "selectAll": "Select all for {client}",
       "selectedOf": "{selected} of {total} selected",
-      "sendBack": "Send back to intake",
+      "outside": "{count} more staged document(s) are not in this list. They are not published or sent back with it.",
+      "sendBack": "Send back to Review",
       "lastPublish": "Last publish",
       "published": "Published {name}.",
       "publishedWithWarning": "Published {name}, with a warning. See the audit log.",

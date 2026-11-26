@@ -12,6 +12,7 @@ import { useLoad } from "../../components/useLoad";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
 import { Loading } from "../common/Status";
+import { LIST_LIMIT, rowsOutside } from "./list-limit";
 import { useSettings } from "./useMasterData";
 
 const REASONS = ["ConflictingKeys", "MultipleArrivalNumbers", "NoKey", "HintMismatch", "ClientNotActive", "CaseCancelled", "DuplicateAcrossClients", "Withdrawn", "Restored", "SentBack"] as const;
@@ -120,17 +121,20 @@ export function Review() {
   const [client, setClient] = useState<ClientRef | null>(null);
   const clientId = client?.id ?? "";
   const [selected, setSelected] = useState<string | null>(null);
-  const files = useLoad<FileView[]>(
-    async () => (await api.get<{ items: FileView[] }>(`/api/office/files?direction=Outbound&states=NeedsReview&limit=200${reason === "" ? "" : `&reviewReason=${reason}`}${clientId === "" ? "" : `&clientId=${clientId}`}`)).items,
+  const files = useLoad<{ items: FileView[]; total: number }>(
+    () => api.get<{ items: FileView[]; total: number }>(`/api/office/files?direction=Outbound&states=NeedsReview&limit=${LIST_LIMIT}${reason === "" ? "" : `&reviewReason=${reason}`}${clientId === "" ? "" : `&clientId=${clientId}`}`),
     [reason, clientId],
   );
-  const current = files.data?.find((file) => file.id === selected) ?? files.data?.[0] ?? null;
+  const rows = files.data?.items ?? null;
+  // Rows the server holds beyond the list. They are not shown, so they cannot be opened from here.
+  const outside = files.data === null || rows === null ? 0 : rowsOutside(rows.length, files.data.total);
+  const current = rows?.find((file) => file.id === selected) ?? rows?.[0] ?? null;
 
   useEffect(() => {
-    if (files.data !== null && !files.data.some((file) => file.id === selected)) {
-      setSelected(files.data[0]?.id ?? null);
+    if (rows !== null && !rows.some((file) => file.id === selected)) {
+      setSelected(rows[0]?.id ?? null);
     }
-  }, [files.data, selected]);
+  }, [rows, selected]);
 
   return (
     <div className="page">
@@ -140,13 +144,14 @@ export function Review() {
         <ClientPicker label={t("office.columns.client")} emptyLabel={t("office.allClients")} value={client} onChange={setClient} status={null} compact />
       </div>
       <ErrorNotice error={files.error} />
+      {outside === 0 || files.data === null ? null : <p className="muted">{t("office.shownOf", { shown: rows?.length ?? 0, total: files.data.total })}</p>}
       {files.loading && files.data === null ? <Loading /> : null}
-      {files.data !== null && files.data.length === 0 ? <p className="card empty">{t("office.review.empty")}</p> : null}
+      {rows !== null && rows.length === 0 ? <p className="card empty">{t("office.review.empty")}</p> : null}
       {current === null ? null : (
         <div className="split">
           <section className="card split__main" aria-label={t("office.review.list")}>
             <ul className="list">
-              {(files.data ?? []).map((file) => (
+              {(rows ?? []).map((file) => (
                 <li key={file.id}>
                   <button type="button" className={`list__item list__button${file.id === current.id ? " list__button--selected" : ""}`} onClick={() => setSelected(file.id)}>
                     <span className="grow stack stack--tight">

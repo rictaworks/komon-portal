@@ -1,8 +1,7 @@
+import { LIST_LIMIT } from "./list-limit";
+
 /** The type filter value for documents that have no type yet. */
 export const UNCLASSIFIED = "unclassified";
-
-/** The most staged documents listed at once. */
-const LIST_LIMIT = 200;
 
 export interface StagedFilter {
   /** Empty lists the documents of every client. */
