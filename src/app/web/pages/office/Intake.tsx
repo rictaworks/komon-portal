@@ -9,7 +9,7 @@ import { Badge, FileStateBadge } from "../../components/StatusBadge";
 import { useAction } from "../../components/useAction";
 import { useT } from "../../i18n";
 import { useSession } from "../../session";
-import { loadJevSettings } from "./jev-settings";
+import { attachJev, loadJevSettings } from "./jev-settings";
 import { canClassify, clientCellText, decidedByText, fileOfResult, hasJevKey, isNotStored, reasonText, type RowResult } from "./intake-view";
 
 interface Row {
@@ -38,6 +38,8 @@ export function Intake() {
       return;
     }
     setClassified(null);
+    // The key is read once per batch. It is sent with each upload only while this browser holds one.
+    const jev = loadJevSettings();
     void upload.run(async () => {
       const batch = await api.post<{ id: string }>("/api/office/batches", hint === null ? {} : { hintClientId: hint.id });
       setRows([]);
@@ -46,9 +48,10 @@ export function Intake() {
         setProgress({ done: index, total: files.length });
         const form = new FormData();
         form.set("file", file, file.name);
+        const headers = attachJev(form, jev);
         let row: Row;
         try {
-          row = { key: `${batch.id}-${index}`, fileName: file.name, result: await api.upload<IntakeResult>(`/api/office/batches/${batch.id}/files`, form) };
+          row = { key: `${batch.id}-${index}`, fileName: file.name, result: await api.upload<IntakeResult>(`/api/office/batches/${batch.id}/files`, form, headers) };
         } catch (error) {
           row = { key: `${batch.id}-${index}`, fileName: file.name, result: { outcome: "failed", error } };
         }

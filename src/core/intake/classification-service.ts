@@ -38,6 +38,21 @@ export interface ClassificationReport {
   results: ClassificationResult[];
 }
 
+/** A Jev key and model that came with one upload. Used for that one provider call and never stored. */
+export interface IntakeJev {
+  model: string;
+  /** The user's own key. */
+  credential: string;
+}
+
+/** Jev's answer for a file that is being accepted. `accepted` is false when the confidence is below the office's threshold. */
+export interface IntakeJudgement {
+  model: string;
+  choiceId: Id;
+  confidence: number;
+  accepted: boolean;
+}
+
 /** Questions sent in one provider call (instructions.md 1.9). */
 export const CLASSIFIER_BATCH_SIZE = 50;
 export const MAX_CLASSIFICATION_ITEMS = 500;
@@ -106,6 +121,39 @@ export class ClassificationService {
       results.push(await this.apply(actor, entry.candidate.file, entry.answer, entry.model, threshold));
     }
     return { model, results };
+  }
+
+  /**
+   * Lets Jev choose the type of a file that is being accepted and is not stored yet (instructions.md 1.6.2 step 6).
+   * Called only when the rules did not decide the type. Null means the file name has no usable words, so no call is made.
+   * A provider error is thrown: nothing has been stored at that point, so the upload fails as a whole.
+   */
+  async judgeAtIntake(fileId: Id, fileName: string, request: IntakeJev): Promise<IntakeJudgement | null> {
+    if (!isFixedModelName(request.model)) {
+      throw invalidInput("model");
+    }
+    if (request.credential === "") {
+      throw invalidInput("credential");
+    }
+    const docTypes = await this.deps.repository.docTypes.list();
+    const choices = docTypes.filter((docType) => docType.direction !== "Inbound");
+    if (choices.length === 0) {
+      throw invalidState("no_doc_types");
+    }
+    const setting = await this.deps.repository.settings.get();
+    const clientCodes = (await this.deps.repository.clients.listAll()).map((client) => client.code);
+    const title = classifierTitle(fileName, { arrivalNumberPattern: setting.arrivalNumberPattern, clientCodes, vocabulary: await this.vocabulary(docTypes) });
+    if (title === "") {
+      return null;
+    }
+    const response = await this.deps.classifier.choose({
+      model: request.model,
+      credential: request.credential,
+      items: [{ id: fileId, text: title }],
+      choices: choices.map((docType) => ({ id: docType.id, label: docType.label })),
+    });
+    const answer = this.answerFor(fileId, response.answers, choices);
+    return { model: response.model, choiceId: answer.choiceId, confidence: answer.confidence, accepted: answer.confidence >= setting.jevThreshold };
   }
 
   /** The office's own words for its documents: type labels, short codes and rule keywords. Nothing else is ever sent. */

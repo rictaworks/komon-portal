@@ -127,6 +127,7 @@ export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Se
       : null;
   const notifier = overrides.notifier ?? (vapid === null ? new SilentNotifier() : new WebPushNotifier(pushSubscriptions, vapid, fetcher, clock));
   const publish = new PublishService({ ...shared, cases, notifier });
+  const classification = new ClassificationService({ ...shared, classifier: overrides.classifier ?? new JevClassifier(fetcher) });
   return {
     config, repository, store, clock, ids, policy, guard, audit, metrics,
     actors: new ActorLoader(repository),
@@ -136,7 +137,7 @@ export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Se
     deadlines: new DeadlineCalculator(clock),
     cases,
     publish,
-    intake: new IntakeService({ ...shared, cases, autoPublisher: publish }),
+    intake: new IntakeService({ ...shared, cases, autoPublisher: publish, judge: classification }),
     review: new ReviewService({ ...shared, cases }),
     view: new ViewService({ ...shared, cases }),
     submissions: new SubmissionService({ ...shared, cases }),
@@ -147,7 +148,7 @@ export function buildServices(env: AppEnv, overrides: AdapterOverrides = {}): Se
     dashboard: new DashboardQueries(env.DB),
     pushSubscriptions,
     pushConfigured: vapid !== null,
-    classification: new ClassificationService({ ...shared, classifier: overrides.classifier ?? new JevClassifier(fetcher) }),
+    classification,
     setup: new SetupService({ repository, policy, audit, setupToken: config.setupToken }),
   };
 }

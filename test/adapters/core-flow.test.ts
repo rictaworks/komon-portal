@@ -49,7 +49,13 @@ describe("core services on D1 and R2", () => {
     const shared = { repository, store, guard, audit, metrics, ids, clock, writer };
     cases = new CaseService(shared);
     publish = new PublishService({ ...shared, cases, notifier });
-    intake = new IntakeService({ ...shared, cases, autoPublisher: publish });
+    // This flow never sends a Jev key, so Jev must not be asked at acceptance.
+    const judge = {
+      judgeAtIntake: async (): Promise<never> => {
+        throw new Error("Jev was called without a key");
+      },
+    };
+    intake = new IntakeService({ ...shared, cases, autoPublisher: publish, judge });
     review = new ReviewService({ ...shared, cases });
     view = new ViewService({ ...shared, cases });
     submissions = new SubmissionService({ ...shared, cases });

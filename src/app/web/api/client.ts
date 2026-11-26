@@ -50,8 +50,8 @@ export class ApiClient {
     return this.request<T>("DELETE", path, { body });
   }
 
-  upload<T>(path: string, form: FormData): Promise<T> {
-    return this.request<T>("POST", path, { form });
+  upload<T>(path: string, form: FormData, headers?: Record<string, string>): Promise<T> {
+    return this.request<T>("POST", path, headers === undefined ? { form } : { form, headers });
   }
 
   private async request<T>(method: string, path: string, options: RequestOptions): Promise<T> {
