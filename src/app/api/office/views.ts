@@ -33,6 +33,14 @@ function integerParameter(c: AppContext, name: string, fallback: number, min: nu
   return value;
 }
 
+/** The part of a case the file views show. */
+export interface CaseRef {
+  id: Id;
+  caseType: { id: Id; kind: CaseType["kind"]; label: string } | null;
+  targetMonth: string;
+  sequence: number;
+}
+
 /** Looks records up once per request and reuses them while building a response. */
 export class Lookups {
   private readonly clients = new Map<Id, Client | null>();
@@ -40,6 +48,7 @@ export class Lookups {
   private docTypes: Map<Id, DocType> | null = null;
   private officeSetting: OfficeSetting | null = null;
   private caseTypes: Map<Id, CaseType> | null = null;
+  private readonly cases = new Map<Id, CaseRecord | null>();
 
   constructor(private readonly services: Services) {}
 
@@ -85,6 +94,24 @@ export class Lookups {
     }
     return this.caseTypes.get(id) ?? null;
   }
+
+  /** The case as the case list names it, or null when the case is not found. */
+  async caseRef(id: Id): Promise<CaseRef | null> {
+    if (!this.cases.has(id)) {
+      this.cases.set(id, await this.services.repository.cases.findById(id));
+    }
+    const record = this.cases.get(id) ?? null;
+    if (record === null) {
+      return null;
+    }
+    const caseType = await this.caseType(record.caseTypeId);
+    return {
+      id: record.id,
+      caseType: caseType === null ? null : { id: caseType.id, kind: caseType.kind, label: caseType.label },
+      targetMonth: record.targetMonth,
+      sequence: record.sequence,
+    };
+  }
 }
 
 export async function fileView(lookups: Lookups, file: FileRecord, receipts: readonly FileReceipt[]): Promise<Record<string, unknown>> {
@@ -107,6 +134,7 @@ export async function fileView(lookups: Lookups, file: FileRecord, receipts: rea
     state: file.state,
     client: await lookups.client(file.clientId),
     caseId: file.caseId,
+    caseRef: file.caseId === null ? null : await lookups.caseRef(file.caseId),
     docType: docType === null ? null : { id: docType.id, shortCode: docType.shortCode, label: docType.label },
     targetMonth: file.targetMonth,
     resolutionMethod: file.resolutionMethod,

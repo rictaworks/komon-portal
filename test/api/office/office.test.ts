@@ -211,6 +211,7 @@ describe("office API", () => {
     expect(storedBody.file).toMatchObject({
       state: "Staged", displayName: "C0031_SHAHO_20261124_01", resolutionMethod: "ArrivalNumber", caseId: ids.k1,
       client: { code: "C0031" }, docType: { shortCode: "SHAHO" }, typeSource: "Rule", version: 1,
+      caseRef: { id: ids.k1, targetMonth: "2026-11", sequence: 1, caseType: { kind: "Procedure" } },
     });
 
     const rejected = await json(await staff.call("POST", `/api/office/batches/${ids.batch}/files`, { form: upload("a.exe", "MZ") }));
