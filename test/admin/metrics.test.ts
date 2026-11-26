@@ -78,6 +78,20 @@ describe("admin summary figures", () => {
     ]);
   });
 
+  it("counts read-only weekly use: one active event per member and client, and per staff member", async () => {
+    // Two weeks ago: a member who only read, twice in one week for one client, and a staff member who only read.
+    await event("active", { clientId: "fig-client-1", actorKind: "member", actorUserId: "fig-member-a", occurredAt: at(14 * DAY) });
+    await event("active", { clientId: "fig-client-1", actorKind: "member", actorUserId: "fig-member-a", occurredAt: at(13 * DAY) });
+    await event("active", { actorKind: "staff", actorUserId: "fig-staff-b", occurredAt: at(14 * DAY) });
+
+    const summary = await metricsSummary(env.DB, NOW);
+    expect(summary.activeByWeek).toEqual([
+      { week: "2026-W46", clients: 1, staff: 1 },
+      { week: "2026-W47", clients: 1, staff: 1 },
+      { week: "2026-W48", clients: 1, staff: 2 },
+    ]);
+  });
+
   it("breaks review-required intake down by reason", async () => {
     await event("intake.accepted", { clientId: "fig-client-1", attributes: { state: "NeedsReview", method: null, reviewReason: "NoKey" } });
     await event("intake.accepted", { clientId: "fig-client-1", attributes: { state: "NeedsReview", method: null, reviewReason: "NoKey" } });

@@ -639,6 +639,23 @@ export function describeRepositoryContract(name: string, create: () => Promise<R
       expect(await repo.metrics.hasCaseEvent("case.state_changed", id("kw1"), "2026-08-01")).toBe(false);
     });
 
+    it("appends a metric event only when none with the same name, user and client came since the given time", async () => {
+      const actor = await seedUser("once-actor");
+      const other = await seedUser("once-other");
+      const clientId = id("once-client");
+      const since = new Date("2026-11-23T00:00:00.000Z");
+      const weekly = (eventId: string, userId: string, client: string | null, occurredAt: Date) => ({
+        id: id(eventId), name: "active", clientId: client, actorKind: "member" as const, actorUserId: userId, attributes: {}, occurredAt,
+      });
+      expect(await repo.metrics.appendUnlessSince(weekly("ao1", actor.id, clientId, new Date("2026-11-24T10:00:00.000Z")), since)).toBe(true);
+      // The same user and client again in the same week: nothing is appended.
+      expect(await repo.metrics.appendUnlessSince(weekly("ao2", actor.id, clientId, new Date("2026-11-25T10:00:00.000Z")), since)).toBe(false);
+      // Another client, another user, and the same user with no client are each their own week's first.
+      expect(await repo.metrics.appendUnlessSince(weekly("ao3", actor.id, id("once-client-2"), new Date("2026-11-25T10:00:00.000Z")), since)).toBe(true);
+      expect(await repo.metrics.appendUnlessSince(weekly("ao4", other.id, clientId, new Date("2026-11-25T10:00:00.000Z")), since)).toBe(true);
+      expect(await repo.metrics.appendUnlessSince({ ...weekly("ao5", actor.id, null, new Date("2026-11-25T10:00:00.000Z")), actorKind: "staff" }, since)).toBe(true);
+    });
+
     it("ends the sessions of a user without error when there are none", async () => {
       await expect(repo.sessions.revokeAllForUser(id("nobody"))).resolves.toBeUndefined();
     });
