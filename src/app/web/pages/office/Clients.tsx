@@ -23,14 +23,64 @@ function inviteLink(code: string): string {
   return `${window.location.origin}/redeem#${code}`;
 }
 
-function memberCountKey(members: ClientListItem["members"]): string {
-  if (members.active > 0 && members.pending > 0) {
-    return "office.clients.memberCounts.both";
+/**
+ * The member count wording for a client. An archived client (contract ended) is read only for its staff,
+ * so the active members of an archived client are shown as read only.
+ */
+export function memberCountKey(client: Pick<ClientListItem, "status" | "members">): string {
+  const { active, pending } = client.members;
+  const readOnly = client.status === "Archived" && active > 0;
+  if (active > 0 && pending > 0) {
+    return readOnly ? "office.clients.memberCounts.bothReadOnly" : "office.clients.memberCounts.both";
   }
-  if (members.pending > 0) {
+  if (pending > 0) {
     return "office.clients.memberCounts.pending";
   }
-  return members.active > 0 ? "office.clients.memberCounts.active" : "office.clients.memberCounts.none";
+  if (active > 0) {
+    return readOnly ? "office.clients.memberCounts.activeReadOnly" : "office.clients.memberCounts.active";
+  }
+  return "office.clients.memberCounts.none";
+}
+
+/** The members waiting for approval, with the choice to approve or reject each one. Renders nothing when none is waiting. */
+export function PendingApprovals({
+  waiting,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  waiting: ClientMembers["members"];
+  busy: boolean;
+  onApprove: (membershipId: string) => void;
+  onReject: (membershipId: string) => void;
+}) {
+  const t = useT();
+  if (waiting.length === 0) {
+    return null;
+  }
+  return (
+    <div className="card--pad">
+      <Notice tone="review">
+        <div className="stack stack--tight">
+          <strong>{waiting.length === 1 ? t("office.clients.pendingOne") : t("office.clients.pendingMany", { count: waiting.length })}</strong>
+          {waiting.map((member) => (
+            <div key={member.membershipId} className="row row--end">
+              <span className="grow">
+                <strong>{member.displayName}</strong>{" "}
+                <span className="muted">{member.redeemedAt === null ? t("office.clients.useTimeUnknown") : t("office.clients.usedInvitation", { when: formatDateTime(member.redeemedAt) })}</span>
+              </span>
+              <button type="button" className="button" disabled={busy} onClick={() => onApprove(member.membershipId)}>
+                {t("office.clients.approve")}
+              </button>
+              <button type="button" className="button button--danger" disabled={busy} onClick={() => onReject(member.membershipId)}>
+                {t("office.clients.reject")}
+              </button>
+            </div>
+          ))}
+        </div>
+      </Notice>
+    </div>
+  );
 }
 
 /** Client list with a register form. */
@@ -120,7 +170,7 @@ export function Clients() {
                       <td>
                         <Badge tone={client.status === "Active" ? "published" : "neutral"} label={t(`clientStatus.${client.status}`)} />
                       </td>
-                      <td>{t(memberCountKey(client.members), client.members)}</td>
+                      <td>{t(memberCountKey(client), client.members)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -215,7 +265,7 @@ export function ClientDetail() {
     })();
   };
 
-  const membership = (id: string, verb: "approve" | "reject" | "revoke") => () => {
+  const membership = (id: string, verb: "approve" | "reject" | "revoke") => {
     void action.run(() => api.post(`/api/office/memberships/${id}/${verb}`, {})).then((ok) => ok && members.reload());
   };
 
@@ -252,6 +302,12 @@ export function ClientDetail() {
             {t("office.clients.invite")}
           </button>
         </div>
+        <PendingApprovals
+          waiting={(members.data?.members ?? []).filter((member) => member.status === "Pending")}
+          busy={action.busy}
+          onApprove={(id) => membership(id, "approve")}
+          onReject={(id) => membership(id, "reject")}
+        />
         {issued === null ? null : (
           <div className="card--pad stack">
             <Notice tone="success">{t("office.clients.inviteIssued")}</Notice>
@@ -285,16 +341,16 @@ export function ClientDetail() {
               <Badge tone={member.status === "Active" ? "published" : "neutral"} label={t(`membership.${member.status}`)} />
               {member.status === "Pending" ? (
                 <>
-                  <button type="button" className="button" disabled={action.busy} onClick={membership(member.membershipId, "approve")}>
+                  <button type="button" className="button" disabled={action.busy} onClick={() => membership(member.membershipId, "approve")}>
                     {t("office.clients.approve")}
                   </button>
-                  <button type="button" className="button button--danger" disabled={action.busy} onClick={membership(member.membershipId, "reject")}>
+                  <button type="button" className="button button--danger" disabled={action.busy} onClick={() => membership(member.membershipId, "reject")}>
                     {t("office.clients.reject")}
                   </button>
                 </>
               ) : null}
               {member.status === "Active" ? (
-                <button type="button" className="button button--danger" disabled={action.busy} onClick={membership(member.membershipId, "revoke")}>
+                <button type="button" className="button button--danger" disabled={action.busy} onClick={() => membership(member.membershipId, "revoke")}>
                   {t("office.clients.revoke")}
                 </button>
               ) : null}
