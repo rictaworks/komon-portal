@@ -23,6 +23,18 @@ export function removeJevSettings(): void {
   window.localStorage.removeItem(MODEL_STORAGE);
 }
 
+/**
+ * Adds the Jev model to an upload form and returns the header that carries the key. Both are sent only when this
+ * browser holds a key, so an upload without one asks Jev for nothing and stays untyped when the rules miss.
+ */
+export function attachJev(form: FormData, settings: JevSettings): Record<string, string> | undefined {
+  if (settings.key === "") {
+    return undefined;
+  }
+  form.set("model", settings.model);
+  return { "X-Jev-Key": settings.key };
+}
+
 /** Only fixed versions are accepted: an alias would move to another model without notice. */
 export function isFixedModelName(model: string): boolean {
   return model.length <= 64 && MODEL_NAME.test(model);

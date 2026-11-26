@@ -40,6 +40,16 @@ describe("ApiClient", () => {
     expect(calls[0]?.body).toBe(form);
   });
 
+  it("sends the given headers with an upload, and none when there are none", async () => {
+    const calls: Call[] = [];
+    const form = new FormData();
+    form.set("file", new Blob(["x"]), "a.pdf");
+    await client(() => new Response("{}"), calls).upload("/api/office/batches/b1/files", form, { "X-Jev-Key": "k" });
+    await client(() => new Response("{}"), calls).upload("/api/office/batches/b1/files", form);
+    expect(calls[0]?.headers.get("X-Jev-Key")).toBe("k");
+    expect(calls[1]?.headers.get("X-Jev-Key")).toBeNull();
+  });
+
   it("turns error answers into ApiError with code and detail", async () => {
     const api = client(() => new Response(JSON.stringify({ error: "conflict", detail: "stale" }), { status: 409 }));
     await expect(api.post("/api/x")).rejects.toMatchObject({ status: 409, code: "conflict", detail: "stale" });

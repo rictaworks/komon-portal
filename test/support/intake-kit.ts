@@ -4,6 +4,8 @@ import { IntakeService, type AutoPublisher } from "../../src/core/intake/intake-
 import { ReviewService } from "../../src/core/intake/review-service";
 import { SubmissionService } from "../../src/core/intake/submission-service";
 import { TrashService } from "../../src/core/intake/trash-service";
+import { ClassificationService } from "../../src/core/intake/classification-service";
+import { type ClassifierPort, type ClassifierResponse } from "../../src/core/ports/classifier";
 import type { Notifier } from "../../src/core/ports/notifier";
 import { PublishService } from "../../src/core/publish/publish-service";
 import { ViewService } from "../../src/core/publish/view-service";
@@ -33,7 +35,15 @@ export class RecordingNotifier implements Notifier {
   }
 }
 
+/** Stands in for Jev where a test does not expect any call: a call is a failure. */
+class UnexpectedClassifier implements ClassifierPort {
+  async choose(): Promise<ClassifierResponse> {
+    throw new Error("Jev was called in a test that does not expect it");
+  }
+}
+
 export interface IntakeKit extends CoreKit {
+  classification: ClassificationService;
   notifier: RecordingNotifier;
   publish: PublishService;
   view: ViewService;
@@ -49,7 +59,7 @@ export interface IntakeKit extends CoreKit {
 }
 
 /** Core services over in-memory ports, with two active clients, one archived client and basic master data. */
-export function intakeKit(): IntakeKit {
+export function intakeKit(classifier: ClassifierPort = new UnexpectedClassifier()): IntakeKit {
   const repo = new MemoryRepository();
   repo.clientRows.push(
     client({ id: "c1", code: "C0031" }),
@@ -69,12 +79,13 @@ export function intakeKit(): IntakeKit {
   const writer = new FileWriter(repo, kit.clock);
   const cases = new CaseService({ repository: repo, ...kit });
   const autoPublisher = new RecordingAutoPublisher();
-  const intake = new IntakeService({ repository: repo, store, writer, cases, autoPublisher, ...kit });
+  const classification = new ClassificationService({ repository: repo, writer, classifier, ...kit });
+  const intake = new IntakeService({ repository: repo, store, writer, cases, autoPublisher, judge: classification, ...kit });
   const review = new ReviewService({ repository: repo, writer, cases, ...kit });
   const notifier = new RecordingNotifier();
   const publish = new PublishService({ repository: repo, writer, cases, notifier, ...kit });
   const view = new ViewService({ repository: repo, store, writer, cases, ...kit });
   const submissions = new SubmissionService({ repository: repo, store, writer, cases, ...kit });
   const trash = new TrashService({ repository: repo, store, writer, cases, ...kit });
-  return { ...kit, repo, store, writer, cases, autoPublisher, intake, review, notifier, publish, view, submissions, trash };
+  return { ...kit, repo, store, writer, cases, autoPublisher, classification, intake, review, notifier, publish, view, submissions, trash };
 }

@@ -8,7 +8,8 @@ import type { FileStore } from "../ports/file-store";
 import type { IdGenerator } from "../ports/id-generator";
 import type { Repository } from "../ports/repository";
 import { ClientResolver, type Resolution } from "./client-resolver";
-import { decideByRules } from "./doc-type-decider";
+import type { IntakeJev, IntakeJudgement } from "./classification-service";
+import { decideByRules, type TypeDecision } from "./doc-type-decider";
 import { stemOf } from "./file-name";
 import { validateFile, type IncomingFile } from "./file-validator";
 import type { FileWriter } from "./file-writer";
@@ -25,6 +26,11 @@ export interface AutoPublisher {
   autoPublishIfEligible(fileId: Id): Promise<boolean>;
 }
 
+/** Lets Jev choose the type of a file being accepted, when the rules did not decide it. */
+export interface IntakeJudge {
+  judgeAtIntake(fileId: Id, fileName: string, request: IntakeJev): Promise<IntakeJudgement | null>;
+}
+
 export const FILE_KEY_PREFIX = "files/";
 const FILE_TARGET = "file";
 const BATCH_TARGET = "batch";
@@ -39,6 +45,7 @@ export interface IntakeServiceDeps {
   writer: FileWriter;
   cases: CaseService;
   autoPublisher: AutoPublisher;
+  judge: IntakeJudge;
 }
 
 /** Accepts files one by one: validate, detect duplicates, read identifiers, resolve the client, decide the type. */
@@ -61,8 +68,11 @@ export class IntakeService {
     return batch;
   }
 
-  /** Accepts one file of a batch. A rejected file is not stored; the caller continues with the next one. */
-  async accept(actor: UserActor, batchId: Id, incoming: IncomingFile): Promise<IntakeResult> {
+  /**
+   * Accepts one file of a batch. A rejected file is not stored; the caller continues with the next one.
+   * `jev` is the browser's Jev key and model. Without it, a file the rules leave open stays untyped.
+   */
+  async accept(actor: UserActor, batchId: Id, incoming: IncomingFile, jev: IntakeJev | null = null): Promise<IntakeResult> {
     await this.deps.guard.require(actor, "staff.operate", { type: BATCH_TARGET, id: batchId });
     const batch = await this.deps.repository.files.findBatch(batchId);
     if (batch === null) {
@@ -84,7 +94,16 @@ export class IntakeService {
     if (sameClient !== undefined && sameClient.clientId !== null) {
       return this.duplicate(actor, sameClient);
     }
-    const draft = await this.draft(batch, incoming, validation.format, sha256, this.withCopies(resolution, copies));
+    const id = this.deps.ids.newId();
+    // Rules first. Jev is asked only when they leave the type open, and before anything is stored, so a refused call leaves nothing behind.
+    const rule = decideByRules(
+      stemOf(incoming.fileName),
+      "Outbound",
+      await this.deps.repository.docTypes.list(),
+      await this.deps.repository.docTypes.listRules(),
+    );
+    const judgement = rule.docTypeId === null && jev !== null ? await this.deps.judge.judgeAtIntake(id, incoming.fileName, jev) : null;
+    const draft = await this.draft(id, batch, incoming, validation.format, sha256, this.withCopies(resolution, copies), rule, judgement);
     await this.deps.store.put(draft.r2Key, incoming.bytes);
     const written = await this.insertOrRemoveBody(draft);
     if (written.result === "duplicate_content") {
@@ -94,7 +113,7 @@ export class IntakeService {
       }
       return this.duplicate(actor, winner);
     }
-    return this.afterStored(actor, written.file);
+    return this.afterStored(actor, written.file, judgement);
   }
 
   /** A body must never stay in the store without a record: it is removed whenever the record is not written. */
@@ -136,27 +155,25 @@ export class IntakeService {
   }
 
   private async draft(
+    id: Id,
     batch: UploadBatch,
     incoming: IncomingFile,
     format: FileRecord["format"],
     sha256: string,
     resolution: Resolution,
+    type: TypeDecision,
+    judgement: IntakeJudgement | null,
   ): Promise<FileRecord> {
-    const type = decideByRules(
-      stemOf(incoming.fileName),
-      "Outbound",
-      await this.deps.repository.docTypes.list(),
-      await this.deps.repository.docTypes.listRules(),
-    );
-    const id = this.deps.ids.newId();
     const needsReview = resolution.reviewReason !== null;
+    // A type is set by Jev only when its confidence reached the threshold. Otherwise the answer is kept as a candidate.
+    const jevAccepted = judgement !== null && judgement.accepted;
     return {
       id,
       batchId: batch.id,
       direction: "Outbound",
       clientId: resolution.clientId,
       caseId: resolution.caseId,
-      docTypeId: type.docTypeId,
+      docTypeId: type.docTypeId ?? (jevAccepted ? judgement.choiceId : null),
       // A document linked to a case is filed under that case's month.
       targetMonth: resolution.caseId === null ? null : ((await this.deps.repository.cases.findById(resolution.caseId))?.targetMonth ?? null),
       displayName: "",
@@ -170,10 +187,10 @@ export class IntakeService {
       reviewReason: resolution.reviewReason,
       reviewDetail: needsReview ? resolution.evidence : null,
       unmatchedArrivalNumber: resolution.unmatchedArrivalNumber,
-      typeSource: type.source,
-      jevModel: null,
-      jevConfidence: null,
-      jevCandidateDocTypeId: null,
+      typeSource: type.source ?? (jevAccepted ? "Jev" : null),
+      jevModel: judgement?.model ?? null,
+      jevConfidence: judgement?.confidence ?? null,
+      jevCandidateDocTypeId: judgement !== null && !judgement.accepted ? judgement.choiceId : null,
       withdrawReason: null,
       incidentFlag: false,
       incidentClientId: null,
@@ -187,8 +204,17 @@ export class IntakeService {
     };
   }
 
-  private async afterStored(actor: Actor, file: FileRecord): Promise<IntakeResult> {
+  private async afterStored(actor: Actor, file: FileRecord, judgement: IntakeJudgement | null): Promise<IntakeResult> {
     await this.deps.audit.record(actor, "file.accept", FILE_TARGET, file.id);
+    if (judgement !== null) {
+      await this.deps.audit.record(actor, "file.classify", FILE_TARGET, file.id);
+      await this.deps.metrics.record(actor, "jev.classified", file.clientId, {
+        fileId: file.id,
+        model: judgement.model,
+        confidence: judgement.confidence,
+        accepted: judgement.accepted,
+      });
+    }
     await this.deps.metrics.record(actor, "intake.accepted", file.clientId, {
       fileId: file.id,
       state: file.state,
