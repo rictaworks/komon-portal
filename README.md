@@ -253,8 +253,6 @@ With the token set, the Worker adds the beacon script to each page, the Content 
 
 Versions have the form `01.01.00`. A published GitHub release with that tag runs `.github/workflows/release.yml`, which checks the tag format and runs lint, types, tests and the build. A release publishes a version; it does not deploy anything, and the workflow reads no Cloudflare secret.
 
-To release: create an annotated tag `01.01.00` on the commit to ship, push it, and publish a release for that tag.
-
 To update a deployment to a new release, repeat steps 1, 4 and 5 of "Deployment" with the new tag. Step 4 is needed only when the release adds migrations.
 
 ## Security and personal data
