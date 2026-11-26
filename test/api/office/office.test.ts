@@ -244,13 +244,13 @@ describe("office API", () => {
   });
 
   it("lists the files of one document type, or the files with none, on the server", async () => {
-    const ids_ = async (query: string) => {
+    const idsOf = async (query: string) => {
       const listed = await json(await staff.call("GET", `/api/office/files?direction=Outbound&states=Staged&${query}`));
       return { ids: (listed.items as Json[]).map((item) => item.id), total: listed.total };
     };
-    expect(await ids_(`docTypeId=${ids.d1}`)).toEqual({ ids: [ids.f1], total: 1 });
+    expect(await idsOf(`docTypeId=${ids.d1}`)).toEqual({ ids: [ids.f1], total: 1 });
     // "No type" is a filter of its own, so a file without a type is found however many typed files are listed before it.
-    expect(await ids_("untyped=true&limit=1")).toEqual({ ids: [ids.f2], total: 1 });
+    expect(await idsOf("untyped=true&limit=1")).toEqual({ ids: [ids.f2], total: 1 });
     for (const query of ["untyped=yes", "untyped=false", "untyped=1", `untyped=true&docTypeId=${ids.d1}`]) {
       const response = await staff.call("GET", `/api/office/files?${query}`);
       expect([query, response.status]).toEqual([query, 400]);
@@ -363,6 +363,31 @@ describe("office API", () => {
     expect(entries.some((entry) => entry.result === "denied")).toBe(true);
     expect(entries.find((entry) => entry.action === "client.register")).toMatchObject({ actorDisplayName: "Dev staff", result: "ok" });
     expect(JSON.stringify(entries)).not.toContain("Yamada");
+  });
+
+  it("pages the audit log and narrows it to the entries about one client", async () => {
+    const idsOf = async (query: string) => ((await json(await owner.call("GET", `/api/office/audit?${query}`))).items as Json[]).map((entry) => entry.id);
+    const all = await idsOf("limit=200");
+    expect(all.length).toBeGreaterThanOrEqual(4);
+    expect(await idsOf("limit=2&offset=0")).toEqual(all.slice(0, 2));
+    expect(await idsOf("limit=2&offset=2")).toEqual(all.slice(2, 4));
+    expect(await idsOf(`limit=2&offset=${String(all.length)}`)).toEqual([]);
+    expect((await owner.call("GET", "/api/office/audit?limit=201")).status).toBe(400);
+    expect((await owner.call("GET", "/api/office/audit?offset=-1")).status).toBe(400);
+
+    const forC1 = (await json(await owner.call("GET", `/api/office/audit?limit=200&clientId=${ids.c1}`))).items as Json[];
+    const actionsForC1 = forC1.map((entry) => entry.action);
+    expect(actionsForC1).toEqual(expect.arrayContaining(["client.register", "case.register"]));
+    expect(forC1.some((entry) => entry.targetType === "client" && entry.targetId === ids.c2)).toBe(false);
+    // Entries about other clients never appear under this one; only its own client, case and file rows do.
+    expect(forC1.every((entry) => entry.targetType !== "client" || entry.targetId === ids.c1)).toBe(true);
+    const forC2 = (await json(await owner.call("GET", `/api/office/audit?limit=200&clientId=${ids.c2}`))).items as Json[];
+    expect(forC2.some((entry) => entry.targetType === "client" && entry.targetId === ids.c1)).toBe(false);
+    expect(forC2.map((entry) => entry.action)).toContain("client.register");
+    expect(await idsOf("clientId=no-such-client")).toEqual([]);
+    const blank = await owner.call("GET", "/api/office/audit?clientId=");
+    expect(blank.status).toBe(400);
+    expect(await json(blank)).toEqual({ error: "invalid_input", detail: "clientId" });
   });
 
   it("narrows the client list by status and by code or name on the server", async () => {
